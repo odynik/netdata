@@ -628,8 +628,8 @@ static int rrdpush_receive(struct receiver_state *rpt)
     rpt->max_gap = appconfig_get_number(&stream_config, rpt->key, "max gap replication", rpt->max_gap);
     rpt->max_gap = appconfig_get_number(&stream_config, rpt->machine_guid, "max gap replication", rpt->max_gap);
 
-    rpt->use_replication = appconfig_get_number(&stream_config, rpt->key, "enable replication", rpt->use_replication);
-    rpt->use_replication = appconfig_get_number(&stream_config, rpt->machine_guid, "enable replication", rpt->use_replication);
+    rpt->use_replication = appconfig_get_boolean(&stream_config, rpt->key, "enable replication", rpt->use_replication);
+    rpt->use_replication = appconfig_get_boolean(&stream_config, rpt->machine_guid, "enable replication", rpt->use_replication);
 
     if (rpt->stream_version == VERSION_GAP_FILLING && !rpt->use_replication)
         rpt->stream_version = VERSION_GAP_FILLING - 1;

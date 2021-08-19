@@ -314,9 +314,6 @@ void rrdset_done_push(RRDSET *st) {
     if(unlikely(host->rrdpush_send_enabled && !host->rrdpush_sender_spawn))
         rrdpush_sender_thread_spawn(host);
 
-    // if (host->sender->version >= VERSION_GAP_FILLING)
-    //     return;
-
     // Handle non-connected case
     if(unlikely(!host->rrdpush_sender_connected)) {
         if(unlikely(!host->rrdpush_sender_error_shown))
@@ -328,6 +325,9 @@ void rrdset_done_push(RRDSET *st) {
         info("STREAM %s [send]: sending metrics...", host->hostname);
         host->rrdpush_sender_error_shown = 0;
     }
+
+    if (host->sender->version >= VERSION_GAP_FILLING)
+        return
 
     sender_start(host->sender);
 
