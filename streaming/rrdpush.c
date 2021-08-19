@@ -327,7 +327,7 @@ void rrdset_done_push(RRDSET *st) {
     }
 
     if (host->sender->version >= VERSION_GAP_FILLING)
-        return
+        return;
 
     sender_start(host->sender);
 
