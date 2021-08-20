@@ -670,6 +670,7 @@ void *rrdpush_sender_thread(void *ptr) {
     fds[Collector].fd = s->host->rrdpush_sender_pipe[PIPE_READ];
     fds[Collector].events = POLLIN;
 
+    info("STREAM Pipes seems to be initialized for host %s ", s->host->hostname);
     netdata_thread_cleanup_push(rrdpush_sender_thread_cleanup_callback, s->host);
     for(; s->host->rrdpush_send_enabled && !netdata_exit ;) {
         // check for outstanding cancellation requests
@@ -685,12 +686,13 @@ void *rrdpush_sender_thread(void *ptr) {
             continue;
         }
 
-        // Connect the child host images of the parent to the grandparent. TODO check streaming enable
-        if(s->host->next != NULL){
-            if(unlikely((s->host->rrdpush_sender_socket != -1) && (s->host->next->rrdpush_sender_socket == -1))) {
-                rrdpush_sender_thread_spawn(s->host->next);
-                continue;
-                }
+        // Connect the children host images of the parent to the grandparent.
+        if ((s->host->next != NULL) && (s->host->next->rrdpush_sender_socket == -1) &&
+            !s->host->next->rrdpush_sender_spawn && s->host->rrdpush_sender_spawn &&
+            (s->host->rrdpush_sender_socket != -1)) {
+            debug(D_STREAM, "STREAM: Children [%s] connection to grand parent", s->host->next->hostname);
+            rrdpush_sender_thread_spawn(s->host->next);
+            continue;
         }
 
         // If the TCP window never opened then something is wrong, restart connection
