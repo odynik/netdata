@@ -188,6 +188,7 @@ tests/urls/request.sh
 tests/alarm_repetition/alarm.sh
 tests/template_dimension/template_dim.sh
 aclk/legacy/tests/install-fake-charts.d.sh
+gdb.conf
 
 # tests and temp files
 test-driver

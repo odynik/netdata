@@ -685,6 +685,14 @@ void *rrdpush_sender_thread(void *ptr) {
             continue;
         }
 
+        // Connect the child host images of the parent to the grandparent. TODO check streaming enable
+        if(s->host->next != NULL){
+            if(unlikely((s->host->rrdpush_sender_socket != -1) && (s->host->next->rrdpush_sender_socket == -1))) {
+                rrdpush_sender_thread_spawn(s->host->next);
+                continue;
+                }
+        }
+
         // If the TCP window never opened then something is wrong, restart connection
         if(unlikely(now_monotonic_sec() - s->last_sent_t > s->timeout)) {
             error("STREAM %s [send to %s]: could not send metrics for %d seconds - closing connection - we have sent %zu bytes on this connection via %zu send attempts.", s->host->hostname, s->connected_to, s->timeout, s->sent_bytes_on_this_connection, s->send_attempts);
@@ -873,7 +881,7 @@ void sender_replicate(RRDSET *st) {
 
     sender_start(host->sender);         // Locks the sender buffer
     if(need_to_send_chart_definition(st))
-        rrdpush_send_chart_definition_nolock(st);
+        rrdpush_send_chart_definition_nolock(st);        
     sender_fill_gap_nolock(host->sender, st, 0);
     sender_commit(host->sender);        // Releases the sender buffer
 
