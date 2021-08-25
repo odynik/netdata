@@ -146,4 +146,5 @@ extern void log_stream_connection(const char *client_ip, const char *client_port
 extern int need_to_send_chart_definition(RRDSET *st);
 extern int should_send_chart_matching(RRDSET *st);
 extern void rrdpush_send_chart_definition_nolock(RRDSET *st);
+extern void sender_fill_gap_nolock(struct sender_state *s, RRDSET *st, time_t start_time);
 #endif //NETDATA_RRDPUSH_H
