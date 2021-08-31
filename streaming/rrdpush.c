@@ -331,8 +331,11 @@ void rrdset_done_push(RRDSET *st) {
     if(need_to_send_chart_definition(st))
         rrdpush_send_chart_definition_nolock(st);
     if(!(strcmp(host->machine_guid, localhost->machine_guid) == 0) && (host->rrdpush_sender_socket != -1)){
-        if(host->sender->version >= VERSION_GAP_FILLING)
-            sender_fill_gap_nolock(host->sender, st, st->state->window_start);
+        debug(D_STREAM, "%s is not localhost(%s)", host->hostname, localhost->hostname);
+        if(host->sender->version >= VERSION_GAP_FILLING){
+            debug(D_STREAM, "Send over GAP_FILLING[from: %s, st: %s @ %ld]", host->hostname, st->id, st->state->last_sent.tv_sec);
+            sender_fill_gap_nolock(host->sender, st, st->state->last_sent.tv_sec);
+        }
         else
             rrdpush_send_chart_metrics_nolock(st, host->sender);
     }

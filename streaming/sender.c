@@ -470,6 +470,7 @@ void attempt_to_send(struct sender_state *s) {
     ret = send(s->host->rrdpush_sender_socket, chunk, outstanding, MSG_DONTWAIT);
 #endif
     if (likely(ret > 0)) {
+        debug(D_STREAM, "Send BUFFER(%s): [%s]",s->host->hostname, chunk);
         cbuffer_remove_unsafe(s->buffer, ret);
         s->sent_bytes_on_this_connection += ret;
         s->sent_bytes += ret;
