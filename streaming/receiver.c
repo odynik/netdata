@@ -212,7 +212,12 @@ static void skip_gap(RRDSET *st, time_t first_t, time_t last_t) {
     }
     else
         debug(D_REPLICATION, "dbengine on %s skipping gap %ld-%ld.", st->name, (long)first_t, (long)last_t);
+    
+    // Update for synchronization
+    struct timeval tmp;
+    tmp = st->last_updated;    
     st->last_updated.tv_sec = last_t;
+    st->usec_since_last_update = timeval_usec(&(st->last_updated)) - timeval_usec(&tmp);
 }
 
 
@@ -250,6 +255,17 @@ PARSER_RC streaming_rep_begin(char **words, void *user_v, PLUGINSD_ACTION *plugi
             st->state->ignore_block = 1;
             st->last_updated.tv_sec = now - rpt->gap_history;
             return PARSER_RC_OK;
+        }
+        // Send this chart definitions to the grand parent
+        if (unlikely(
+                !(strcmp(user->host->machine_guid, localhost->machine_guid) == 0) && user->host->rrdpush_send_enabled &&
+                user->host->rrdpush_sender_spawn && (user->host->rrdpush_sender_socket != -1))) {
+            sender_start(user->host->sender); // Locks the sender buffer
+            if (need_to_send_chart_definition(user->st)) {
+                rrdpush_send_chart_definition_nolock(user->st);
+                info("Send chart definition from REPBEGIN start_time=0");
+            }
+            sender_commit(user->host->sender); // unlocks the sender buffer
         }
     }
     time_t expected_t = st->last_updated.tv_sec + st->update_every;
@@ -291,12 +307,26 @@ PARSER_RC streaming_rep_begin(char **words, void *user_v, PLUGINSD_ACTION *plugi
     debug(D_REPLICATION, "Replication on %s @ %ld, block %ld/%ld-%ld last_update=%ld", st->name, now,
                          st->state->window_start, st->state->window_first, st->state->window_end,
                          st->last_updated.tv_sec);
-
+    // Send this chart definitions to the grand parent
+    if (unlikely(
+            !(strcmp(user->host->machine_guid, localhost->machine_guid) == 0) && user->host->rrdpush_send_enabled &&
+            user->host->rrdpush_sender_spawn && (user->host->rrdpush_sender_socket != -1))) {
+            sender_start(user->host->sender); // Locks the sender buffer
+            if (need_to_send_chart_definition(user->st)) {
+                rrdpush_send_chart_definition_nolock(user->st);
+                info("Send chart definition from REPBEGIN");
+            }
+            sender_commit(user->host->sender); // unlocks the sender buffer
+    }
     return PARSER_RC_OK;
 disable:
     errno = 0;
-    error("Replication failed - Invalid REPBEGIN %s %s %s on host %s. Disabling it.", words[1], words[2], words[3],
-          user->host->hostname);
+    error(
+        "Replication failed - Invalid REPBEGIN %s %s %s on host %s. Disabling it.",
+        words[1],
+        words[2],
+        words[3],
+        user->host->hostname);
     user->enabled = 0;
     return PARSER_RC_ERROR;
 }
@@ -333,7 +363,7 @@ PARSER_RC streaming_rep_dim(char **words, void *user_v, PLUGINSD_ACTION *plugins
     // uninitialized.
     if (user->st->state->ignore_block || rrddim_flag_check(rd, RRDDIM_FLAG_ARCHIVED))
         return PARSER_RC_OK;
-
+    
     if (user->st->rrd_memory_mode == RRD_MEMORY_MODE_DBENGINE)
     {
         if (value != SN_EMPTY_SLOT && timestamp > rrddim_last_entry_t(rd)) {
@@ -341,6 +371,28 @@ PARSER_RC streaming_rep_dim(char **words, void *user_v, PLUGINSD_ACTION *plugins
         }
         debug(D_REPLICATION, "store " STORAGE_NUMBER_FORMAT "@%ld for %s.%s (last_val=%p)", value, timestamp, 
               user->st->id, id, &rd->last_stored_value);
+
+        if (unlikely(
+                !(strcmp(user->host->machine_guid, localhost->machine_guid) == 0) && user->host->rrdpush_send_enabled &&
+                user->host->rrdpush_sender_spawn && (user->host->rrdpush_sender_socket != -1))) {
+            if (user->host->sender->version < VERSION_GAP_FILLING) {
+                sender_start(user->host->sender);
+                buffer_sprintf(
+                    user->host->sender->build,
+                    "BEGIN \"%s\" %llu\n",
+                    user->st->id,
+                    (timestamp > user->st->upstream_resync_time) ? user->st->usec_since_last_update : 0);
+                buffer_sprintf(user->host->sender->build, "SET \"%s\" = " STORAGE_NUMBER_FORMAT "\n", rd->id, value);
+                buffer_strcat(user->host->sender->build, "END\n");
+                info("REPDIM BUFFERED: %s", buffer_tostring(user->host->sender->build));
+                sender_commit(user->host->sender);
+
+                // signal the sender there are more data
+                if (user->host->rrdpush_sender_pipe[PIPE_WRITE] != -1 &&
+                    write(user->host->rrdpush_sender_pipe[PIPE_WRITE], " ", 1) == -1)
+                    error("STREAM %s [send]: cannot write to internal pipe", user->host->hostname);
+            }
+        }              
     }
     else
     {
@@ -358,14 +410,18 @@ PARSER_RC streaming_rep_dim(char **words, void *user_v, PLUGINSD_ACTION *plugins
                                                      (calculated_number)rd->divisor;
     rd->last_collected_time.tv_sec = timestamp;
     rd->last_collected_time.tv_usec = 0;
-
+    rd->updated = 1;
     return PARSER_RC_OK;
-disable:
-    error("Gap replication failed - Invalid REPDIM %s %s %s on host %s. Disabling it.", words[1], words[2], words[3],
-          user->host->hostname);
-    user->enabled = 0;
-    return PARSER_RC_ERROR;
-}
+    disable:
+        error(
+            "Gap replication failed - Invalid REPDIM %s %s %s on host %s. Disabling it.",
+            words[1],
+            words[2],
+            words[3],
+            user->host->hostname);
+        user->enabled = 0;
+        return PARSER_RC_ERROR;
+    }
 
 PARSER_RC streaming_rep_end(char **words, void *user_v, PLUGINSD_ACTION *plugins_action) {
     PARSER_USER_OBJECT *user = user_v;
@@ -391,7 +447,12 @@ PARSER_RC streaming_rep_end(char **words, void *user_v, PLUGINSD_ACTION *plugins
     total_number last_total = str2ll(last_total_txt, NULL);
 
     struct rrdset_volatile *state = user->st->state;
+
+    // Update for synchronization
+    struct timeval tmp;
+    tmp = user->st->last_updated;    
     user->st->last_updated.tv_sec = state->window_end - user->st->update_every;
+    user->st->usec_since_last_update = timeval_usec(&(user->st->last_updated)) - timeval_usec(&tmp);
     user->st->last_collected_time.tv_sec = user->st->last_updated.tv_sec;
     user->st->last_collected_time.tv_usec = USEC_PER_SEC/2;
     if (num_points > 0) {
@@ -410,16 +471,16 @@ PARSER_RC streaming_rep_end(char **words, void *user_v, PLUGINSD_ACTION *plugins
         if (unlikely(
                 !(strcmp(user->host->machine_guid, localhost->machine_guid) == 0) && user->host->rrdpush_send_enabled &&
                 user->host->rrdpush_sender_spawn && (user->host->rrdpush_sender_socket != -1))) {
-            sender_start(user->host->sender); // Locks the sender buffer
-            if (need_to_send_chart_definition(user->st)) {
-                rrdpush_send_chart_definition_nolock(user->st);
-            }
-            sender_fill_gap_nolock(user->host->sender, user->st, state->window_first);
-            sender_commit(user->host->sender); // Releases the sender buffer
+            if (user->host->sender->version >= VERSION_GAP_FILLING) {
+                sender_start(user->host->sender);
+                sender_fill_gap_nolock(user->host->sender, user->st, state->window_start);
+                sender_commit(user->host->sender); // Unlock the buffer either for version protocol 3 or 4.
 
-        // signal the sender there are more data
-        if (user->host->rrdpush_sender_pipe[PIPE_WRITE] != -1 && write(user->host->rrdpush_sender_pipe[PIPE_WRITE], " ", 1) == -1)
-            error("STREAM %s [send]: cannot write to internal pipe", user->host->hostname);            
+                // signal the sender there are more data
+                if (user->host->rrdpush_sender_pipe[PIPE_WRITE] != -1 &&
+                    write(user->host->rrdpush_sender_pipe[PIPE_WRITE], " ", 1) == -1)
+                    error("STREAM %s [send]: cannot write to internal pipe", user->host->hostname);
+            }
         }
 
     } else {

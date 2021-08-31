@@ -269,7 +269,7 @@ void rrdpush_send_chart_definition_nolock(RRDSET *st) {
 }
 
 // sends the current chart dimensions
-static inline void rrdpush_send_chart_metrics_nolock(RRDSET *st, struct sender_state *s) {
+void rrdpush_send_chart_metrics_nolock(RRDSET *st, struct sender_state *s) {
     RRDHOST *host = st->rrdhost;
     buffer_sprintf(host->sender->build, "BEGIN \"%s\" %llu", st->id, (st->last_collected_time.tv_sec > st->upstream_resync_time)?st->usec_since_last_update:0);
     if (s->version >= VERSION_GAP_FILLING)
@@ -287,6 +287,53 @@ static inline void rrdpush_send_chart_metrics_nolock(RRDSET *st, struct sender_s
         );
     }
     buffer_strcat(host->sender->build, "END\n");
+    // info("DEBUG %s", buffer_tostring(host->sender->build));
+}
+
+void rrdpush_send_chart_metrics_v4_to_v3_nolock(struct sender_state *s, RRDSET *st)
+{
+    RRDDIM *rd;
+    struct rrddim_query_handle handle;
+    // time_t first_t = rrdset_first_entry_t(st);
+    // time_t lastest_entry = rrdset_last_entry_t(st);
+    // time_t st_newest = st->last_updated.tv_sec;
+    time_t window_start = st->state->window_start;
+    time_t window_end = st->state->window_end;
+    size_t num_points = 0;
+  
+    // Iterate over the time window to prepare the send buffer compatible with version 3.
+    for (time_t tick = window_start; tick < window_end; ) {
+        
+        buffer_sprintf(s->build, "BEGIN \"%s\" %ld %ld\n", st->id, window_start, window_end);
+        rrddim_foreach_read(rd, st)
+        {
+            if (!rd->exposed && !rd->updated)
+                continue;
+            time_t rd_start = rrddim_first_entry_t(rd);
+            time_t rd_end = rrddim_last_entry_t(rd) + st->update_every;
+            if (rd_start < window_end && rd_end >= window_start) {
+                time_t rd_oldest = MAX(rd_start, window_start);
+                rd_end = MIN(rd_end, window_end);
+                rd->state->query_ops.init(rd, &handle, rd_oldest, rd_end);
+                    if (rd->state->query_ops.is_finished(&handle)) {
+                        debug(D_REPLICATION, "%s.%s query handle finished early @%ld", st->id, rd->id, tick);
+                        break;
+                    }
+                    storage_number n = rd->state->query_ops.next_metric(&handle, &tick);
+                    if (n == SN_EMPTY_SLOT)
+                        debug(D_REPLICATION, "%s.%s db empty in valid dimension range @ %ld", st->id, rd->id, tick);
+                    else
+                        buffer_sprintf(s->build, "SET \"%s\" = " STORAGE_NUMBER_FORMAT "\n", rd->id, n);
+                    debug(D_REPLICATION, "%s.%s SET = " STORAGE_NUMBER_FORMAT "\n", st->id, rd->id, n);
+                    num_points++;
+                rd->state->query_ops.finalize(&handle);
+            }
+        
+        }
+        buffer_sprintf(s->build, "END\n");
+    }
+    st->state->last_sent.tv_sec = window_end - st->update_every;
+    info("V4toV3 BUFFER: %s", buffer_tostring(s->build));
 }
 
 void rrdpush_sender_thread_spawn(RRDHOST *host);

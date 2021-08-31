@@ -147,4 +147,6 @@ extern int need_to_send_chart_definition(RRDSET *st);
 extern int should_send_chart_matching(RRDSET *st);
 extern void rrdpush_send_chart_definition_nolock(RRDSET *st);
 extern void sender_fill_gap_nolock(struct sender_state *s, RRDSET *st, time_t start_time);
+extern void rrdpush_send_chart_metrics_nolock(RRDSET *st, struct sender_state *s);
+extern void rrdpush_send_chart_metrics_v4_to_v3_nolock(struct sender_state *s, RRDSET *st);
 #endif //NETDATA_RRDPUSH_H
