@@ -406,6 +406,7 @@ PARSER_RC streaming_rep_end(char **words, void *user_v, PLUGINSD_ACTION *plugins
         debug(D_REPLICATION, "Finished replication %s: window %ld/%ld..%ld with %zu-pts transferred, advance=%ld-pts",
                              user->st->name, state->window_start, state->window_first, state->window_end, num_points,
                              advance);
+        rrdset_done(user->st);
     } else {
         debug(D_REPLICATION, "Finished replication on %s: window %ld/%ld-%ld empty, last_updated=%ld", user->st->name,
                              state->window_start, state->window_first, state->window_end,
