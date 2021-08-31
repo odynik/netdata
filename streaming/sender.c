@@ -670,7 +670,6 @@ void *rrdpush_sender_thread(void *ptr) {
     fds[Collector].fd = s->host->rrdpush_sender_pipe[PIPE_READ];
     fds[Collector].events = POLLIN;
 
-    info("STREAM Pipes seems to be initialized for host %s ", s->host->hostname);
     netdata_thread_cleanup_push(rrdpush_sender_thread_cleanup_callback, s->host);
     for(; s->host->rrdpush_send_enabled && !netdata_exit ;) {
         // check for outstanding cancellation requests
@@ -771,27 +770,6 @@ void *rrdpush_sender_thread(void *ptr) {
             rrdpush_sender_thread_close_socket(s->host);
         }
 
-        // // Connect the children host images of the parent to the grandparent. This search is linear and has o(n) complexity. It could slow down the agent.
-        // if (unlikely(
-        //         !(strcmp(s->host->machine_guid, localhost->machine_guid) == 0) && (s->host->rrdpush_sender_socket != -1))) {
-        //     debug(D_STREAM, "STREAM: Children sending thread [%s] connection to grand parent", s->host->hostname);
-        //     RRDSET *st;
-        //     time_t tick = 0;
-        //     rrdset_foreach_read(st, s->host){
-        //         tick = now_monotonic_sec();
-        //         if(((time_t)st->last_updated.tv_sec) < tick){
-        //             sender_start(s);         // Locks the sender buffer
-        //             if(need_to_send_chart_definition(st))
-        //                 rrdpush_send_chart_definition_nolock(st);        
-        //             sender_fill_gap_nolock(s, st, (time_t)st->last_updated.tv_sec);
-        //             sender_commit(s);        // Releases the sender buffer
-        //             //signal the sender there are more data
-        //             if(s->host->rrdpush_sender_pipe[PIPE_WRITE] != -1 && write(s->host->rrdpush_sender_pipe[PIPE_WRITE], " ", 1) == -1)
-        //                 error("STREAM %s [send]: cannot write to internal pipe", s->host->hostname);
-        //         }
-        //     }
-        //     continue;
-        // }
     }
 
     netdata_thread_cleanup_pop(1);

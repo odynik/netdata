@@ -213,11 +213,7 @@ static void skip_gap(RRDSET *st, time_t first_t, time_t last_t) {
     else
         debug(D_REPLICATION, "dbengine on %s skipping gap %ld-%ld.", st->name, (long)first_t, (long)last_t);
     
-    // Update for synchronization
-    struct timeval tmp;
-    tmp = st->last_updated;    
     st->last_updated.tv_sec = last_t;
-    st->usec_since_last_update = timeval_usec(&(st->last_updated)) - timeval_usec(&tmp);
 }
 
 
@@ -255,17 +251,6 @@ PARSER_RC streaming_rep_begin(char **words, void *user_v, PLUGINSD_ACTION *plugi
             st->state->ignore_block = 1;
             st->last_updated.tv_sec = now - rpt->gap_history;
             return PARSER_RC_OK;
-        }
-        // Send this chart definitions to the grand parent
-        if (unlikely(
-                !(strcmp(user->host->machine_guid, localhost->machine_guid) == 0) && user->host->rrdpush_send_enabled &&
-                user->host->rrdpush_sender_spawn && (user->host->rrdpush_sender_socket != -1))) {
-            sender_start(user->host->sender); // Locks the sender buffer
-            if (need_to_send_chart_definition(user->st)) {
-                rrdpush_send_chart_definition_nolock(user->st);
-                info("Send chart definition from REPBEGIN start_time=0");
-            }
-            sender_commit(user->host->sender); // unlocks the sender buffer
         }
     }
     time_t expected_t = st->last_updated.tv_sec + st->update_every;
@@ -307,17 +292,6 @@ PARSER_RC streaming_rep_begin(char **words, void *user_v, PLUGINSD_ACTION *plugi
     debug(D_REPLICATION, "Replication on %s @ %ld, block %ld/%ld-%ld last_update=%ld", st->name, now,
                          st->state->window_start, st->state->window_first, st->state->window_end,
                          st->last_updated.tv_sec);
-    // Send this chart definitions to the grand parent
-    if (unlikely(
-            !(strcmp(user->host->machine_guid, localhost->machine_guid) == 0) && user->host->rrdpush_send_enabled &&
-            user->host->rrdpush_sender_spawn && (user->host->rrdpush_sender_socket != -1))) {
-            sender_start(user->host->sender); // Locks the sender buffer
-            if (need_to_send_chart_definition(user->st)) {
-                rrdpush_send_chart_definition_nolock(user->st);
-                info("Send chart definition from REPBEGIN");
-            }
-            sender_commit(user->host->sender); // unlocks the sender buffer
-    }
     return PARSER_RC_OK;
 disable:
     errno = 0;
@@ -371,28 +345,6 @@ PARSER_RC streaming_rep_dim(char **words, void *user_v, PLUGINSD_ACTION *plugins
         }
         debug(D_REPLICATION, "store " STORAGE_NUMBER_FORMAT "@%ld for %s.%s (last_val=%p)", value, timestamp, 
               user->st->id, id, &rd->last_stored_value);
-
-        if (unlikely(
-                !(strcmp(user->host->machine_guid, localhost->machine_guid) == 0) && user->host->rrdpush_send_enabled &&
-                user->host->rrdpush_sender_spawn && (user->host->rrdpush_sender_socket != -1))) {
-            if (user->host->sender->version < VERSION_GAP_FILLING) {
-                sender_start(user->host->sender);
-                buffer_sprintf(
-                    user->host->sender->build,
-                    "BEGIN \"%s\" %llu\n",
-                    user->st->id,
-                    (timestamp > user->st->upstream_resync_time) ? user->st->usec_since_last_update : 0);
-                buffer_sprintf(user->host->sender->build, "SET \"%s\" = " STORAGE_NUMBER_FORMAT "\n", rd->id, value);
-                buffer_strcat(user->host->sender->build, "END\n");
-                info("REPDIM BUFFERED: %s", buffer_tostring(user->host->sender->build));
-                sender_commit(user->host->sender);
-
-                // signal the sender there are more data
-                if (user->host->rrdpush_sender_pipe[PIPE_WRITE] != -1 &&
-                    write(user->host->rrdpush_sender_pipe[PIPE_WRITE], " ", 1) == -1)
-                    error("STREAM %s [send]: cannot write to internal pipe", user->host->hostname);
-            }
-        }              
     }
     else
     {
@@ -448,11 +400,7 @@ PARSER_RC streaming_rep_end(char **words, void *user_v, PLUGINSD_ACTION *plugins
 
     struct rrdset_volatile *state = user->st->state;
 
-    // Update for synchronization
-    struct timeval tmp;
-    tmp = user->st->last_updated;    
     user->st->last_updated.tv_sec = state->window_end - user->st->update_every;
-    user->st->usec_since_last_update = timeval_usec(&(user->st->last_updated)) - timeval_usec(&tmp);
     user->st->last_collected_time.tv_sec = user->st->last_updated.tv_sec;
     user->st->last_collected_time.tv_usec = USEC_PER_SEC/2;
     if (num_points > 0) {
@@ -467,22 +415,7 @@ PARSER_RC streaming_rep_end(char **words, void *user_v, PLUGINSD_ACTION *plugins
         debug(D_REPLICATION, "Finished replication %s: window %ld/%ld..%ld with %zu-pts transferred, advance=%ld-pts",
                              user->st->name, state->window_start, state->window_first, state->window_end, num_points,
                              advance);
-        // Send this chart to the grand parent
-        if (unlikely(
-                !(strcmp(user->host->machine_guid, localhost->machine_guid) == 0) && user->host->rrdpush_send_enabled &&
-                user->host->rrdpush_sender_spawn && (user->host->rrdpush_sender_socket != -1))) {
-            if (user->host->sender->version >= VERSION_GAP_FILLING) {
-                sender_start(user->host->sender);
-                sender_fill_gap_nolock(user->host->sender, user->st, state->window_start);
-                sender_commit(user->host->sender); // Unlock the buffer either for version protocol 3 or 4.
-
-                // signal the sender there are more data
-                if (user->host->rrdpush_sender_pipe[PIPE_WRITE] != -1 &&
-                    write(user->host->rrdpush_sender_pipe[PIPE_WRITE], " ", 1) == -1)
-                    error("STREAM %s [send]: cannot write to internal pipe", user->host->hostname);
-            }
-        }
-
+        rrdset_done(user->st);
     } else {
         debug(D_REPLICATION, "Finished replication on %s: window %ld/%ld-%ld empty, last_updated=%ld", user->st->name,
                              state->window_start, state->window_first, state->window_end,
@@ -880,17 +813,8 @@ static int rrdpush_receive(struct receiver_state *rpt)
         aclk_host_state_update(rpt->host, ACLK_CMD_CHILD_CONNECT);
 #endif
 
-    if (rpt->stream_version == VERSION_GAP_FILLING) {
+    if (rpt->stream_version == VERSION_GAP_FILLING)
         receiver_tx_thread_spawn(rpt);
-        // Connect and send the newly children host image of the parent to the grandparent.
-        if (unlikely(
-                rpt->host->rrdpush_send_enabled && rpt->receiver_tx_spawn && !rpt->host->rrdpush_sender_spawn &&
-                (rpt->host->rrdpush_sender_socket == -1))) {
-            debug(D_STREAM, "STREAM: Children [%s] connection to grand parent", rpt->host->hostname);
-            //Create the sender thread of the image of the child to the grandparent.
-            rrdpush_sender_thread_spawn(rpt->host);
-        }
-    }
     size_t count = streaming_parser(rpt, &cd, fp);
 
     log_stream_connection(rpt->client_ip, rpt->client_port, rpt->key, rpt->host->machine_guid, rpt->hostname,
