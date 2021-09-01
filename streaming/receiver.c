@@ -416,7 +416,7 @@ PARSER_RC streaming_rep_end(char **words, void *user_v, PLUGINSD_ACTION *plugins
                              user->st->name, state->window_start, state->window_first, state->window_end, num_points,
                              advance);
         // Call rrdset_done only when last_collected_time.tv_sec > st->last_entry_t
-        if(!(strcmp(user->host->machine_guid, localhost->machine_guid) == 0) && user->host->rrdpush_send_enabled && user->host->rrdpush_sender_spawn && (user->host->rrdpush_sender_socket != -1))
+        if(!(strcmp(user->host->machine_guid, localhost->machine_guid) == 0) && user->host->rrdpush_send_enabled)
             rrdset_done(user->st);
     } else {
         debug(D_REPLICATION, "Finished replication on %s: window %ld/%ld-%ld empty, last_updated=%ld", user->st->name,
