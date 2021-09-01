@@ -470,7 +470,7 @@ void attempt_to_send(struct sender_state *s) {
     ret = send(s->host->rrdpush_sender_socket, chunk, outstanding, MSG_DONTWAIT);
 #endif
     if (likely(ret > 0)) {
-        debug(D_STREAM, "Send BUFFER(%s): [%s]",s->host->hostname, chunk);
+        // debug(D_STREAM, "Send BUFFER(%s): [%s]",s->host->hostname, chunk);
         cbuffer_remove_unsafe(s->buffer, ret);
         s->sent_bytes_on_this_connection += ret;
         s->sent_bytes += ret;
@@ -863,6 +863,7 @@ void sender_fill_gap_nolock(struct sender_state *s, RRDSET *st, time_t start_tim
     }
     buffer_sprintf(s->build, "REPEND %zu %lld %lld\n", num_points, st->collected_total, st->last_collected_total);
     st->state->last_sent.tv_sec = window_end - st->update_every;
+    debug(D_STREAM, "Send BUFFER(%s): [%s]",s->host->hostname, buffer_tostring(s->build));
 }
 
 // Call-site for the collector thread (from inside rrdset_done)
