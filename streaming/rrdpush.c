@@ -370,7 +370,7 @@ void rrdset_done_push_to_hops(RRDSET *st)
     }
 
     // Send this chart to the grand parent
-    if (host->sender->version >= VERSION_GAP_FILLING) {
+    if (host->sender->version >= VERSION_GAP_FILLING && host->rrdpush_sender_connected) {
         sender_start(host->sender); // Locks the sender buffer
         if (need_to_send_chart_definition(st))
             rrdpush_send_chart_definition_nolock(st);

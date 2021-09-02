@@ -423,14 +423,6 @@ PARSER_RC streaming_rep_end(char **words, void *user_v, PLUGINSD_ACTION *plugins
 
     struct rrdset_volatile *state = user->st->state;
 
-    // Send to the other hops
-    //TODO: check where is the better spot to call this function in REPEND. I think i need to call it before the st->update and maybe should transmit empty slots.
-    // According to Andrew empty slot transmission signals the other hop for the absence of data. Do we need to keep it? or are we doing anything with this info?
-    if (user->st->state->sync) {
-        debug(D_STREAM, "Hop=1 and Hop=0 are in sync for %s", user->st->id);
-        rrdset_done_push_to_hops(user->st);
-    }
-
     user->st->last_updated.tv_sec = state->window_end - user->st->update_every;
     user->st->last_collected_time.tv_sec = user->st->last_updated.tv_sec;
     user->st->last_collected_time.tv_usec = USEC_PER_SEC/2;
@@ -446,6 +438,14 @@ PARSER_RC streaming_rep_end(char **words, void *user_v, PLUGINSD_ACTION *plugins
         debug(D_REPLICATION, "Finished replication %s: window %ld/%ld..%ld with %zu-pts transferred, advance=%ld-pts",
                              user->st->name, state->window_start, state->window_first, state->window_end, num_points,
                              advance);
+
+    // Send to the other hops
+    //TODO: check where is the better spot to call this function in REPEND. I think i need to call it before the st->update and maybe should transmit empty slots.
+    // According to Andrew empty slot transmission signals the other hop for the absence of data. Do we need to keep it? or are we doing anything with this info?
+    if (user->st->state->sync) {
+        debug(D_STREAM, "Hop=1 and Hop=0 are in sync for %s", user->st->id);
+        rrdset_done_push_to_hops(user->st);
+    }
 
     } else {
         debug(D_REPLICATION, "Finished replication on %s: window %ld/%ld-%ld empty, last_updated=%ld", user->st->name,
