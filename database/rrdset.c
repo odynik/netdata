@@ -386,6 +386,7 @@ void rrdset_free(RRDSET *st) {
     freez(st->state->old_title);
     freez(st->state->old_context);
     free_label_list(st->state->labels.head);
+    freez(st->state->latest_rep_req);
     freez(st->state);
     freez(st->chart_uuid);
 
@@ -882,6 +883,13 @@ RRDSET *rrdset_create_custom(
     st->last_collected_time.tv_usec = 0;
     st->state->last_sent.tv_sec = 0;
     st->state->last_sent.tv_usec = 0;
+    st->state->replication_requests = 0;
+    st->state->sync = 0;
+    st->state->latest_rep_req = (struct replication_req *)callocz(1, sizeof(struct replication_req));
+    st->state->latest_rep_req->host = host;
+    st->state->latest_rep_req->st_id = st->id;
+    st->state->latest_rep_req->start = 0;
+    st->state->latest_rep_req->end = 0;
     st->counter_done = 0;
     st->rrddim_page_alignment = 0;
 

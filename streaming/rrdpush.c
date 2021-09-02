@@ -290,7 +290,7 @@ static void rrdpush_send_chart_metrics_nolock(RRDSET *st, struct sender_state *s
     // info("DEBUG %s", buffer_tostring(host->sender->build));
 }
 
-static void rrdpush_sender_thread_spawn(RRDHOST *host);
+void rrdpush_sender_thread_spawn(RRDHOST *host);
 // Called from the internal collectors to mark a chart obsolete.
 void rrdset_push_chart_definition_now(RRDSET *st) {
     RRDHOST *host = st->rrdhost;
@@ -445,7 +445,7 @@ void log_stream_connection(const char *client_ip, const char *client_port, const
 }
 
 
-static void rrdpush_sender_thread_spawn(RRDHOST *host) {
+void rrdpush_sender_thread_spawn(RRDHOST *host) {
     netdata_mutex_lock(&host->sender->mutex);
 
     if(!host->rrdpush_sender_spawn) {

@@ -432,6 +432,9 @@ struct rrdset_volatile {
     struct timeval last_sent;                // the timestamp of the last db point sent from this node over streaming
     time_t window_start, window_first, window_end;         // the current incoming replication block
     int ignore_block;
+    int replication_requests; // Number of replication requests added in the queue. Request direction: from the host(hop=1) to the host(hop=0).
+    int sync; //Set to 1 when this chart in the hop=1 node is synchronized with the data in the hop=0 node.
+    struct replication_req *latest_rep_req; //Lastest replication request for this chart.
 };
 
 // ----------------------------------------------------------------------------

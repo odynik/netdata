@@ -163,7 +163,7 @@ static void rrdpush_receiver_thread_cleanup(void *ptr) {
 
 #include "collectors/plugins.d/pluginsd_parser.h"
 
-static void enqueue_replication_req(struct receiver_state *rpt, RRDHOST *host, char *st_id, time_t start, time_t end)
+static struct replication_req enqueue_replication_req(struct receiver_state *rpt, RRDHOST *host, char *st_id, time_t start, time_t end)
 {
     struct replication_req req;
 
@@ -172,10 +172,17 @@ static void enqueue_replication_req(struct receiver_state *rpt, RRDHOST *host, c
     req.start = start;
     req.end = end;
     receiver_tx_enq_cmd(rpt, &req);
+    
+    return req;
 }
 
 
 void send_replication_req(RRDHOST *host, char *st_id, time_t start, time_t end) {
+    RRDSET *st = rrdset_find(host, st_id);
+    if (unlikely(!st)){
+        error("Failed to find & send replication request for %s!", st_id);
+        return;
+    }
     char message[RRD_ID_LENGTH_MAX+60];
     snprintfz(message, RRD_ID_LENGTH_MAX + 60, "REPLICATE %s %ld %ld\n", st_id, start, end);
     int ret;
@@ -192,6 +199,7 @@ void send_replication_req(RRDHOST *host, char *st_id, time_t start, time_t end) 
 #endif
     if (ret != (int)strlen(message))
         error("Failed to send replication request for %s!", st_id);
+    st->state->replication_requests--;
 }
 
 static void skip_gap(RRDSET *st, time_t first_t, time_t last_t) {
@@ -247,7 +255,9 @@ PARSER_RC streaming_rep_begin(char **words, void *user_v, PLUGINSD_ACTION *plugi
         } else {
             debug(D_REPLICATION, "Initial data for %s, asking for history window=%ld..%ld",
                   st->name, (long)now - rpt->gap_history+1, now);
-            enqueue_replication_req(rpt, user->host, st->id, now - rpt->gap_history + 1, now);
+            *st->state->latest_rep_req = enqueue_replication_req(rpt, user->host, st->id, now - rpt->gap_history + 1, now);
+            st->state->replication_requests++;
+            st->state->sync = 0;
             st->state->ignore_block = 1;
             st->last_updated.tv_sec = now - rpt->gap_history;
             return PARSER_RC_OK;
@@ -279,7 +289,9 @@ PARSER_RC streaming_rep_begin(char **words, void *user_v, PLUGINSD_ACTION *plugi
                   (long)gap_first, (long)gap_end);
             if (gap_first > expected_t)
                 skip_gap(st, expected_t, gap_first - st->update_every);
-            enqueue_replication_req(rpt, user->host, st->id, gap_first, gap_end);
+            *st->state->latest_rep_req = enqueue_replication_req(rpt, user->host, st->id, gap_first, gap_end);
+            st->state->replication_requests++;
+            st->state->sync = 0;            
             st->state->ignore_block = 1;
             return PARSER_RC_OK;
         }
@@ -288,6 +300,17 @@ PARSER_RC streaming_rep_begin(char **words, void *user_v, PLUGINSD_ACTION *plugi
         if (st->state->window_first > st->state->window_start)
             skip_gap(st, st->state->window_start, st->state->window_first - st->update_every);
 
+    if ((st->state->latest_rep_req->start == st->state->window_start) &&
+        (st->state->latest_rep_req->end == st->state->window_end)){
+            debug(D_STREAM, "RECEIVED LATEST REPLICATION REQs for %s [%d] ( REPBEGIN %ld, %ld, %ld)",
+            st->id,
+            st->state->replication_requests,
+            st->state->window_start,
+            st->state->window_first,
+            st->state->window_end);
+            if(!st->state->replication_requests)
+                st->state->sync = 1;
+    }
     user->st->state->ignore_block = 0;
     debug(D_REPLICATION, "Replication on %s @ %ld, block %ld/%ld-%ld last_update=%ld", st->name, now,
                          st->state->window_start, st->state->window_first, st->state->window_end,
@@ -415,9 +438,28 @@ PARSER_RC streaming_rep_end(char **words, void *user_v, PLUGINSD_ACTION *plugins
         debug(D_REPLICATION, "Finished replication %s: window %ld/%ld..%ld with %zu-pts transferred, advance=%ld-pts",
                              user->st->name, state->window_start, state->window_first, state->window_end, num_points,
                              advance);
-        // Call rrdset_done only when last_collected_time.tv_sec > st->last_entry_t
-        if(!(strcmp(user->host->machine_guid, localhost->machine_guid) == 0) && user->host->rrdpush_send_enabled)
-            rrdset_done(user->st);
+        // // Call rrdset_done only when last_collected_time.tv_sec > st->last_entry_t
+        // if(!(strcmp(user->host->machine_guid, localhost->machine_guid) == 0) && user->host->rrdpush_send_enabled)
+        //     rrdset_done(user->st);
+        if (user->st->state->sync) {
+            debug(D_STREAM, "Hop=1 and Hop=0 are in sync for %s", user->st->id);
+            // Send this chart to the grand parent
+            if (unlikely(user->host->rrdpush_send_enabled && user->host->rrdpush_sender_spawn &&
+                    (user->host->rrdpush_sender_socket != -1))) {
+                if (user->host->sender->version >= VERSION_GAP_FILLING) {
+                    sender_start(user->host->sender);         // Locks the sender buffer
+                    if(need_to_send_chart_definition(user->st))
+                        rrdpush_send_chart_definition_nolock(user->st);
+                    sender_fill_gap_nolock(user->host->sender, user->st, 0);
+                    sender_commit(user->host->sender);        // Releases the sender buffer
+
+                    // signal the sender there are more data
+                    if(user->host->rrdpush_sender_pipe[PIPE_WRITE] != -1 && write(user->host->rrdpush_sender_pipe[PIPE_WRITE], " ", 1) == -1)
+                        error("STREAM %s [send]: cannot write to internal pipe", user->host->hostname);
+                }
+            }
+        }
+
     } else {
         debug(D_REPLICATION, "Finished replication on %s: window %ld/%ld-%ld empty, last_updated=%ld", user->st->name,
                              state->window_start, state->window_first, state->window_end,
@@ -816,8 +858,17 @@ static int rrdpush_receive(struct receiver_state *rpt)
         aclk_host_state_update(rpt->host, ACLK_CMD_CHILD_CONNECT);
 #endif
 
-    if (rpt->stream_version == VERSION_GAP_FILLING)
+    if (rpt->stream_version == VERSION_GAP_FILLING){
         receiver_tx_thread_spawn(rpt);
+        // Connect and send the newly children host image of the parent to the grandparent.
+        if (unlikely(
+                rpt->host->rrdpush_send_enabled && rpt->receiver_tx_spawn && !rpt->host->rrdpush_sender_spawn &&
+                (rpt->host->rrdpush_sender_socket == -1))) {
+            debug(D_STREAM, "STREAM: Children [%s] connection to grand parent", rpt->host->hostname);
+            //Create the sender thread of the image of the child to the grandparent.
+            rrdpush_sender_thread_spawn(rpt->host);
+        }
+    }
     size_t count = streaming_parser(rpt, &cd, fp);
 
     log_stream_connection(rpt->client_ip, rpt->client_port, rpt->key, rpt->host->machine_guid, rpt->hostname,

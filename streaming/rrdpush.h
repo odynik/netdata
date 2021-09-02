@@ -137,6 +137,7 @@ extern void rrdpush_send_labels(RRDHOST *host);
 extern void rrdpush_claimed_id(RRDHOST *host);
 
 extern int rrdpush_receiver_thread_spawn(struct web_client *w, char *url);
+extern void rrdpush_sender_thread_spawn(RRDHOST *host);
 extern void rrdpush_sender_thread_stop(RRDHOST *host);
 
 extern void rrdpush_sender_send_this_host_variable_now(RRDHOST *host, RRDVAR *rv);
