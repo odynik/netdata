@@ -131,6 +131,7 @@ extern void sender_replicate(RRDSET *st);
 extern int rrdpush_init();
 extern int configured_as_parent();
 extern void rrdset_done_push(RRDSET *st);
+extern void rrdset_done_push_to_hops(RRDSET *st);
 extern void rrdset_push_chart_definition_now(RRDSET *st);
 extern void *rrdpush_sender_thread(void *ptr);
 extern void rrdpush_send_labels(RRDHOST *host);

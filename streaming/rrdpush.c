@@ -348,6 +348,42 @@ void rrdset_done_push(RRDSET *st) {
     //     error("STREAM %s [send]: cannot write to internal pipe", host->hostname);
 }
 
+void rrdset_done_push_to_hops(RRDSET *st)
+{
+    if (unlikely(!should_send_chart_matching(st)))
+        return;
+
+    RRDHOST *host = st->rrdhost;
+
+    if (unlikely(host->rrdpush_send_enabled && !host->rrdpush_sender_spawn))
+        rrdpush_sender_thread_spawn(host);
+
+    // Handle non-connected case
+    if (unlikely(!host->rrdpush_sender_connected)) {
+        if (unlikely(!host->rrdpush_sender_error_shown))
+            error("STREAM %s [send]: not ready - discarding collected metrics.", host->hostname);
+        host->rrdpush_sender_error_shown = 1;
+        return;
+    } else if (unlikely(host->rrdpush_sender_error_shown)) {
+        info("STREAM %s [send]: sending metrics...", host->hostname);
+        host->rrdpush_sender_error_shown = 0;
+    }
+
+    // Send this chart to the grand parent
+    if (host->sender->version >= VERSION_GAP_FILLING) {
+        sender_start(host->sender); // Locks the sender buffer
+        if (need_to_send_chart_definition(st))
+            rrdpush_send_chart_definition_nolock(st);
+        // TODO: revise the start_time=0 to see if introduces delays.
+        sender_fill_gap_nolock(host->sender, st, 0);
+        sender_commit(host->sender); // Releases the sender buffer
+
+        // signal the sender there are more data
+        if (host->rrdpush_sender_pipe[PIPE_WRITE] != -1 && write(host->rrdpush_sender_pipe[PIPE_WRITE], " ", 1) == -1)
+            error("STREAM %s [send]: cannot write to internal pipe", host->hostname);
+        }
+}
+
 // labels
 void rrdpush_send_labels(RRDHOST *host) {
     if (!host->labels.head || !(host->labels.labels_flag & LABEL_FLAG_UPDATE_STREAM) || (host->labels.labels_flag & LABEL_FLAG_STOP_STREAM))

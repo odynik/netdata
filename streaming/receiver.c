@@ -423,6 +423,14 @@ PARSER_RC streaming_rep_end(char **words, void *user_v, PLUGINSD_ACTION *plugins
 
     struct rrdset_volatile *state = user->st->state;
 
+    // Send to the other hops
+    //TODO: check where is the better spot to call this function in REPEND. I think i need to call it before the st->update and maybe should transmit empty slots.
+    // According to Andrew empty slot transmission signals the other hop for the absence of data. Do we need to keep it? or are we doing anything with this info?
+    if (user->st->state->sync) {
+        debug(D_STREAM, "Hop=1 and Hop=0 are in sync for %s", user->st->id);
+        rrdset_done_push_to_hops(user->st);
+    }
+
     user->st->last_updated.tv_sec = state->window_end - user->st->update_every;
     user->st->last_collected_time.tv_sec = user->st->last_updated.tv_sec;
     user->st->last_collected_time.tv_usec = USEC_PER_SEC/2;
@@ -438,27 +446,6 @@ PARSER_RC streaming_rep_end(char **words, void *user_v, PLUGINSD_ACTION *plugins
         debug(D_REPLICATION, "Finished replication %s: window %ld/%ld..%ld with %zu-pts transferred, advance=%ld-pts",
                              user->st->name, state->window_start, state->window_first, state->window_end, num_points,
                              advance);
-        // // Call rrdset_done only when last_collected_time.tv_sec > st->last_entry_t
-        // if(!(strcmp(user->host->machine_guid, localhost->machine_guid) == 0) && user->host->rrdpush_send_enabled)
-        //     rrdset_done(user->st);
-        if (user->st->state->sync) {
-            debug(D_STREAM, "Hop=1 and Hop=0 are in sync for %s", user->st->id);
-            // Send this chart to the grand parent
-            if (unlikely(user->host->rrdpush_send_enabled && user->host->rrdpush_sender_spawn &&
-                    (user->host->rrdpush_sender_socket != -1))) {
-                if (user->host->sender->version >= VERSION_GAP_FILLING) {
-                    sender_start(user->host->sender);         // Locks the sender buffer
-                    if(need_to_send_chart_definition(user->st))
-                        rrdpush_send_chart_definition_nolock(user->st);
-                    sender_fill_gap_nolock(user->host->sender, user->st, 0);
-                    sender_commit(user->host->sender);        // Releases the sender buffer
-
-                    // signal the sender there are more data
-                    if(user->host->rrdpush_sender_pipe[PIPE_WRITE] != -1 && write(user->host->rrdpush_sender_pipe[PIPE_WRITE], " ", 1) == -1)
-                        error("STREAM %s [send]: cannot write to internal pipe", user->host->hostname);
-                }
-            }
-        }
 
     } else {
         debug(D_REPLICATION, "Finished replication on %s: window %ld/%ld-%ld empty, last_updated=%ld", user->st->name,
@@ -858,17 +845,8 @@ static int rrdpush_receive(struct receiver_state *rpt)
         aclk_host_state_update(rpt->host, ACLK_CMD_CHILD_CONNECT);
 #endif
 
-    if (rpt->stream_version == VERSION_GAP_FILLING){
+    if (rpt->stream_version == VERSION_GAP_FILLING)
         receiver_tx_thread_spawn(rpt);
-        // Connect and send the newly children host image of the parent to the grandparent.
-        if (unlikely(
-                rpt->host->rrdpush_send_enabled && rpt->receiver_tx_spawn && !rpt->host->rrdpush_sender_spawn &&
-                (rpt->host->rrdpush_sender_socket == -1))) {
-            debug(D_STREAM, "STREAM: Children [%s] connection to grand parent", rpt->host->hostname);
-            //Create the sender thread of the image of the child to the grandparent.
-            rrdpush_sender_thread_spawn(rpt->host);
-        }
-    }
     size_t count = streaming_parser(rpt, &cd, fp);
 
     log_stream_connection(rpt->client_ip, rpt->client_port, rpt->key, rpt->host->machine_guid, rpt->hostname,
