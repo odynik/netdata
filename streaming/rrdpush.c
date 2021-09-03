@@ -351,10 +351,8 @@ void rrdset_done_push(RRDSET *st) {
 void rrdset_done_push_to_hops(RRDSET *st)
 {
     RRDHOST *host = st->rrdhost;
-    if (unlikely(host->rrdpush_send_enabled && !host->rrdpush_sender_spawn)){
+    if (unlikely(host->rrdpush_send_enabled && !host->rrdpush_sender_spawn))
         rrdpush_sender_thread_spawn(host);
-        return;
-    }
 
     // Send this chart to the grand parent
     if (host->sender->version >= VERSION_GAP_FILLING && host->rrdpush_sender_connected) {

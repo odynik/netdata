@@ -199,7 +199,7 @@ void send_replication_req(RRDHOST *host, char *st_id, time_t start, time_t end) 
 #endif
     if (ret != (int)strlen(message))
         error("Failed to send replication request for %s!", st_id);
-    st->state->replication_requests--;
+    // st->state->replication_requests--;
 }
 
 static void skip_gap(RRDSET *st, time_t first_t, time_t last_t) {
@@ -251,6 +251,7 @@ PARSER_RC streaming_rep_begin(char **words, void *user_v, PLUGINSD_ACTION *plugi
             debug(D_REPLICATION, "Initial data for %s, no historical gaps. window=%ld..%ld",
                   st->name, (long)st->state->window_start, (long)st->state->window_end);
             st->state->ignore_block = 0;
+            //TODO need to sync=1 here.
             return PARSER_RC_OK;
         } else {
             debug(D_REPLICATION, "Initial data for %s, asking for history window=%ld..%ld",
@@ -263,6 +264,21 @@ PARSER_RC streaming_rep_begin(char **words, void *user_v, PLUGINSD_ACTION *plugi
             return PARSER_RC_OK;
         }
     }
+    
+    // Decide how much data can be replicated from the beginning of the window. This is how the sender_fill_gap works.
+    // TODO: check if we need to check the window_end in sender_fill_gap_nolock. It is not the initial window_end value.
+    if ((st->state->window_start == st->state->latest_rep_req->start)){
+            debug(D_STREAM, "RECEIVED LATEST REPLICATION REQs for %s [%d] ( REPBEGIN %ld, %ld, %ld)",
+            st->id,
+            st->state->replication_requests,
+            st->state->window_start,
+            st->state->window_first,
+            st->state->window_end);
+            st->state->replication_requests--;
+            if(!st->state->replication_requests)
+                st->state->sync = 1;
+    }
+
     time_t expected_t = st->last_updated.tv_sec + st->update_every;
     if (st->state->window_start < expected_t) {
         debug(D_REPLICATION, "Ignoring stale replication on %s block %ld-%ld, last_updated=%ld",
@@ -299,18 +315,6 @@ PARSER_RC streaming_rep_begin(char **words, void *user_v, PLUGINSD_ACTION *plugi
     else
         if (st->state->window_first > st->state->window_start)
             skip_gap(st, st->state->window_start, st->state->window_first - st->update_every);
-
-    if ((st->state->latest_rep_req->start == st->state->window_start) &&
-        (st->state->latest_rep_req->end == st->state->window_end)){
-            debug(D_STREAM, "RECEIVED LATEST REPLICATION REQs for %s [%d] ( REPBEGIN %ld, %ld, %ld)",
-            st->id,
-            st->state->replication_requests,
-            st->state->window_start,
-            st->state->window_first,
-            st->state->window_end);
-            if(!st->state->replication_requests)
-                st->state->sync = 1;
-    }
     user->st->state->ignore_block = 0;
     debug(D_REPLICATION, "Replication on %s @ %ld, block %ld/%ld-%ld last_update=%ld", st->name, now,
                          st->state->window_start, st->state->window_first, st->state->window_end,
