@@ -350,23 +350,10 @@ void rrdset_done_push(RRDSET *st) {
 
 void rrdset_done_push_to_hops(RRDSET *st)
 {
-    if (unlikely(!should_send_chart_matching(st)))
-        return;
-
     RRDHOST *host = st->rrdhost;
-
-    if (unlikely(host->rrdpush_send_enabled && !host->rrdpush_sender_spawn))
+    if (unlikely(host->rrdpush_send_enabled && !host->rrdpush_sender_spawn)){
         rrdpush_sender_thread_spawn(host);
-
-    // Handle non-connected case
-    if (unlikely(!host->rrdpush_sender_connected)) {
-        if (unlikely(!host->rrdpush_sender_error_shown))
-            error("STREAM %s [send]: not ready - discarding collected metrics.", host->hostname);
-        host->rrdpush_sender_error_shown = 1;
         return;
-    } else if (unlikely(host->rrdpush_sender_error_shown)) {
-        info("STREAM %s [send]: sending metrics...", host->hostname);
-        host->rrdpush_sender_error_shown = 0;
     }
 
     // Send this chart to the grand parent
