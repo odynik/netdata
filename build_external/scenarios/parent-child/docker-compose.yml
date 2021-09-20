@@ -8,10 +8,10 @@ services:
     volumes:
       - ./parent_stream.conf:/etc/netdata/stream.conf:ro
   agent_child1:
-    image: debian_9_dev
+    image: debian_10_dev
     command: /usr/sbin/netdata -D
-    #ports:               Removed to allow scaling
-    #- 20001:19999
+    ports:
+      - 20001:19999
     volumes:
       - ./child_stream.conf:/etc/netdata/stream.conf:ro
   agent_child2:

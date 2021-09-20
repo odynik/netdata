@@ -370,9 +370,10 @@ PARSER_RC streaming_rep_dim(char **words, void *user_v, PLUGINSD_ACTION *plugins
     {
         if (value != SN_EMPTY_SLOT && timestamp > rrddim_last_entry_t(rd)) {
             rd->state->collect_ops.store_metric(rd, timestamp * USEC_PER_SEC, value);
+            debug(D_STREAM, "store " STORAGE_NUMBER_FORMAT "@%ld for %s.%s (last_val=%p)", value, timestamp,
+            user->st->id, id, &rd->last_stored_value);            
         }
-        debug(D_REPLICATION, "store " STORAGE_NUMBER_FORMAT "@%ld for %s.%s (last_val=%p)", value, timestamp, 
-              user->st->id, id, &rd->last_stored_value);
+
     }
     else
     {
