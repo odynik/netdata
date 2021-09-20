@@ -835,28 +835,29 @@ void sender_fill_gap_nolock(struct sender_state *s, RRDSET *st, time_t start_tim
             rd_end = MIN(rd_end,   window_end);
 
             rd->state->query_ops.init(rd, &handle, rd_oldest, rd_end);
-            debug(D_REPLICATION, "Fill replication with %s.%s window=%ld-%ld data=%ld-%ld query=%ld-%ld",
+            debug(D_STREAM, "Fill replication with %s.%s window=%ld-%ld data=%ld-%ld query=%ld-%ld",
                   st->id, rd->id, window_start, window_end, rd_oldest, rd_end, handle.start_time, handle.end_time);
 
             for (time_t metric_t = rd_oldest; metric_t < rd_end; ) {
 
                 if (rd->state->query_ops.is_finished(&handle)) {
-                    debug(D_REPLICATION, "%s.%s query handle finished early @%ld", st->id, rd->id, metric_t);
+                    debug(D_STREAM, "%s.%s query handle finished early @%ld", st->id, rd->id, metric_t);
                     break;
                 }
 
                 storage_number n = rd->state->query_ops.next_metric(&handle, &metric_t);
                 if (n == SN_EMPTY_SLOT)
-                    debug(D_REPLICATION, "%s.%s db empty in valid dimension range @ %ld", st->id, rd->id, metric_t);
-                else
+                    debug(D_STREAM, "%s.%s db empty in valid dimension range @ %ld", st->id, rd->id, metric_t);
+                else {
                     buffer_sprintf(s->build, "REPDIM \"%s\" %ld " STORAGE_NUMBER_FORMAT "\n", rd->id, metric_t, n);
-                debug(D_REPLICATION, "%s.%s REPDIM %ld " STORAGE_NUMBER_FORMAT "\n", st->id, rd->id, metric_t, n);
+                    debug(D_STREAM, "%s.%s REPDIM %ld " STORAGE_NUMBER_FORMAT "\n", st->id, rd->id, metric_t, n);
+                }
                 num_points++;
             }
             rd->state->query_ops.finalize(&handle);
         }
         else
-            debug(D_REPLICATION, "%s.%s has no data in the replication window (@%ld-%ld) last_collected=%ld.%ld",
+            debug(D_STREAM, "%s.%s has no data in the replication window (@%ld-%ld) last_collected=%ld.%ld",
                                  st->id, rd->id, (long)window_start, window_end, (long)rd->last_collected_time.tv_sec,
                                  rd->last_collected_time.tv_usec);
 
@@ -891,7 +892,7 @@ void sender_replicate(RRDSET *st) {
 static int sender_execute_replicate(struct sender_state *s, char *st_id, long start_t, long end_t) {
     int overflow = 0;
     time_t now = now_realtime_sec();
-    debug(D_REPLICATION, "Replication request started: %s %ld - %ld @ %ld", st_id, (long)start_t, (long)end_t, (long)now);
+    debug(D_STREAM, "Replication request started: REPLICATE %s %ld - %ld @ %ld", st_id, (long)start_t, (long)end_t, (long)now);
     RRDSET *st = rrdset_find(s->host, st_id);
     if (!st) {
         errno = 0;

@@ -252,6 +252,7 @@ PARSER_RC streaming_rep_begin(char **words, void *user_v, PLUGINSD_ACTION *plugi
                   st->name, (long)st->state->window_start, (long)st->state->window_end);
             st->state->ignore_block = 0;
             //TODO need to sync=1 here.
+            st->state->sync = 1;
             return PARSER_RC_OK;
         } else {
             debug(D_REPLICATION, "Initial data for %s, asking for history window=%ld..%ld",
@@ -378,10 +379,12 @@ PARSER_RC streaming_rep_dim(char **words, void *user_v, PLUGINSD_ACTION *plugins
         // We are assuming here that data received for each dimension in the window is dense. This is because any
         // gaps from dropped samples should be filled with either SN_EMPTY_SLOT or interpolated values at storage time
         // on the collecting node.
-        size_t offset = (size_t)(timestamp - user->st->last_updated.tv_sec) / user->st->update_every;
-        rd->values[(rd->rrdset->current_entry + offset) % rd->entries] = value;
-        debug(D_REPLICATION, "store " STORAGE_NUMBER_FORMAT "@%ld = %ld + %zu for %s.%s (last_val=%p)", value, timestamp,
+        if (value != SN_EMPTY_SLOT && timestamp > rrddim_last_entry_t(rd)) {
+            size_t offset = (size_t)(timestamp - user->st->last_updated.tv_sec - user->st->update_every) / user->st->update_every;
+            rd->values[(rd->rrdset->current_entry + offset) % rd->entries] = value;
+            debug(D_STREAM, "store " STORAGE_NUMBER_FORMAT "@%ld = %ld + %zu for %s.%s (last_val=%p)", value, timestamp,
               rd->rrdset->current_entry, offset, user->st->id, id, &rd->last_stored_value);
+        }
     }
     rd->last_stored_value = unpack_storage_number(value);
     rd->collections_counter++;
