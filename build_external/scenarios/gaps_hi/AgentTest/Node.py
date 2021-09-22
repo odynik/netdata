@@ -13,6 +13,8 @@ class Node(object):
         self.stream_target = None
         self.receiver = False
         self.db_mode = "dbengine"
+        self.api_key = None
+        self.receive_from_api_key = None
         self.config = {}
 
     """ Returns a copy of the node object """
@@ -23,6 +25,8 @@ class Node(object):
         # This will be in the old configuration, needs a lookup if this is a problem
         result.stream_target = self.stream_target
         result.db_mode = self.db_mode[:]
+        result.api_key = self.api_key
+        result.receive_from_api_key = self.receive_from_api_key
         result.config = dict(self.config.items())
         return result
 
@@ -76,22 +80,22 @@ class Node(object):
                 print(f"    enabled = yes", file=f)
                 print(f"    enable replication = yes", file=f)
                 print(f"    destination = tcp:{self.stream_target.name}", file=f)
-                print(f"    api key = 00000000-0000-0000-0000-000000000000", file=f)
+                print(f"    api key = {self.api_key}", file=f)
                 print(f"    timeout seconds = 60", file=f)
                 print(f"    default port = 19999", file=f)
                 print(f"    send charts matching = *", file=f)
                 print(f"    buffer size bytes = 10485760", file=f)
                 print(f"    reconnect delay seconds = 5", file=f)
                 print(f"    initial clock resync iterations = 60", file=f)
-                print(f"    gap replication block size = 120", file=f)
-                print(f"    history gap replication = 120", file=f)
-                print(f"    max gap replication = 120", file=f)
+                print(f"    gap replication block size = 60", file=f)
+                print(f"    history gap replication = 60", file=f)
+                print(f"    max gap replication = 60", file=f)
                 for k,v in self.config.items():
                     file, section = k.split("/")
                     if file == "stream.conf" and section == "stream":
                         print(f"    {v}",file=f)
             if self.receiver:
-                print(f"[00000000-0000-0000-0000-000000000000]", file=f)
+                print(f"[{self.receive_from_api_key}]", file=f)
                 print(f"    enabled = yes", file=f)
                 print(f"    enable replication = yes", file=f)
                 print(f"    allow from = *", file=f)
@@ -101,9 +105,9 @@ class Node(object):
                 print(f"    # postpone alarms for a short period after the sender is connected", file=f)
                 print(f"    default postpone alarms on connect seconds = 60", file=f)
                 print(f"    multiple connections = allow", file=f)
-                print(f"    gap replication block size = 120", file=f)
-                print(f"    history gap replication = 120", file=f)
-                print(f"    max gap replication = 120", file=f)
+                print(f"    gap replication block size = 60", file=f)
+                print(f"    history gap replication = 60", file=f)
+                print(f"    max gap replication = 60", file=f)
                 for k,v in self.config.items():
                     file, section = k.split("/")
                     if file == "stream.conf" and section == "API_KEY":
@@ -135,3 +139,27 @@ class Node(object):
         except requests.exceptions.ConnectionError:
             print(f"  Fetch failed {url} -> connection refused")
             return None
+
+    def get_mirrored_hosts(self):
+        '''This function will retrieve all the *first time* connected or created image host databases in the
+        current hop.
+        Hop=0 should have only its self image host (hop0).
+        Hop=1 should have its self and hop=0 image hosts (hop1, hop0).
+        Hop=2 should have its self and hop=1, hop=2 image hosts (hop2, hop1, hop0).'''
+        if(self.receiver):
+            url = f"http://localhost:{self.port}/api/v1/info"        
+            try:
+                r = requests.get(url)
+                info = r.json()
+                if(len(info['mirrored_hosts'][1:]) > 0):
+                    print(f"  {info['mirrored_hosts'][1:]} in mirrored_hosts on {self.name}")
+                    return info['mirrored_hosts'][1:]
+                elif(len(info['mirrored_hosts'][:]) == 1):
+                    print(f"  {self.name} has no mirrored hosts")
+                return None
+            except json.decoder.JSONDecodeError:
+                print(f"  Mirrored hosts info fetch failed {url} -> {r.text}")
+                return None
+            except requests.exceptions.ConnectionError:
+                print(f"  Mirrored hosts info fetch failed {url} -> connection refused")
+                return None

@@ -286,8 +286,9 @@ class State(object):
                 continue
             if sender in info['mirrored_hosts']:
                print(f"  {sender} in mirrored_hosts on {receiver}", file=self.output)
+               print(f"  {info['mirrored_hosts'][1:]} in mirrored_hosts on {receiver}", file=self.output)               
                return
-            print(f"  {receiver} mirrors {info['mirrored_hosts']}...", file=self.output)
+            print(f"  {receiver} mirrors {info['mirrored_hosts'][1:]}...", file=self.output)
             time.sleep(1)
 
     def wait_isparent(self, node):
@@ -329,11 +330,15 @@ class State(object):
 
     def check_rep(self):
         '''Check that replication did occur during the test by scanning the logs for debug.'''
+        nodes_involved_replication = 0
         for n in self.nodes.values():
-            print(f"  MATCHERS {n.parser.matchers} in replication", file=self.output)
+            # print(f"  MATCHERS {n.parser.matchers} in replication", file=self.output)
             if n.started and len(sh(f"grep -i '{n.parser.matchers['Finished replication on'].pattern}\|{n.parser.matchers['Fill replication with'].pattern}' {n.log}",self.output))>0:
-                print(f"  PASSED {n.name} was involved in replication", file=self.output)
-                return True
+                print(f"  Node {n.name} was involved in replication", file=self.output)
+                nodes_involved_replication+=1
+        if(nodes_involved_replication == len(self.nodes.values())):
+            print(f"  PASSED  replication detected on all {len(self.nodes.values())} nodes", file=self.output)
+            return True
         print(f"  FAILED no replication detected on nodes", file=self.output)
         return False
 
@@ -344,7 +349,7 @@ class State(object):
             return False
         chart_info = self.nodes[source].get_charts()
         if not chart_info:
-            print(f"  FAILED to retrieve charts from child")
+            print(f"  FAILED to retrieve charts from {self.nodes[source].name}")
             return False
         charts = ("system.cpu", "system.load", "system.io", "system.ram", "system.ip", "system.processes")
         passed = True
@@ -409,5 +414,67 @@ class State(object):
             #        passed = False
             #        print(f"Source: {source_json}", file=self.output)
             #        print(f"Target: {target_json}", file=self.output)
+        print(f'  {"PASSED" if passed else "FAILED"} check_sync', file=self.output)
+        return passed
+
+    def check_sync_hops(self, current_hop, max_score=0, max_pre=0, max_post=0):
+        mirrored_hosts = self.nodes[current_hop].get_mirrored_hosts()
+        if not mirrored_hosts:
+            print(f"  FAILED to retrieve mirrored hosts from {self.nodes[current_hop].name}")
+            return False
+        chart_info = self.nodes[current_hop].get_charts()
+        if not chart_info:
+            print(f"  FAILED to retrieve charts from {self.nodes[current_hop].name}")
+            return False
+        charts = ("system.cpu", "system.load", "system.io", "system.ram", "system.ip", "system.processes")
+        passed = True            
+        for mirror_host in mirrored_hosts:
+            for ch in charts:
+                update_every = chart_info["charts"][ch]["update_every"]
+                print(f"  check_sync {current_hop} {mirror_host} {ch} {update_every}", file=self.output)
+                
+                mirror_host_json = self.nodes[mirror_host].get_data(ch)
+                if not mirror_host_json:
+                    print(f"  FAILED to check sync looking at http://localhost:{self.nodes[mirror_host].port}", file=self.output)
+                    passed = False
+                    continue
+                if len(mirror_host_json["data"])==0:
+                    print(f"  FAILED to retrieve {ch} from {mirror_host} - response has zero rows", file=self.output)
+                    passed = False
+                    continue
+                with open(os.path.join(self.test_base,f"{mirror_host}-{ch}.json"),"wt") as f:
+                    f.write(json.dumps(mirror_host_json, sort_keys=True, indent=4))
+
+                current_hop_json = self.nodes[current_hop].get_data(ch, host=mirror_host)
+                if not current_hop_json:
+                    print(f"  FAILED to check sync looking at http://localhost:{self.nodes[current_hop].port}", file=self.output)
+                    passed = False
+                    continue
+                if len(current_hop_json["data"])==0:
+                    print(f"  FAILED to retrieve {ch} from {current_hop} - response has zero rows", file=self.output)
+                    passed = False
+                    continue
+                if mirror_host_json["labels"] != current_hop_json["labels"]:
+                    print(f"  Mismatch in chart labels on {ch}: mirror_host={mirror_host_json['labels']} current_hop={current_hop_json['labels']}", file=self.output)
+                with open(os.path.join(self.test_base,f"{current_hop}-{ch}.json"),"wt") as f:
+                    f.write(json.dumps(current_hop_json, sort_keys=True, indent=4))
+
+                mirror_host_sl = DSlice(mirror_host_json,0)
+                best_match, best_score = None, None
+                for skew in (-2*update_every, -update_every, 0, update_every, 2*update_every):
+                    current_hop_sl = DSlice(current_hop_json,skew)
+                    score, pre, post = mirror_host_sl.score(current_hop_sl)
+                    #print(f"  skew={skew} score={score} pre={pre} post={post}")
+                    #show_mismatch(mirror_host_sl, current_hop_sl)
+                    if best_match is None or score < best_score:
+                        best_match, best_score = current_hop_sl, score
+
+                if best_score <= max_score:
+                    print(f"  Data match {ch} with skew={best_match.skew} score={best_score}", file=self.output)
+                else:
+                    print(f"  Data mismatch {ch}, closest with skew={best_match.skew} score={best_score} pre={pre} post={post}",
+                        file=self.output)
+                    show_mismatch(mirror_host_sl, best_match, self.output)
+                    passed = False
         print(f'  {"PASSED" if passed else "FAILED"} check_sync', file=self.output)
         return passed

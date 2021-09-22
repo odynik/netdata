@@ -356,13 +356,15 @@ void rrdset_done_push_to_hops(RRDSET *st)
 
     // Send this chart to the grand parent
     if (host->sender->version >= VERSION_GAP_FILLING && host->rrdpush_sender_connected) {
+        rrdset_rdlock(st);
         sender_start(host->sender); // Locks the sender buffer
         if (need_to_send_chart_definition(st))
             rrdpush_send_chart_definition_nolock(st);
+        rrdset_unlock(st);
         // TODO: revise the start_time=0 to see if introduces delays.
         sender_fill_gap_nolock(host->sender, st, 0);
         sender_commit(host->sender); // Releases the sender buffer
-
+        
         // signal the sender there are more data
         if (host->rrdpush_sender_pipe[PIPE_WRITE] != -1 && write(host->rrdpush_sender_pipe[PIPE_WRITE], " ", 1) == -1)
             error("STREAM %s [send]: cannot write to internal pipe", host->hostname);

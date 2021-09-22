@@ -565,6 +565,9 @@ for (cdb,pdb) in [("dbengine","dbengine"), ("dbengine","save"), ("save","dbengin
     p.port = 20001
     p.guid = "11111111-1111-1111-1111-111111111111"
     p.db_mode = pdb
+
+    c.api_key = "00000000-0000-0000-0000-000000000000"
+    p.receive_from_api_key = c.api_key
     c.stream_to(p)
     configurations.append(state)
 
