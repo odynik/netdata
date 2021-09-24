@@ -67,12 +67,56 @@ def Hop1ShortRestart(state):
     state.end_checks.append( lambda: state.check_sync_hops("hop2",max_pre=10))
     # pylint: disable-msg=W0108
     state.post_checks.append( lambda: state.check_rep() )
+
+### All hops are connected and then hop1 is restarted
+def Hop2ShortRestart(state):
+    state.start("hop0")
+    state.wait_up("hop0")
+    state.start("hop1")
+    state.wait_up("hop1")    
+    state.start("hop2")
+    state.wait_up("hop2")
+    state.wait_connected("hop0", "hop1") 
+    state.wait_connected("hop1", "hop2")
+    time.sleep(10)
+    state.kill("hop2")
+    time.sleep(10)
+    state.restart("hop2")
+    state.wait_isparent("hop2")
+    time.sleep(20)
+    # pylint: disable-msg=W0622
+    state.end_checks.append( lambda: state.check_sync_hops("hop1",max_pre=10))
+    state.end_checks.append( lambda: state.check_sync_hops("hop2",max_pre=10))
+    # pylint: disable-msg=W0108
+    state.post_checks.append( lambda: state.check_rep() )
+# TODO: Hop1 up/down, Hop2 
+def Hop2RestartOverlapHop1Restart(state):
+    state.start("hop0")
+    state.wait_up("hop0")
+    state.start("hop1")
+    state.wait_up("hop1")    
+    state.start("hop2")
+    state.wait_up("hop2")
+    state.wait_connected("hop0", "hop1") 
+    state.wait_connected("hop1", "hop2")
+    time.sleep(10)
+    state.kill("hop1")
+    time.sleep(5)
+    state.restart("hop1")
+    state.wait_isparent("hop1")
+    time.sleep(20)
+    # pylint: disable-msg=W0622
+    state.end_checks.append( lambda: state.check_sync_hops("hop1",max_pre=10))
+    state.end_checks.append( lambda: state.check_sync_hops("hop2",max_pre=10))
+    # pylint: disable-msg=W0108
+    state.post_checks.append( lambda: state.check_rep() )    
 #################### END OF TEST CASES ####################
 
 hop_configuration =[]
 hop_test_cases = [
     # AllHopsSimpleStart,
     Hop1ShortRestart,
+    Hop2ShortRestart,
 ]    
 
 for (L0_mm, L1_mm, L2_mm) in mm_combinations:

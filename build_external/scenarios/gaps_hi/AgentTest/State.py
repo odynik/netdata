@@ -165,6 +165,7 @@ class State(object):
                                            "gap detect"   : "Gap detect",
                                            "data rx"      : "RECEIVER",
                                            "data tx"      : "STREAM: Sending data. Buffer",
+                                           "Finished replication on"  : "REPLICATE",
                                            "Fill replication with"  : "REPLICATE",
                                            "Segmentation fault" : "CRASH!"})
 
@@ -456,7 +457,7 @@ class State(object):
                     continue
                 if mirror_host_json["labels"] != current_hop_json["labels"]:
                     print(f"  Mismatch in chart labels on {ch}: mirror_host={mirror_host_json['labels']} current_hop={current_hop_json['labels']}", file=self.output)
-                with open(os.path.join(self.test_base,f"{current_hop}-{ch}.json"),"wt") as f:
+                with open(os.path.join(self.test_base,f"{current_hop}-{mirror_host}-{ch}.json"),"wt") as f:
                     f.write(json.dumps(current_hop_json, sort_keys=True, indent=4))
 
                 mirror_host_sl = DSlice(mirror_host_json,0)
