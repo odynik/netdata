@@ -156,7 +156,7 @@ class State(object):
                                            "data tx"      : "STREAM: Sending data. Buffer",
                                            "Finished replication on"  : "REPLICATE",
                                            "Fill replication with" : "REPLICATE",
-                                           "Segmentation fault" : "CRASH!"})
+                                           "GDB Signal Interrupt" : "received signal"})
         # Suppress DNS failures in two node scenario on the top level
         self.parser2         = LogParser({ "child connect": "client willing",
                                            "child disconnect" : "STREAM child.*disconnected \(completed",
@@ -167,7 +167,7 @@ class State(object):
                                            "data tx"      : "STREAM: Sending data. Buffer",
                                            "Finished replication on"  : "REPLICATE",
                                            "Fill replication with"  : "REPLICATE",
-                                           "Segmentation fault" : "CRASH!"})
+                                           "GDB Signal Interrupt" : "received signal"})
 
     def copy(self):
         result = State(self.working[:], self.config[:], self.config_label[:], self.prefix[:],
@@ -221,8 +221,8 @@ class State(object):
                     ev = n.parser.parse(n.log)
                     for e in ev:
                         print(n.name, e, file=f)
-            if "Segmentation fault" in n.log:
-                print(f"{n.name} crashed during the test, stack trace in the log")
+            if n.parser.matchers["GDB Signal Interrupt"].pattern in n.log:
+                print(f"{n.name} gdb run crashed during the test, stack trace in the log")
                 passed = False
             print(f"{case.__name__} -> {passed}")
             print(f"{case.__name__} -> {passed}", file=f)

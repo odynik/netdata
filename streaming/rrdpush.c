@@ -360,9 +360,9 @@ void rrdset_done_push_to_hops(RRDSET *st)
         sender_start(host->sender); // Locks the sender buffer
         if (need_to_send_chart_definition(st))
             rrdpush_send_chart_definition_nolock(st);
-        rrdset_unlock(st);
         // TODO: revise the start_time=0 to see if introduces delays.
         sender_fill_gap_nolock(host->sender, st, 0);
+        rrdset_unlock(st);
         sender_commit(host->sender); // Releases the sender buffer
         
         // signal the sender there are more data

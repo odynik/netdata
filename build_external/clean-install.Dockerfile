@@ -41,6 +41,7 @@ RUN apt install gdb -y
 RUN printf 'file /usr/sbin/netdata\n\
 set args -D\n\
 handle SIGINT nostop print pass\n\
+handle SIG32 nostop print pass\n\
 run\n\
 info frame\n\
 info args\n\

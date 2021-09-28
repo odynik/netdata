@@ -28,8 +28,9 @@ def add_agent_node(state, name, guid, port, mm, api_key):
     return agent_node
 
 #################### BEGINNING OF TEST CASES ####################
-# Simple all hops start and running.
-def AllHopsSimpleStart(state):
+#____Normal Operation/Start hops in asc/desc(eding) order_______#
+# Start hops in descending order - hop2 -> hop1 -> hop0
+def DescendingOrderHopStart(state):
     state.start("hop2")
     state.wait_up("hop2")
     state.start("hop1")
@@ -38,22 +39,50 @@ def AllHopsSimpleStart(state):
     state.wait_up("hop0")
     state.wait_connected("hop0", "hop1") 
     state.wait_connected("hop1", "hop2")
-    print("  Measure baseline for 60s...", file=state.output)
-    time.sleep(60)
-    # pylint: disable-msg=W0622
-    state.end_checks.append( lambda: state.check_sync_hops("hop1",max_pre=10))
-    state.end_checks.append( lambda: state.check_sync_hops("hop2",max_pre=10))
-    # pylint: disable-msg=W0108
+    time.sleep(20)
+    state.end_checks.append( lambda: state.check_sync_hops("hop1", max_pre=10))
+    state.end_checks.append( lambda: state.check_sync_hops("hop2", max_pre=10))
     state.post_checks.append( lambda: state.check_rep() )
 
-### All hops are connected and then hop1 is restarted
-def Hop1ShortRestart(state):
+# Start hops in ascending order - hop0 -> hop1 -> hop2
+def AscendingOrderHopStart(state):
     state.start("hop0")
     state.wait_up("hop0")
     state.start("hop1")
-    state.wait_up("hop1")    
+    state.wait_up("hop1")
     state.start("hop2")
     state.wait_up("hop2")
+    state.wait_connected("hop0", "hop1")
+    state.wait_connected("hop1", "hop2")
+    time.sleep(20)
+    state.end_checks.append( lambda: state.check_sync_hops("hop1", max_pre=10))
+    state.end_checks.append( lambda: state.check_sync_hops("hop2", max_pre=10))
+    state.post_checks.append( lambda: state.check_rep() )    
+
+# Start hops in mixed order - hop1 -> hop2 -> hop0
+def MixedOrderHopStart(state):
+    state.start("hop1")
+    state.wait_up("hop1")
+    state.start("hop2")
+    state.wait_up("hop2")    
+    state.start("hop0")
+    state.wait_up("hop0")
+    state.wait_connected("hop0", "hop1")
+    state.wait_connected("hop1", "hop2")
+    time.sleep(20)
+    state.end_checks.append( lambda: state.check_sync_hops("hop1", max_pre=10))
+    state.end_checks.append( lambda: state.check_sync_hops("hop2", max_pre=10))
+    state.post_checks.append( lambda: state.check_rep() )    
+
+#____Interruption/Break/Only one hop is restarted_______#
+# Hop1 goes down and restarts in seconds
+def Hop1ShortRestartInSecs(state):
+    state.start("hop0")
+    state.wait_up("hop0")
+    state.start("hop2")
+    state.wait_up("hop2")    
+    state.start("hop1")
+    state.wait_up("hop1")
     state.wait_connected("hop0", "hop1") 
     state.wait_connected("hop1", "hop2")
     time.sleep(10)
@@ -68,8 +97,30 @@ def Hop1ShortRestart(state):
     # pylint: disable-msg=W0108
     state.post_checks.append( lambda: state.check_rep() )
 
-### All hops are connected and then hop1 is restarted
-def Hop2ShortRestart(state):
+# Hop1 goes down and restarts in more than a minute
+def Hop1ShortRestartGTmin(state):
+    state.start("hop0")
+    state.wait_up("hop0")
+    state.start("hop2")
+    state.wait_up("hop2")    
+    state.start("hop1")
+    state.wait_up("hop1")
+    state.wait_connected("hop0", "hop1") 
+    state.wait_connected("hop1", "hop2")
+    time.sleep(70)
+    state.kill("hop1")
+    time.sleep(5)
+    state.restart("hop1")
+    state.wait_isparent("hop1")
+    time.sleep(20)
+    # pylint: disable-msg=W0622
+    state.end_checks.append( lambda: state.check_sync_hops("hop1",max_pre=10))
+    state.end_checks.append( lambda: state.check_sync_hops("hop2",max_pre=10))
+    # pylint: disable-msg=W0108
+    state.post_checks.append( lambda: state.check_rep() )
+
+# Hop1 is going down after few seconds Hop2 is going down and the restart is overlapped
+def Hop2RestartOverlapsHop1Restart(state):
     state.start("hop0")
     state.wait_up("hop0")
     state.start("hop1")
@@ -79,31 +130,15 @@ def Hop2ShortRestart(state):
     state.wait_connected("hop0", "hop1") 
     state.wait_connected("hop1", "hop2")
     time.sleep(10)
+    state.kill("hop1")
+    time.sleep(5)
     state.kill("hop2")
-    time.sleep(10)
-    state.restart("hop2")
-    state.wait_isparent("hop2")
-    time.sleep(20)
-    # pylint: disable-msg=W0622
-    state.end_checks.append( lambda: state.check_sync_hops("hop1",max_pre=10))
-    state.end_checks.append( lambda: state.check_sync_hops("hop2",max_pre=10))
-    # pylint: disable-msg=W0108
-    state.post_checks.append( lambda: state.check_rep() )
-# TODO: Hop1 up/down, Hop2 
-def Hop2RestartOverlapHop1Restart(state):
-    state.start("hop0")
-    state.wait_up("hop0")
-    state.start("hop1")
-    state.wait_up("hop1")    
-    state.start("hop2")
-    state.wait_up("hop2")
-    state.wait_connected("hop0", "hop1") 
-    state.wait_connected("hop1", "hop2")
-    time.sleep(10)
-    state.kill("hop1")
     time.sleep(5)
     state.restart("hop1")
+    time.sleep(5)
+    state.restart("hop2")
     state.wait_isparent("hop1")
+    state.wait_isparent("hop2")
     time.sleep(20)
     # pylint: disable-msg=W0622
     state.end_checks.append( lambda: state.check_sync_hops("hop1",max_pre=10))
@@ -114,9 +149,12 @@ def Hop2RestartOverlapHop1Restart(state):
 
 hop_configuration =[]
 hop_test_cases = [
-    # AllHopsSimpleStart,
-    Hop1ShortRestart,
-    Hop2ShortRestart,
+    AscendingOrderHopStart,
+    DescendingOrderHopStart,
+    MixedOrderHopStart,
+    Hop1ShortRestartInSecs,
+    Hop1ShortRestartGTmin,
+    Hop2RestartOverlapsHop1Restart,
 ]    
 
 for (L0_mm, L1_mm, L2_mm) in mm_combinations:
