@@ -371,6 +371,103 @@ void rrdset_done_push_to_hops(RRDSET *st)
         }
 }
 
+void rrddim_done_push_fill_empty_slots(RRDDIM *rd, time_t window_start, time_t window_end, long offset) {
+    usec_t update_every_ut = rd->rrdset->update_every * USEC_PER_SEC;
+    usec_t window_end_ut  = window_end * USEC_PER_SEC;
+    long c = 0 , entries = rd->entries;
+    storage_number empty_value = SN_EMPTY_SLOT;
+    usec_t next_store_ut = window_start * USEC_PER_SEC;
+    long current_entry = rd->rrdset->current_entry;    
+
+    rrdset_rdlock(rd->rrdset);
+    for(c = 0; c < entries && c < offset && next_store_ut <= window_end_ut ; next_store_ut += update_every_ut, c++) {
+        // rd->values[(current_entry + c) % entries] = empty_value;
+        rd->values[rd->collections_counter % entries] = empty_value;
+
+        #ifdef NETDATA_INTERNAL_CHECKS
+        rrdset_debug(rd->rrdset, "%s: STORE[%ld] = NON EXISTING (FILLED THE GAP)", rd->name, current_entry);
+        #endif
+
+        debug(
+            D_STREAM,
+            "EMPTY RRDDIM slot store " STORAGE_NUMBER_FORMAT "@%ld = ce[%ld] ,  c_index[%ld], ce+c@[%ld] - save@cc[%zu] for %s.%s (last_val=%p)",
+            empty_value,
+            (time_t)(next_store_ut/USEC_PER_SEC),
+            rd->rrdset->current_entry,
+            c,
+            (rd->rrdset->current_entry + c),
+            rd->collections_counter,                
+            rd->rrdset->id,
+            rd->id,
+            &rd->last_stored_value);        
+        
+        rd->collections_counter++;
+        }
+    rd->last_stored_value = unpack_storage_number(empty_value);
+    rd->collected_value = rd->last_collected_value =
+        unpack_storage_number(empty_value) / (calculated_number)rd->multiplier * (calculated_number)rd->divisor;
+    rd->last_collected_time.tv_sec = window_end;
+    rd->last_collected_time.tv_usec = 0;
+    rd->updated = 1;
+    rrdset_unlock(rd->rrdset);
+    debug(D_STREAM, "Filled RRDDIM empty slots RRDIM[%s.%s], window[%ld, %ld], st->ce[%ld], rd->cc[%zu]", rd->rrdset->id, rd->id, window_start, window_end, rd->rrdset->current_entry, rd->collections_counter);
+}
+
+void rrdset_done_push_fill_empty_slots(RRDSET *st, time_t window_start, time_t window_end) {
+    usec_t update_every_ut = st->update_every * USEC_PER_SEC;
+    usec_t window_end_ut  = window_end * USEC_PER_SEC;
+
+    long c = 0, entries = st->entries;
+    RRDDIM *rd;
+    storage_number empty_value = SN_EMPTY_SLOT;
+    rrdset_rdlock(st);
+    rrddim_foreach_read(rd, st) {
+        usec_t next_store_ut = (window_start + st->update_every) * USEC_PER_SEC;
+        long current_entry = st->current_entry;
+
+        for(c = 0; c < entries && next_store_ut <= window_end_ut ; next_store_ut += update_every_ut, c++) {
+            rd->values[current_entry] = empty_value;
+            current_entry = ((current_entry + 1) >= entries) ? 0 : current_entry + 1;
+
+            #ifdef NETDATA_INTERNAL_CHECKS
+            rrdset_debug(st, "%s: STORE[%ld] = NON EXISTING (FILLED THE GAP)", rd->name, current_entry);
+            #endif
+            
+            rd->collections_counter ++;
+            debug(
+                D_STREAM,
+                "EMPTY RRDSET slot store " STORAGE_NUMBER_FORMAT "@%ld = save@[%ld] ,  c_index[%ld], ce+c=[%ld] - cc[%zu] for %s.%s (last_val=%p)",
+                empty_value,
+                (time_t)(next_store_ut/USEC_PER_SEC),
+                rd->rrdset->current_entry,
+                c,
+                (rd->rrdset->current_entry + c),
+                rd->collections_counter,
+                rd->rrdset->id,
+                rd->id,
+                &rd->last_stored_value);            
+        }        
+        rd->last_stored_value = unpack_storage_number(empty_value);
+        rd->collected_value = rd->last_collected_value =
+        unpack_storage_number(empty_value) / (calculated_number)rd->multiplier * (calculated_number)rd->divisor;
+        rd->last_collected_time.tv_sec = window_end;
+        rd->last_collected_time.tv_usec = 0;
+        rd->updated = 1;
+    }
+    rrdset_unlock(st);
+
+    if(c > 0) {
+        c--;
+        // st->last_updated.tv_sec += c * st->update_every;
+
+        st->current_entry += c;
+        st->counter += c;
+        if(st->current_entry >= st->entries)
+            st->current_entry -= st->entries;
+    }
+    debug(D_STREAM, "Filled RRDSET empty slots at %s, current_entry[%ld]", st->id, st->current_entry);
+}
+
 // labels
 void rrdpush_send_labels(RRDHOST *host) {
     if (!host->labels.head || !(host->labels.labels_flag & LABEL_FLAG_UPDATE_STREAM) || (host->labels.labels_flag & LABEL_FLAG_STOP_STREAM))

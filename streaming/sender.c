@@ -851,8 +851,8 @@ void sender_fill_gap_nolock(struct sender_state *s, RRDSET *st, time_t start_tim
                 else {
                     buffer_sprintf(s->build, "REPDIM \"%s\" %ld " STORAGE_NUMBER_FORMAT "\n", rd->id, metric_t, n);
                     debug(D_STREAM, "%s.%s REPDIM %ld " STORAGE_NUMBER_FORMAT "\n", st->id, rd->id, metric_t, n);
+                    num_points++;
                 }
-                num_points++;
             }
             rd->state->query_ops.finalize(&handle);
         }

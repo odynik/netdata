@@ -132,6 +132,8 @@ extern int rrdpush_init();
 extern int configured_as_parent();
 extern void rrdset_done_push(RRDSET *st);
 extern void rrdset_done_push_to_hops(RRDSET *st);
+extern void rrdset_done_push_fill_empty_slots(RRDSET *st, time_t window_start, time_t window_end);
+extern void rrddim_done_push_fill_empty_slots(RRDDIM *rd, time_t window_start, time_t window_end, long offset);
 extern void rrdset_push_chart_definition_now(RRDSET *st);
 extern void *rrdpush_sender_thread(void *ptr);
 extern void rrdpush_send_labels(RRDHOST *host);

@@ -251,7 +251,7 @@ PARSER_RC streaming_rep_begin(char **words, void *user_v, PLUGINSD_ACTION *plugi
             debug(D_REPLICATION, "Initial data for %s, no historical gaps. window=%ld..%ld",
                   st->name, (long)st->state->window_start, (long)st->state->window_end);
             st->state->ignore_block = 0;
-            //TODO need to sync=1 here.
+            //TODO: sync=1 here. This conditional branch is dead-code (probably will never be executed).
             st->state->sync = 1;
             return PARSER_RC_OK;
         } else {
@@ -370,8 +370,8 @@ PARSER_RC streaming_rep_dim(char **words, void *user_v, PLUGINSD_ACTION *plugins
     {
         if (value != SN_EMPTY_SLOT && timestamp > rrddim_last_entry_t(rd)) {
             rd->state->collect_ops.store_metric(rd, timestamp * USEC_PER_SEC, value);
-            debug(D_STREAM, "store " STORAGE_NUMBER_FORMAT "@%ld for %s.%s (last_val=%p)", value, timestamp,
-            user->st->id, id, &rd->last_stored_value);            
+            debug(D_STREAM, "store " STORAGE_NUMBER_FORMAT "@%ld for %s.%s  (last_val="CALCULATED_NUMBER_FORMAT_AUTO")", value, timestamp,
+            user->st->id, id, unpack_storage_number(value));            
         }
 
     }
@@ -381,16 +381,42 @@ PARSER_RC streaming_rep_dim(char **words, void *user_v, PLUGINSD_ACTION *plugins
         // gaps from dropped samples should be filled with either SN_EMPTY_SLOT or interpolated values at storage time
         // on the collecting node.
         if (value != SN_EMPTY_SLOT && timestamp > rrddim_last_entry_t(rd)) {
-            size_t offset = (size_t)(timestamp - user->st->last_updated.tv_sec - user->st->update_every) / user->st->update_every;
+            long offset, gap = 0 ;
+            time_t empty_start;
+            time_t empty_end = timestamp - user->st->update_every;
+            offset =  (timestamp - user->st->state->window_first) / user->st->update_every;
+            if(unlikely(!rd->last_collected_time.tv_sec)){
+                gap =  (timestamp - user->st->state->window_first) / user->st->update_every;
+                empty_start = user->st->state->window_first;
+                if (gap >= user->st->update_every)
+                    rrddim_done_push_fill_empty_slots(rd, empty_start, empty_end, gap);
+                }
+            else{
+                gap = (timestamp - rd->last_collected_time.tv_sec) / user->st->update_every;
+                empty_start = rd->last_collected_time.tv_sec + user->st->update_every;
+                if (gap > user->st->update_every)
+                    rrddim_done_push_fill_empty_slots(rd, empty_start, empty_end, gap);               
+                }
             rd->values[(rd->rrdset->current_entry + offset) % rd->entries] = value;
-            debug(D_STREAM, "store " STORAGE_NUMBER_FORMAT "@%ld = %ld + %zu for %s.%s (last_val=%p)", value, timestamp,
-              rd->rrdset->current_entry, offset, user->st->id, id, &rd->last_stored_value);
+            // rd->values[(rd->collections_counter) % rd->entries] = value;
+            debug(
+                D_STREAM,
+                "store " STORAGE_NUMBER_FORMAT "@%ld = ce[%ld] +  %ld = save@[%ld]/cc[%zu] for %s.%s (last_val="CALCULATED_NUMBER_FORMAT_AUTO")",
+                value,
+                timestamp,
+                rd->rrdset->current_entry,
+                offset,
+                (rd->rrdset->current_entry + offset),
+                rd->collections_counter,                
+                user->st->id,
+                id,
+                unpack_storage_number(value));
         }
     }
     rd->last_stored_value = unpack_storage_number(value);
     rd->collections_counter++;
-    rd->collected_value = rd->last_collected_value = unpack_storage_number(value) / (calculated_number)rd->multiplier *
-                                                     (calculated_number)rd->divisor;
+    rd->collected_value = rd->last_collected_value =
+        unpack_storage_number(value) / (calculated_number)rd->multiplier * (calculated_number)rd->divisor;
     rd->last_collected_time.tv_sec = timestamp;
     rd->last_collected_time.tv_usec = 0;
     rd->updated = 1;
@@ -434,6 +460,16 @@ PARSER_RC streaming_rep_end(char **words, void *user_v, PLUGINSD_ACTION *plugins
     user->st->last_updated.tv_sec = state->window_end - user->st->update_every;
     user->st->last_collected_time.tv_sec = user->st->last_updated.tv_sec;
     user->st->last_collected_time.tv_usec = USEC_PER_SEC/2;
+
+    // long advance = (state->window_end - state->window_first) / user->st->update_every;
+    // user->st->counter       += advance;
+    // user->st->counter_done  += advance;
+    // user->st->current_entry += advance;
+    // while (user->st->current_entry >= user->st->entries)        // Once except for an exceptional corner-case
+    //     user->st->current_entry -= user->st->entries;
+    // user->st->collected_total = col_total;
+    // user->st->last_collected_total = last_total;    
+
     if (num_points > 0) {
         long advance = (state->window_end - state->window_first) / user->st->update_every;
         user->st->counter       += advance;
@@ -457,8 +493,19 @@ PARSER_RC streaming_rep_end(char **words, void *user_v, PLUGINSD_ACTION *plugins
     }
 
     } else {
-        debug(D_REPLICATION, "Finished replication on %s: window %ld/%ld-%ld empty, last_updated=%ld", user->st->name,
-                             state->window_start, state->window_first, state->window_end,
+            if(unlikely(user->st->counter) && user->st->rrd_memory_mode != RRD_MEMORY_MODE_DBENGINE) {
+                // rrdset_done_push_fill_empty_slots(user->st, state->window_first, user->st->last_updated.tv_sec);
+            long advance = (state->window_end - state->window_first) / user->st->update_every;
+            user->st->counter       += advance;
+            user->st->counter_done  += advance;
+            user->st->current_entry += advance;
+            while (user->st->current_entry >= user->st->entries)        // Once except for an exceptional corner-case
+                user->st->current_entry -= user->st->entries;
+            user->st->collected_total = col_total;
+            user->st->last_collected_total = last_total;                
+        }
+        debug(D_STREAM, "Finished replication on %s: window %ld/%ld-%ld empty[%d], last_updated=%ld", user->st->name,
+                             state->window_start, state->window_first, state->window_end, ((user->st->counter) && (user->st->rrd_memory_mode != RRD_MEMORY_MODE_DBENGINE)),
                              user->st->last_updated.tv_sec);
     }
     state->window_start = 0;
