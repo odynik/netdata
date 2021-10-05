@@ -15,16 +15,22 @@ numofagents = 3
 agents = ["hop"+str(i) for i in range(numofagents)]
 numofagents = len(agents)
 memory_modes = ["dbengine", "save"] # add here any extra memory mode for testing
-mm_combinations = list(itertools.product(memory_modes, repeat=numofagents))
+# mm_combinations = list(itertools.product(memory_modes, repeat=numofagents))
+mm_combinations = [
+    ("dbengine", "dbengine", "dbengine"),
+    ("save", "dbengine", "dbengine"),
+    ("ram", "dbengine", "dbengine")
+    ]
 print("Memory Mode combinations(" + str(len(mm_combinations)) + "): \n")
 # print(*mm_combinations, sep="\n")
 
-def add_agent_node(state, name, guid, port, mm, api_key):
+def add_agent_node(state, name, guid, port, mm, api_key, tls_on=False):
     agent_node = state.add_node(name)
     agent_node.port = port
     agent_node.guid = guid
     agent_node.db_mode = mm
     agent_node.api_key = api_key
+    agent_node.tls = tls_on
     return agent_node
 
 #################### BEGINNING OF TEST CASES ####################
@@ -85,9 +91,9 @@ def Hop1ShortRestartInSecs(state):
     state.wait_up("hop1")
     state.wait_connected("hop0", "hop1") 
     state.wait_connected("hop1", "hop2")
-    time.sleep(10)
-    state.kill("hop1")
     time.sleep(5)
+    state.stop("hop1")
+    time.sleep(10)
     state.restart("hop1")
     state.wait_isparent("hop1")
     time.sleep(20)
@@ -107,9 +113,9 @@ def Hop1ShortRestartGTmin(state):
     state.wait_up("hop1")
     state.wait_connected("hop0", "hop1") 
     state.wait_connected("hop1", "hop2")
-    time.sleep(70)
+    time.sleep(10)
     state.kill("hop1")
-    time.sleep(5)
+    time.sleep(70)
     state.restart("hop1")
     state.wait_isparent("hop1")
     time.sleep(20)
@@ -149,20 +155,21 @@ def Hop2RestartOverlapsHop1Restart(state):
 
 hop_configuration =[]
 hop_test_cases = [
-    AscendingOrderHopStart,
-    DescendingOrderHopStart,
-    MixedOrderHopStart,
+    # AscendingOrderHopStart,
+    # DescendingOrderHopStart,
+    # MixedOrderHopStart,
     Hop1ShortRestartInSecs,
     Hop1ShortRestartGTmin,
-    Hop2RestartOverlapsHop1Restart,
+    # Hop2RestartOverlapsHop1Restart,
 ]    
 
 for (L0_mm, L1_mm, L2_mm) in mm_combinations:
     state = AgentTest.State(os.path.join(base,"working"), f"{L0_mm}_{L1_mm}_{L2_mm}", f"hop0={L0_mm} hop1={L1_mm} hop2={L2_mm}")
     
-    hop0 = add_agent_node(state, agents[0], "11111111-1111-1111-1111-111111111111", 20000, L0_mm, "00000000-0000-0000-0000-000000000000")
-    hop1 = add_agent_node(state, agents[1], "22222222-2222-2222-2222-222222222222", 20001, L1_mm, "00000000-0000-0000-0000-000000000001")
-    hop2 = add_agent_node(state, agents[2], "33333333-3333-3333-3333-333333333333", 20002, L2_mm, "00000000-0000-0000-0000-000000000002")
+    tls_on = False
+    hop0 = add_agent_node(state, agents[0], "11111111-1111-1111-1111-111111111111", 20000, L0_mm, "00000000-0000-0000-0000-000000000000", tls_on)
+    hop1 = add_agent_node(state, agents[1], "22222222-2222-2222-2222-222222222222", 20001, L1_mm, "00000000-0000-0000-0000-000000000001", tls_on)
+    hop2 = add_agent_node(state, agents[2], "33333333-3333-3333-3333-333333333333", 20002, L2_mm, "00000000-0000-0000-0000-000000000002", tls_on)
     
     hop1.receive_from_api_key = hop0.api_key
     hop2.receive_from_api_key = hop1.api_key

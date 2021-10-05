@@ -156,7 +156,8 @@ class State(object):
                                            "data tx"      : "STREAM: Sending data. Buffer",
                                            "Finished replication on"  : "REPLICATE",
                                            "Fill replication with" : "REPLICATE",
-                                           "GDB Signal Interrupt" : "received signal"})
+                                           "GDB Signal Interrupt" : "received signal",
+                                           "TLS/SSL error": "SSL Handshake error"})
         # Suppress DNS failures in two node scenario on the top level
         self.parser2         = LogParser({ "child connect": "client willing",
                                            "child disconnect" : "STREAM child.*disconnected \(completed",
@@ -167,7 +168,8 @@ class State(object):
                                            "data tx"      : "STREAM: Sending data. Buffer",
                                            "Finished replication on"  : "REPLICATE",
                                            "Fill replication with"  : "REPLICATE",
-                                           "GDB Signal Interrupt" : "received signal"})
+                                           "GDB Signal Interrupt" : "received signal",
+                                           "TLS/SSL error": "SSL Handshake error"})
 
     def copy(self):
         result = State(self.working[:], self.config[:], self.config_label[:], self.prefix[:],
@@ -221,9 +223,17 @@ class State(object):
                     ev = n.parser.parse(n.log)
                     for e in ev:
                         print(n.name, e, file=f)
-            if n.parser.matchers["GDB Signal Interrupt"].pattern in n.log:
-                print(f"{n.name} gdb run crashed during the test, stack trace in the log")
+            try:                        
+                if n.parser.matchers["GDB Signal Interrupt"].pattern in n.log:
+                    print(f"{n.name} gdb run crashed during the test, stack trace in the log")
+                    passed = False
+                elif n.parser.matchers["TLS/SSL error"].pattern in n.log:
+                    print(f"{n.name} TLS connection error")
+            except Exception as e:
                 passed = False
+                print(f"{case.__name__} -> Fatal exception during test: {str(e)}")
+                traceback.print_exc(file=self.output)                    
+                passed = False                
             print(f"{case.__name__} -> {passed}")
             print(f"{case.__name__} -> {passed}", file=f)
             self.output = None
@@ -248,11 +258,14 @@ class State(object):
     def kill(self, node):
         sh(f"docker kill -s SIGINT {self.nodes[node].container_name}", self.output)
 
+    def stop(self, node):
+        sh(f"docker stop {self.nodes[node].container_name}", self.output)        
+
     def restart(self, node):
         sh(f"docker start {self.nodes[node].container_name}", self.output)
 
     def wait_up(self, node):
-        url = f"http://localhost:{self.nodes[node].port}/api/v1/info"
+        url = f"{self.nodes[node].http}localhost:{self.nodes[node].port}/api/v1/info"
         print(f"  Waiting for {node} on {url}", file=self.output)
         counter = 0
         while counter < 10:
@@ -273,8 +286,8 @@ class State(object):
         '''This will detect the *first time* connection of a child to a parent. It looks in the mirrored
            hosts array so on reconnections it will return instantly because the child database already
            exists on the parent.'''
-        url = f"http://localhost:{self.nodes[receiver].port}/api/v1/info"
-        print(f"  Waiting for {sender} to connect to {receiver}", file=self.output)
+        url = f"{self.nodes[receiver].http}localhost:{self.nodes[receiver].port}/api/v1/info"
+        print(f"  Waiting for {sender} to connect to {receiver} on {url}", file=self.output)
         counter = 0
         while counter < 20:
             counter += 1
@@ -295,7 +308,7 @@ class State(object):
     def wait_isparent(self, node):
         '''This will detect the connection of some child to a parent. It cannot check which one connected
            in scenarios with multiple children of a parent.'''
-        url = f"http://localhost:{self.nodes[node].port}/api/v1/info"
+        url = f"{self.nodes[node].http}localhost:{self.nodes[node].port}/api/v1/info"
         print(f"  Waiting for {node} to become parent", file=self.output)
         attempts = 0
         while attempts < 30:
@@ -360,7 +373,7 @@ class State(object):
 
             source_json = self.nodes[source].get_data(ch)
             if not source_json:
-                print(f"  FAILED to check sync looking at http://localhost:{self.nodes[source].port}", file=self.output)
+                print(f"  FAILED to check sync looking at {self.nodes[source].http}localhost:{self.nodes[source].port}", file=self.output)
                 passed = False
                 continue
             if len(source_json["data"])==0:
@@ -371,7 +384,7 @@ class State(object):
                 f.write(json.dumps(source_json, sort_keys=True, indent=4))
             target_json = self.nodes[target].get_data(ch,host=source)
             if not target_json:
-                print(f"  FAILED to check sync looking at http://localhost:{self.nodes[target].port}", file=self.output)
+                print(f"  FAILED to check sync looking at {self.nodes[target].http}localhost:{self.nodes[target].port}", file=self.output)
                 passed = False
                 continue
             if len(target_json["data"])==0:
@@ -436,7 +449,7 @@ class State(object):
                 
                 mirror_host_json = self.nodes[mirror_host].get_data(ch)
                 if not mirror_host_json:
-                    print(f"  FAILED to check sync looking at http://localhost:{self.nodes[mirror_host].port}", file=self.output)
+                    print(f"  FAILED to check sync looking at {self.nodes[mirror_host].http}localhost:{self.nodes[mirror_host].port}", file=self.output)
                     passed = False
                     continue
                 if len(mirror_host_json["data"])==0:
@@ -448,7 +461,7 @@ class State(object):
 
                 current_hop_json = self.nodes[current_hop].get_data(ch, host=mirror_host)
                 if not current_hop_json:
-                    print(f"  FAILED to check sync looking at http://localhost:{self.nodes[current_hop].port}", file=self.output)
+                    print(f"  FAILED to check sync looking at {self.nodes[current_hop].http}localhost:{self.nodes[current_hop].port}", file=self.output)
                     passed = False
                     continue
                 if len(current_hop_json["data"])==0:

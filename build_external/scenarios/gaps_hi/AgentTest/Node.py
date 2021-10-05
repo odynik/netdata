@@ -15,6 +15,8 @@ class Node(object):
         self.db_mode = "dbengine"
         self.api_key = None
         self.receive_from_api_key = None
+        self.tls = False
+        self.http = "http://"
         self.config = {}
 
     """ Returns a copy of the node object """
@@ -27,6 +29,10 @@ class Node(object):
         result.db_mode = self.db_mode[:]
         result.api_key = self.api_key
         result.receive_from_api_key = self.receive_from_api_key
+        if self.tls:
+            self.http="https://"
+        result.tls = self.tls
+        result.http = self.http
         result.config = dict(self.config.items())
         return result
 
@@ -40,6 +46,7 @@ class Node(object):
         guid = os.path.join(base, f"{self.name}-guid")
         conf = os.path.join(base, f"{self.name}-netdata.conf")
         stream = os.path.join(base, f"{self.name}-stream.conf")
+        tls_cert = os.path.abspath(os.path.join(base, "../../certificates"))
         with open(guid, "w") as f:
             print(self.guid,file=f)
         with open(compose, "w") as f:
@@ -55,6 +62,8 @@ class Node(object):
             print(f"            - {stream}:/etc/netdata/stream.conf:ro", file=f)
             print(f"            - {guid}:/var/lib/netdata/registry/netdata.public.unique.id:ro", file=f)
             print(f"            - {conf}:/etc/netdata/netdata.conf:ro", file=f)
+            if self.tls:
+                print(f"#            - {tls_cert}:/etc/netdata/ssl:ro", file=f)
             print(f"        cap_add:", file=f)
             print(f"            - SYS_PTRACE", file=f)
         with open(conf, "w") as f:
@@ -63,13 +72,20 @@ class Node(object):
             print(f"    errors flood protection period = 0", file=f)
             print(f"    hostname = {self.name}", file=f)
             print(f"    memory mode = {self.db_mode}", file=f)
+            print(f"#    timezone = Europe/Athens", file=f)
             for k,v in self.config.items():
                 file, section = k.split("/")
                 if file == "netdata.conf" and section == "global":
                     print(f"    {v}")
             print(f"[web]", file=f)
-            print(f"#    ssl key = /etc/netdata/ssl/key.pem", file=f)
-            print(f"#    ssl certificate = /etc/netdata/ssl/cert.pem", file=f)
+            print(f"#    allow connections from = *", file=f)
+            print(f"#    allow streaming from = *", file=f)
+            print(f"#    tls version = 1.3", file=f)
+            print(f"#    tls ciphers = TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM_SHA256", file=f)            
+            if self.receiver and self.tls:
+                print(f"    ssl key = /etc/netdata/ssl/localhost.key", file=f)
+                print(f"    ssl certificate = /etc/netdata/ssl/localhost.crt", file=f)
+                print(f"#    bind to = *:{self.port}=dashboard|registry|streaming|netdata.conf|badges|management^SSL=force", file=f)
             for k,v in self.config.items():
                 file, section = k.split("/")
                 if file == "netdata.conf" and section == "web":
@@ -79,7 +95,13 @@ class Node(object):
                 print(f"[stream]", file=f)
                 print(f"    enabled = yes", file=f)
                 print(f"    enable replication = yes", file=f)
-                print(f"    destination = tcp:{self.stream_target.name}", file=f)
+                if self.tls:
+                    print(f"    destination = tcp:{self.stream_target.name}:SSL", file=f)
+                    print(f"    ssl skip certificate verification = yes", file=f)                    
+                    print(f"    CApath = /etc/ssl/certs/", file=f)
+                    print(f"    CAfile = /etc/ssl/certs/netdata_parent.pem", file=f)
+                else:
+                    print(f"    destination = tcp:{self.stream_target.name}", file=f)
                 print(f"    api key = {self.api_key}", file=f)
                 print(f"    timeout seconds = 60", file=f)
                 print(f"    default port = 19999", file=f)
@@ -115,9 +137,9 @@ class Node(object):
 
     def get_data(self, chart, host=None):
         if host is None:
-            url = f"http://localhost:{self.port}/api/v1/data?chart={chart}"
+            url = f"{self.http}localhost:{self.port}/api/v1/data?chart={chart}"
         else:
-            url = f"http://localhost:{self.port}/host/{host}/api/v1/data?chart={chart}"
+            url = f"{self.http}localhost:{self.port}/host/{host}/api/v1/data?chart={chart}"
         try:
             r = requests.get(url)
             return r.json()
@@ -129,7 +151,7 @@ class Node(object):
             return None
 
     def get_charts(self):
-        url = f"http://localhost:{self.port}/api/v1/charts"
+        url = f"{self.http}localhost:{self.port}/api/v1/charts"
         try:
             r = requests.get(url)
             return r.json()
@@ -147,7 +169,7 @@ class Node(object):
         Hop=1 should have its self and hop=0 image hosts (hop1, hop0).
         Hop=2 should have its self and hop=1, hop=2 image hosts (hop2, hop1, hop0).'''
         if(self.receiver):
-            url = f"http://localhost:{self.port}/api/v1/info"        
+            url = f"{self.http}localhost:{self.port}/api/v1/info"        
             try:
                 r = requests.get(url)
                 info = r.json()
