@@ -199,7 +199,6 @@ void send_replication_req(RRDHOST *host, char *st_id, time_t start, time_t end) 
 #endif
     if (ret != (int)strlen(message))
         error("Failed to send replication request for %s!", st_id);
-    // st->state->replication_requests--;
 }
 
 static void skip_gap(RRDSET *st, time_t first_t, time_t last_t) {
