@@ -479,7 +479,7 @@ PARSER_RC streaming_rep_end(char **words, void *user_v, PLUGINSD_ACTION *plugins
     // According to Andrew empty slot transmission signals the other hop for the absence of data. Do we need to keep it? or are we doing anything with this info?
     if (user->st->state->sync) {
         debug(D_STREAM, "Hop=1 and Hop=0 are in sync for %s", user->st->id);
-        if(user->host->rrdpush_send_enabled)
+        if(user->host->rrdpush_send_enabled && user->host->rrdpush_sender_connected)
             rrdset_done_push_to_hops(user->st);
     }
 

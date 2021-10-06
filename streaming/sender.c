@@ -741,7 +741,9 @@ void *rrdpush_sender_thread(void *ptr) {
         // Read as much as possible to fill the buffer, split into full lines for execution.
         if (fds[Socket].revents & POLLIN)
             sender_attempt_read(s);
-        sender_execute_commands(s);
+        // Execute replication commands when connected to avoid filling the sender buffer during connection breaks.
+        if(s->host->rrdpush_sender_connected)
+            sender_execute_commands(s);
 
         // If we have data and have seen the TCP window open then try to close it by a transmission.
         if (outstanding && fds[Socket].revents & POLLOUT)
@@ -899,11 +901,13 @@ static int sender_execute_replicate(struct sender_state *s, char *st_id, long st
         error("Cannot replicate chart %s @ %ld - not found! (req. window %ld-%ld)", st_id, now, start_t, end_t);
     }
     else {
-        rrdset_rdlock(st);
-        sender_start(s);                    // Locks the sender buffer
-        sender_fill_gap_nolock(s, st, start_t);
-        overflow = sender_commit_no_overflow(s); // Releases the sender buffer
-        rrdset_unlock(st);
+            rrdset_rdlock(st);
+            sender_start(s);                    // Locks the sender buffer
+            sender_fill_gap_nolock(s, st, start_t);
+            // overflow = sender_commit_no_overflow(s); // Releases the sender buffer
+            sender_commit(s);
+            rrdset_unlock(st);
     }
+    overflow = s->overflow;
     return overflow;
 }
