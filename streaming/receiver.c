@@ -897,8 +897,11 @@ static int rrdpush_receive(struct receiver_state *rpt)
         aclk_host_state_update(rpt->host, ACLK_CMD_CHILD_CONNECT);
 #endif
 
-    if (rpt->stream_version == VERSION_GAP_FILLING)
+    if (rpt->stream_version == VERSION_GAP_FILLING) {
         receiver_tx_thread_spawn(rpt);
+        if (unlikely(rpt->host->rrdpush_send_enabled && !rpt->host->rrdpush_sender_spawn))
+            rrdpush_sender_thread_spawn(rpt->host);
+        }
     size_t count = streaming_parser(rpt, &cd, fp);
 
     log_stream_connection(rpt->client_ip, rpt->client_port, rpt->key, rpt->host->machine_guid, rpt->hostname,

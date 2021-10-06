@@ -1921,7 +1921,8 @@ after_second_database_work:
     // ALL DONE ABOUT THE DATA UPDATE
     // --------------------------------------------------------------------
 
-    sender_replicate(st);
+    if(unlikely(st->rrdhost->rrdpush_send_enabled && st->rrdhost->rrdpush_sender_connected))
+        sender_replicate(st);
 
     // find if there are any obsolete dimensions
     time_t now = now_realtime_sec();
