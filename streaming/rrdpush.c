@@ -422,12 +422,17 @@ void rrdset_done_push_fill_empty_slots(RRDSET *st, time_t window_start, time_t w
     storage_number empty_value = SN_EMPTY_SLOT;
     rrdset_rdlock(st);
     rrddim_foreach_read(rd, st) {
-        usec_t next_store_ut = (window_start + st->update_every) * USEC_PER_SEC;
+        usec_t next_store_ut = window_start * USEC_PER_SEC;
         long current_entry = st->current_entry;
 
         for(c = 0; c < entries && next_store_ut <= window_end_ut ; next_store_ut += update_every_ut, c++) {
-            rd->values[current_entry] = empty_value;
-            current_entry = ((current_entry + 1) >= entries) ? 0 : current_entry + 1;
+            if(st->rrd_memory_mode == RRD_MEMORY_MODE_DBENGINE){
+                rd->state->collect_ops.store_metric(rd, next_store_ut, empty_value);
+            }
+            else{
+                rd->values[current_entry] = empty_value;
+                current_entry = ((current_entry + 1) >= entries) ? 0 : current_entry + 1;                
+            }
 
             #ifdef NETDATA_INTERNAL_CHECKS
             rrdset_debug(st, "%s: STORE[%ld] = NON EXISTING (FILLED THE GAP)", rd->name, current_entry);

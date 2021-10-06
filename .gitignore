@@ -196,6 +196,12 @@ test-driver
 **/tests/*_testdriver.trs
 python.d/python-modules-installer.sh
 build_external/scenarios/gaps_hi/working
+build_external/scenarios/gaps_hi/certificates/*.crt
+build_external/scenarios/gaps_hi/certificates/*.pem
+build_external/scenarios/gaps_hi/certificates/*.ext
+build_external/scenarios/gaps_hi/certificates/*.srl
+build_external/scenarios/gaps_hi/certificates/*.key
+build_external/scenarios/gaps_hi/certificates/*.csr
 *test_results.txt
 
 # documentation generated files

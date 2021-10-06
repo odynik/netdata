@@ -219,8 +219,8 @@ static void skip_gap(RRDSET *st, time_t first_t, time_t last_t) {
         rrdset_unlock(st);
     }
     else
-        debug(D_REPLICATION, "dbengine on %s skipping gap %ld-%ld.", st->name, (long)first_t, (long)last_t);
-    
+        debug(D_REPLICATION, "dbengine on %s skipping gap %ld-%ld.", st->name, (long)first_t, (long)last_t);        
+ 
     st->last_updated.tv_sec = last_t;
 }
 
@@ -461,15 +461,6 @@ PARSER_RC streaming_rep_end(char **words, void *user_v, PLUGINSD_ACTION *plugins
     user->st->last_collected_time.tv_sec = user->st->last_updated.tv_sec;
     user->st->last_collected_time.tv_usec = USEC_PER_SEC/2;
 
-    // long advance = (state->window_end - state->window_first) / user->st->update_every;
-    // user->st->counter       += advance;
-    // user->st->counter_done  += advance;
-    // user->st->current_entry += advance;
-    // while (user->st->current_entry >= user->st->entries)        // Once except for an exceptional corner-case
-    //     user->st->current_entry -= user->st->entries;
-    // user->st->collected_total = col_total;
-    // user->st->last_collected_total = last_total;    
-
     if (num_points > 0) {
         long advance = (state->window_end - state->window_first) / user->st->update_every;
         user->st->counter       += advance;
@@ -493,16 +484,21 @@ PARSER_RC streaming_rep_end(char **words, void *user_v, PLUGINSD_ACTION *plugins
     }
 
     } else {
-            if(unlikely(user->st->counter) && user->st->rrd_memory_mode != RRD_MEMORY_MODE_DBENGINE) {
-                // rrdset_done_push_fill_empty_slots(user->st, state->window_first, user->st->last_updated.tv_sec);
-            long advance = (state->window_end - state->window_first) / user->st->update_every;
-            user->st->counter       += advance;
-            user->st->counter_done  += advance;
-            user->st->current_entry += advance;
-            while (user->st->current_entry >= user->st->entries)        // Once except for an exceptional corner-case
-                user->st->current_entry -= user->st->entries;
-            user->st->collected_total = col_total;
-            user->st->last_collected_total = last_total;                
+            if(user->st->counter) {
+                if(user->st->rrd_memory_mode == RRD_MEMORY_MODE_DBENGINE)
+                    rrdset_done_push_fill_empty_slots(user->st, state->window_first, user->st->last_updated.tv_sec);
+                if(user->st->rrd_memory_mode != RRD_MEMORY_MODE_DBENGINE)
+                {
+                    // rrdset_done_push_fill_empty_slots(user->st, state->window_first, user->st->last_updated.tv_sec);
+                    long advance = (state->window_end - state->window_first) / user->st->update_every;
+                    user->st->counter       += advance;
+                    user->st->counter_done  += advance;
+                    user->st->current_entry += advance;
+                    while (user->st->current_entry >= user->st->entries)        // Once except for an exceptional corner-case
+                        user->st->current_entry -= user->st->entries;
+                    user->st->collected_total = col_total;
+                    user->st->last_collected_total = last_total;                    
+                }                
         }
         debug(D_STREAM, "Finished replication on %s: window %ld/%ld-%ld empty[%d], last_updated=%ld", user->st->name,
                              state->window_start, state->window_first, state->window_end, ((user->st->counter) && (user->st->rrd_memory_mode != RRD_MEMORY_MODE_DBENGINE)),
