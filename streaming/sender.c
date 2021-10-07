@@ -470,7 +470,6 @@ void attempt_to_send(struct sender_state *s) {
     ret = send(s->host->rrdpush_sender_socket, chunk, outstanding, MSG_DONTWAIT);
 #endif
     if (likely(ret > 0)) {
-        // debug(D_STREAM, "Send BUFFER(%s): [%s]",s->host->hostname, chunk);
         cbuffer_remove_unsafe(s->buffer, ret);
         s->sent_bytes_on_this_connection += ret;
         s->sent_bytes += ret;
@@ -754,10 +753,12 @@ void *rrdpush_sender_thread(void *ptr) {
                 netdata_mutex_lock(&s->mutex);
                 len = cbuffer_len_unsafe(s->host->sender->buffer); // TODO Code Refactor - put this check and overflow control in the attempt_to_send function.
                 netdata_mutex_unlock(&s->mutex);
-            } while(s->overflow && (s->host->sender->build->len + len <= s->host->sender->buffer->max_size / 2));
-            s->overflow = 0; // Overflow protection by sending data to empty the sender buffer. Not restarting the connection.
-            info("STREAM %s [send to %s]: Sending to empty the overflowed(%d) buffer of size (%zu-bytes). Send bytes so far %zu bytes.",
-                  s->host->hostname, s->connected_to, s->overflow, s->buffer->size, s->sent_bytes_on_this_connection);            
+            } while(s->overflow && ( len >= (s->host->sender->buffer->max_size / 2)));
+            if(s->overflow){
+                info("STREAM %s [send to %s]: Sending to empty the overflowed(%d) buffer of size (%zu-bytes). Send bytes so far %zu bytes.",
+                  s->host->hostname, s->connected_to, s->overflow, s->buffer->size, s->sent_bytes_on_this_connection);
+                s->overflow = 0; // Overflow protection by sending data to empty the sender buffer. Not restarting the connection.
+            }
         }
 
         // TODO-GAPS - why do we only check this on the socket, not the pipe?
