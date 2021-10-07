@@ -739,7 +739,9 @@ void *rrdpush_sender_thread(void *ptr) {
 
         // Read as much as possible to fill the buffer, split into full lines for execution.
         if (fds[Socket].revents & POLLIN)
-            sender_attempt_read(s);
+            if(!s->overflow && s->host->rrdpush_sender_connected)
+                sender_attempt_read(s);
+                
         // Execute replication commands when connected to avoid filling the sender buffer during connection breaks.
         if(s->host->rrdpush_sender_connected)
             sender_execute_commands(s);
@@ -753,7 +755,7 @@ void *rrdpush_sender_thread(void *ptr) {
                 netdata_mutex_lock(&s->mutex);
                 len = cbuffer_len_unsafe(s->host->sender->buffer); // TODO Code Refactor - put this check and overflow control in the attempt_to_send function.
                 netdata_mutex_unlock(&s->mutex);
-            } while(s->overflow && ( len >= (s->host->sender->buffer->max_size / 2)));
+            } while(s->overflow && ( len >= (s->host->sender->buffer->max_size / 2)) && s->host->rrdpush_sender_connected);
             if(s->overflow){
                 info("STREAM %s [send to %s]: Sending to empty the overflowed(%d) buffer of size (%zu-bytes). Send bytes so far %zu bytes.",
                   s->host->hostname, s->connected_to, s->overflow, s->buffer->size, s->sent_bytes_on_this_connection);
