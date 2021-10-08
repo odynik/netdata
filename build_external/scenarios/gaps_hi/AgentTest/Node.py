@@ -17,6 +17,7 @@ class Node(object):
         self.receive_from_api_key = None
         self.tls = False
         self.http = "http://"
+        self.stream_version = {"rep": 4}
         self.config = {}
 
     """ Returns a copy of the node object """
@@ -33,6 +34,7 @@ class Node(object):
             self.http="https://"
         result.tls = self.tls
         result.http = self.http
+        result.stream_version = self.stream_version
         result.config = dict(self.config.items())
         return result
 
@@ -53,7 +55,10 @@ class Node(object):
             print(f"version: '3.3'", file=f)
             print(f"services:", file=f)
             print(f"    {self.name}:", file=f)
-            print(f"        image: debian_10_dev", file=f)
+            if(list(self.stream_version.values())[0] == 4):
+                print(f"        image: debian_10_dev", file=f)
+            else:
+                print(f"        image: debian_10_master", file=f)
             #print(f"        command: /usr/bin/gdb ", file=f)
             if self.port is not None:
                 print(f"        ports:", file=f)
