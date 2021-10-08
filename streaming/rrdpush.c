@@ -326,26 +326,20 @@ void rrdset_done_push(RRDSET *st) {
         host->rrdpush_sender_error_shown = 0;
     }
 
+    // TODO: Hide the protocol compatibility into the protocol functions. One point for sending from rrdset_done() is better.
+    // sender_replicate() will do the same job for version protocol 4. Needs to read the data from memory so just return.
     if(host->sender->version >= VERSION_GAP_FILLING)
         return;
 
-    // // Handle the protocol version for image hosts (non-localhost)
-    // sender_start(host->sender);
-    // if(need_to_send_chart_definition(st))
-    //     rrdpush_send_chart_definition_nolock(st);
-    // if(!(strcmp(host->machine_guid, localhost->machine_guid) == 0) && (host->rrdpush_sender_socket != -1)){
-    //     debug(D_STREAM, "%s is not localhost(%s)", host->hostname, localhost->hostname);
-    //     if(host->sender->version >= VERSION_GAP_FILLING){
-    //         debug(D_STREAM, "Send over GAP_FILLING[from: %s, st: %s @ %ld]", host->hostname, st->id, st->state->last_sent.tv_sec);
-    //         sender_fill_gap_nolock(host->sender, st, st->state->last_sent.tv_sec);
-    //     }
-    //     else
-    //         rrdpush_send_chart_metrics_nolock(st, host->sender);
-    // }
-    // sender_commit(host->sender);
-    // // signal the sender there are more data
-    // if(host->rrdpush_sender_pipe[PIPE_WRITE] != -1 && write(host->rrdpush_sender_pipe[PIPE_WRITE], " ", 1) == -1)
-    //     error("STREAM %s [send]: cannot write to internal pipe", host->hostname);
+    // Handle the protocol version for image hosts (non-localhost)
+    sender_start(host->sender);
+    if(need_to_send_chart_definition(st))
+        rrdpush_send_chart_definition_nolock(st);
+    rrdpush_send_chart_metrics_nolock(st, host->sender);
+    sender_commit(host->sender);
+    // signal the sender there are more data
+    if(host->rrdpush_sender_pipe[PIPE_WRITE] != -1 && write(host->rrdpush_sender_pipe[PIPE_WRITE], " ", 1) == -1)
+        error("STREAM %s [send]: cannot write to internal pipe", host->hostname);
 }
 
 void rrdset_done_push_to_hops(RRDSET *st)
