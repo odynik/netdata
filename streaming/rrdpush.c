@@ -349,20 +349,31 @@ void rrdset_done_push_to_hops(RRDSET *st)
     //     rrdpush_sender_thread_spawn(host);
 
     // Send this chart to the grand parent
-    if (host->sender->version >= VERSION_GAP_FILLING) {
         rrdset_rdlock(st);
         sender_start(host->sender); // Locks the sender buffer
         if (need_to_send_chart_definition(st))
             rrdpush_send_chart_definition_nolock(st);
-        // TODO: revise the start_time=0 to see if introduces delays.
-        sender_fill_gap_nolock(host->sender, st, 0);
+
+        switch(host->sender->version){
+            case(VERSION_GAP_FILLING):
+                // TODO: revise the start_time=0 to see if introduces delays searching in the memory.
+                sender_fill_gap_nolock(host->sender, st, 0);
+                break;
+            case((VERSION_GAP_FILLING-1)):
+            case(2):
+            case(1):
+                rrdpush_send_chart_metrics_nolock(st, host->sender);
+                break;
+            default:
+                error("Not compatible protocol version = %d. Cannot forward measurements to parent hop.", host->sender->version);
+            }
+
         rrdset_unlock(st);
         sender_commit(host->sender); // Releases the sender buffer
         
         // signal the sender there are more data
         if (host->rrdpush_sender_pipe[PIPE_WRITE] != -1 && write(host->rrdpush_sender_pipe[PIPE_WRITE], " ", 1) == -1)
             error("STREAM %s [send]: cannot write to internal pipe", host->hostname);
-        }
 }
 
 void rrddim_done_push_fill_empty_slots(RRDDIM *rd, time_t window_start, time_t window_end, long offset) {
