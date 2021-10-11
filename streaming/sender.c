@@ -7,6 +7,12 @@ extern int netdata_use_ssl_on_stream;
 extern char *netdata_ssl_ca_path;
 extern char *netdata_ssl_ca_file;
 
+// to have the remote netdata re-sync the charts
+// to its current clock, we send for this many
+// iterations a BEGIN line without microseconds
+// this is for the first iterations of each chart
+unsigned int remote_clock_resync_iterations = 60;
+
 // Collector thread starting a transmission
 void sender_start(struct sender_state *s) {
     netdata_mutex_lock(&s->mutex);

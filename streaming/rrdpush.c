@@ -123,12 +123,6 @@ int rrdpush_init() {
 #define PIPE_READ 0
 #define PIPE_WRITE 1
 
-// to have the remote netdata re-sync the charts
-// to its current clock, we send for this many
-// iterations a BEGIN line without microseconds
-// this is for the first iterations of each chart
-unsigned int remote_clock_resync_iterations = 60;
-
 
 int should_send_chart_matching(RRDSET *st) {
     if(unlikely(!rrdset_flag_check(st, RRDSET_FLAG_ENABLED))) {
@@ -283,11 +277,22 @@ static void rrdpush_send_chart_metrics_nolock(RRDSET *st, struct sender_state *s
             buffer_sprintf(host->sender->build
                            , "SET \"%s\" = " COLLECTED_NUMBER_FORMAT "\n"
                            , rd->id
-                           , rd->collected_value
+                           , rd->last_collected_value
         );
+        debug(D_STREAM,
+        "%s.%s: CALC PCENT-DIFF " CALCULATED_NUMBER_FORMAT " = 100"
+                " * (" COLLECTED_NUMBER_FORMAT " - " COLLECTED_NUMBER_FORMAT ")"
+                " / (" COLLECTED_NUMBER_FORMAT " - " COLLECTED_NUMBER_FORMAT ")",
+                rd->rrdset->id,
+                rd->id,
+                rd->calculated_value,
+                rd->collected_value,
+                rd->last_collected_value,
+                rd->rrdset->collected_total,
+                rd->rrdset->last_collected_total);
     }
     buffer_strcat(host->sender->build, "END\n");
-    // info("DEBUG %s", buffer_tostring(host->sender->build));
+    debug(D_STREAM, "Send BUFFER(%s)v%d: [%s]",s->host->hostname, s->host->sender->version, buffer_tostring(s->build));
 }
 
 void rrdpush_sender_thread_spawn(RRDHOST *host);
@@ -342,6 +347,444 @@ void rrdset_done_push(RRDSET *st) {
         error("STREAM %s [send]: cannot write to internal pipe", host->hostname);
 }
 
+void rrdset_done_apply_algorithm(RRDDIM *rd)
+{
+    uint32_t storage_flags = SN_EXISTS;
+    // process all dimensions to calculate their values
+    // based on the collected figures only
+    // at this stage we do not interpolate anything
+    if (rrddim_flag_check(rd, RRDDIM_FLAG_ARCHIVED))
+        return;
+
+    if (unlikely(!rd->updated)) {
+        rd->calculated_value = 0;
+        return;
+    }
+
+    if (unlikely(rrddim_flag_check(rd, RRDDIM_FLAG_OBSOLETE))) {
+        error("Dimension %s in chart '%s' has the OBSOLETE flag set, but it is collected.", rd->name, rd->rrdset->id);
+        rrddim_isnot_obsolete(rd->rrdset, rd);
+    }
+
+#ifdef NETDATA_INTERNAL_CHECKS
+    rrdset_debug(
+        rd->rrdset,
+        "%s: START "
+        " last_collected_value = " COLLECTED_NUMBER_FORMAT " collected_value = " COLLECTED_NUMBER_FORMAT
+        " last_calculated_value = " CALCULATED_NUMBER_FORMAT " calculated_value = " CALCULATED_NUMBER_FORMAT,
+        rd->name,
+        rd->last_collected_value,
+        rd->collected_value,
+        rd->last_calculated_value,
+        rd->calculated_value);
+#endif
+
+    switch (rd->algorithm) {
+        case RRD_ALGORITHM_ABSOLUTE:
+            rd->calculated_value = (calculated_number)rd->collected_value * (calculated_number)rd->multiplier /(calculated_number)rd->divisor;
+
+#ifdef NETDATA_INTERNAL_CHECKS
+            rrdset_debug(
+                rd->rrdset,
+                "%s: CALC ABS/ABS-NO-IN " CALCULATED_NUMBER_FORMAT " = " COLLECTED_NUMBER_FORMAT
+                " * " CALCULATED_NUMBER_FORMAT " / " CALCULATED_NUMBER_FORMAT,
+                rd->name,
+                rd->calculated_value,
+                rd->collected_value,
+                (calculated_number)rd->multiplier,
+                (calculated_number)rd->divisor);
+#endif
+
+            break;
+
+        case RRD_ALGORITHM_PCENT_OVER_ROW_TOTAL:
+            if (unlikely(!rd->rrdset->collected_total))
+                rd->calculated_value = 0;
+            else
+                // the percentage of the current value
+                // over the total of all dimensions
+                rd->calculated_value = (calculated_number)100 * (calculated_number)rd->collected_value / (calculated_number)rd->rrdset->collected_total;
+
+#ifdef NETDATA_INTERNAL_CHECKS
+            rrdset_debug(
+                rd->rrdset,
+                "%s: CALC PCENT-ROW " CALCULATED_NUMBER_FORMAT " = 100"
+                " * " COLLECTED_NUMBER_FORMAT " / " COLLECTED_NUMBER_FORMAT,
+                rd->name,
+                rd->calculated_value,
+                rd->collected_value,
+                rd->rrdset->collected_total);
+#endif
+
+            break;
+
+        case RRD_ALGORITHM_INCREMENTAL:
+            if (unlikely(rd->collections_counter <= 1)) {
+                rd->calculated_value = 0;
+                return;
+            }
+
+            // If the new is smaller than the old (an overflow, or reset), set the old equal to the new
+            // to reset the calculation (it will give zero as the calculation for this second).
+            // It is imperative to set the comparison to uint64_t since type collected_number is signed and
+            // produces wrong results as far as incremental counters are concerned.
+            if (unlikely((uint64_t)rd->last_collected_value > (uint64_t)rd->collected_value)) {
+                debug(
+                    D_STREAM,
+                    "%s.%s: RESET or OVERFLOW. Last collected value = " COLLECTED_NUMBER_FORMAT
+                    ", current = " COLLECTED_NUMBER_FORMAT,
+                    rd->rrdset->name,
+                    rd->name,
+                    rd->last_collected_value,
+                    rd->collected_value);
+
+                if (!(rrddim_flag_check(rd, RRDDIM_FLAG_DONT_DETECT_RESETS_OR_OVERFLOWS)))
+                    storage_flags = SN_EXISTS_RESET;
+
+                uint64_t last = (uint64_t)rd->last_collected_value;
+                uint64_t new = (uint64_t)rd->collected_value;
+                uint64_t max = (uint64_t)rd->collected_value_max;
+                uint64_t cap = 0;
+
+                // Signed values are handled by exploiting two's complement which will produce positive deltas
+                if (max > 0x00000000FFFFFFFFULL)
+                    cap = 0xFFFFFFFFFFFFFFFFULL; // handles signed and unsigned 64-bit counters
+                else
+                    cap = 0x00000000FFFFFFFFULL; // handles signed and unsigned 32-bit counters
+
+                uint64_t delta = cap - last + new;
+                uint64_t max_acceptable_rate = (cap / 100) * MAX_INCREMENTAL_PERCENT_RATE;
+
+                // If the delta is less than the maximum acceptable rate and the previous value was near the cap
+                // then this is an overflow. There can be false positives such that a reset is detected as an
+                // overflow.
+                // TODO: remember recent history of rates and compare with current rate to reduce this chance.
+                if (delta < max_acceptable_rate) {
+                    rd->calculated_value +=
+                        (calculated_number)delta * (calculated_number)rd->multiplier / (calculated_number)rd->divisor;
+                } else {
+                    // This is a reset. Any overflow with a rate greater than MAX_INCREMENTAL_PERCENT_RATE will also
+                    // be detected as a reset instead.
+                    rd->calculated_value += (calculated_number)0;
+                }
+            } else {
+                rd->calculated_value += (calculated_number)(rd->collected_value - rd->last_collected_value) * (calculated_number)rd->multiplier / (calculated_number)rd->divisor;
+            }
+
+#ifdef NETDATA_INTERNAL_CHECKS
+            rrdset_debug(
+                rd->rrdset,
+                "%s: CALC INC PRE " CALCULATED_NUMBER_FORMAT " = (" COLLECTED_NUMBER_FORMAT
+                " - " COLLECTED_NUMBER_FORMAT ")"
+                " * " CALCULATED_NUMBER_FORMAT " / " CALCULATED_NUMBER_FORMAT,
+                rd->name,
+                rd->calculated_value,
+                rd->collected_value,
+                rd->last_collected_value,
+                (calculated_number)rd->multiplier,
+                (calculated_number)rd->divisor);
+#endif
+
+            break;
+
+        case RRD_ALGORITHM_PCENT_OVER_DIFF_TOTAL:
+            if (unlikely(rd->collections_counter <= 1)) {
+                rd->calculated_value = 0;
+                return;
+            }
+
+            // if the new is smaller than the old (an overflow, or reset), set the old equal to the new
+            // to reset the calculation (it will give zero as the calculation for this second)
+            if (unlikely(rd->last_collected_value > rd->collected_value)) {
+                debug(
+                    D_STREAM,
+                    "%s.%s: RESET or OVERFLOW. Last collected value = " COLLECTED_NUMBER_FORMAT
+                    ", current = " COLLECTED_NUMBER_FORMAT,
+                    rd->rrdset->name,
+                    rd->name,
+                    rd->last_collected_value,
+                    rd->collected_value);
+
+                if (!(rrddim_flag_check(rd, RRDDIM_FLAG_DONT_DETECT_RESETS_OR_OVERFLOWS)))
+                    storage_flags = SN_EXISTS_RESET;
+
+                rd->last_collected_value = rd->collected_value;
+            }
+
+            // the percentage of the current increment
+            // over the increment of all dimensions together
+            if (unlikely(rd->rrdset->collected_total == rd->rrdset->last_collected_total))
+                rd->calculated_value = 0;
+            else
+                rd->calculated_value = (calculated_number)100 *
+                                       (calculated_number)(rd->collected_value - rd->last_collected_value) /
+                                       (calculated_number)(rd->rrdset->collected_total - rd->rrdset->last_collected_total);
+
+#ifdef NETDATA_INTERNAL_CHECKS
+            rrdset_debug(
+                rd->rrdset,
+                "%s: CALC PCENT-DIFF " CALCULATED_NUMBER_FORMAT " = 100"
+                " * (" COLLECTED_NUMBER_FORMAT " - " COLLECTED_NUMBER_FORMAT ")"
+                " / (" COLLECTED_NUMBER_FORMAT " - " COLLECTED_NUMBER_FORMAT ")",
+                rd->name,
+                rd->calculated_value,
+                rd->collected_value,
+                rd->last_collected_value,
+                rd->rrdset->collected_total,
+                rd->rrdset->last_collected_total);
+#endif
+
+            break;
+
+        default:
+            // make the default zero, to make sure
+            // it gets noticed when we add new types
+            rd->calculated_value = 0;
+
+#ifdef NETDATA_INTERNAL_CHECKS
+            rrdset_debug(rd->rrdset, "%s: CALC " CALCULATED_NUMBER_FORMAT " = 0", rd->name,rd->calculated_value);
+#endif
+
+            break;
+    }
+
+#ifdef NETDATA_INTERNAL_CHECKS
+    rrdset_debug(
+        rd->rrdset,
+        "%s: PHASE2 "
+        " last_collected_value = " COLLECTED_NUMBER_FORMAT " collected_value = " COLLECTED_NUMBER_FORMAT
+        " last_calculated_value = " CALCULATED_NUMBER_FORMAT " calculated_value = " CALCULATED_NUMBER_FORMAT,
+        rd->name,
+        rd->last_collected_value,
+        rd->collected_value,
+        rd->last_calculated_value,
+        rd->calculated_value);
+#endif
+}
+
+// Compatibility function from a stream version 4 agent to a stream version 3 agent.
+void rrdset_done_inverse_algorithm(RRDDIM *rd)
+{
+    // uint32_t storage_flags = SN_EXISTS;
+
+    // process all dimensions to calculate their values
+    // based on the collected figures only
+    // at this stage we do not interpolate anything
+    if (rrddim_flag_check(rd, RRDDIM_FLAG_ARCHIVED))
+        return;
+
+    if (unlikely(!rd->updated)) {
+        rd->calculated_value = 0;
+        return;
+    }
+
+    if (unlikely(rrddim_flag_check(rd, RRDDIM_FLAG_OBSOLETE))) {
+        error("Dimension %s in chart '%s' has the OBSOLETE flag set, but it is collected.", rd->name, rd->rrdset->id);
+        rrddim_isnot_obsolete(rd->rrdset, rd);
+    }
+
+#ifdef NETDATA_INTERNAL_CHECKS
+    rrdset_debug(
+        rd->rrdset,
+        "%s: START "
+        " last_collected_value = " COLLECTED_NUMBER_FORMAT " collected_value = " COLLECTED_NUMBER_FORMAT
+        " last_calculated_value = " CALCULATED_NUMBER_FORMAT " calculated_value = " CALCULATED_NUMBER_FORMAT,
+        rd->name,
+        rd->last_collected_value,
+        rd->collected_value,
+        rd->last_calculated_value,
+        rd->calculated_value);
+#endif
+
+    switch (rd->algorithm) {
+        case RRD_ALGORITHM_ABSOLUTE:
+            rd->collected_value = (collected_number) rd->calculated_value * rd->divisor /rd->multiplier;
+            //Inverse of 
+            // rd->calculated_value = (calculated_number)rd->collected_value * (calculated_number)rd->multiplier /(calculated_number)rd->divisor;        
+            
+
+#ifdef NETDATA_INTERNAL_CHECKS
+            rrdset_debug(
+                rd->rrdset,
+                "%s: CALC ABS/ABS-NO-IN " CALCULATED_NUMBER_FORMAT " = " COLLECTED_NUMBER_FORMAT
+                " * " CALCULATED_NUMBER_FORMAT " / " CALCULATED_NUMBER_FORMAT,
+                rd->name,
+                rd->calculated_value,
+                rd->collected_value,
+                (calculated_number)rd->multiplier,
+                (calculated_number)rd->divisor);
+#endif
+
+            break;
+
+        case RRD_ALGORITHM_PCENT_OVER_ROW_TOTAL:
+            if (unlikely(!rd->rrdset->collected_total))
+                rd->collected_value = 0;
+            else
+                // the percentage of the current value
+                // over the total of all dimensions
+                rd->collected_value = (collected_number) rd->calculated_value * rd->rrdset->collected_total / (collected_number) 100;
+                // rd->calculated_value = (calculated_number)100 * (calculated_number)rd->collected_value / (calculated_number)rd->rrdset->collected_total;
+
+#ifdef NETDATA_INTERNAL_CHECKS
+            rrdset_debug(
+                rd->rrdset,
+                "%s: CALC PCENT-ROW " CALCULATED_NUMBER_FORMAT " = 100"
+                " * " COLLECTED_NUMBER_FORMAT " / " COLLECTED_NUMBER_FORMAT,
+                rd->name,
+                rd->calculated_value,
+                rd->collected_value,
+                rd->rrdset->collected_total);
+#endif
+
+            break;
+// TODO: Continue with the rest of the inverse algorithms 
+        case RRD_ALGORITHM_INCREMENTAL:
+            if (unlikely(rd->collections_counter <= 1)) {
+                rd->calculated_value = 0;
+                return;
+            }
+
+            // If the new is smaller than the old (an overflow, or reset), set the old equal to the new
+            // to reset the calculation (it will give zero as the calculation for this second).
+            // It is imperative to set the comparison to uint64_t since type collected_number is signed and
+            // produces wrong results as far as incremental counters are concerned.
+            if (unlikely((uint64_t)rd->last_collected_value > (uint64_t)rd->collected_value)) {
+                debug(
+                    D_STREAM,
+                    "%s.%s: RESET or OVERFLOW. Last collected value = " COLLECTED_NUMBER_FORMAT
+                    ", current = " COLLECTED_NUMBER_FORMAT,
+                    rd->rrdset->name,
+                    rd->name,
+                    rd->last_collected_value,
+                    rd->collected_value);
+
+                // if (!(rrddim_flag_check(rd, RRDDIM_FLAG_DONT_DETECT_RESETS_OR_OVERFLOWS)))
+                //     storage_flags = SN_EXISTS_RESET;
+
+                uint64_t last = (uint64_t)rd->last_collected_value;
+                uint64_t new = (uint64_t)rd->collected_value;
+                uint64_t max = (uint64_t)rd->collected_value_max;
+                uint64_t cap = 0;
+
+                // Signed values are handled by exploiting two's complement which will produce positive deltas
+                if (max > 0x00000000FFFFFFFFULL)
+                    cap = 0xFFFFFFFFFFFFFFFFULL; // handles signed and unsigned 64-bit counters
+                else
+                    cap = 0x00000000FFFFFFFFULL; // handles signed and unsigned 32-bit counters
+
+                uint64_t delta = cap - last + new;
+                uint64_t max_acceptable_rate = (cap / 100) * MAX_INCREMENTAL_PERCENT_RATE;
+
+                // If the delta is less than the maximum acceptable rate and the previous value was near the cap
+                // then this is an overflow. There can be false positives such that a reset is detected as an
+                // overflow.
+                // TODO: remember recent history of rates and compare with current rate to reduce this chance.
+                if (delta < max_acceptable_rate) {
+                    rd->calculated_value +=
+                        (calculated_number)delta * (calculated_number)rd->multiplier / (calculated_number)rd->divisor;
+                } else {
+                    // This is a reset. Any overflow with a rate greater than MAX_INCREMENTAL_PERCENT_RATE will also
+                    // be detected as a reset instead.
+                    rd->calculated_value += (calculated_number)0;
+                }
+            } else {
+                rd->calculated_value += (calculated_number)(rd->collected_value - rd->last_collected_value) * (calculated_number)rd->multiplier / (calculated_number)rd->divisor;
+            }
+
+#ifdef NETDATA_INTERNAL_CHECKS
+            rrdset_debug(
+                rd->rrdset,
+                "%s: CALC INC PRE " CALCULATED_NUMBER_FORMAT " = (" COLLECTED_NUMBER_FORMAT
+                " - " COLLECTED_NUMBER_FORMAT ")"
+                " * " CALCULATED_NUMBER_FORMAT " / " CALCULATED_NUMBER_FORMAT,
+                rd->name,
+                rd->calculated_value,
+                rd->collected_value,
+                rd->last_collected_value,
+                (calculated_number)rd->multiplier,
+                (calculated_number)rd->divisor);
+#endif
+
+            break;
+
+        case RRD_ALGORITHM_PCENT_OVER_DIFF_TOTAL:
+            if (unlikely(rd->collections_counter <= 1)) {
+                rd->calculated_value = 0;
+                return;
+            }
+
+            // if the new is smaller than the old (an overflow, or reset), set the old equal to the new
+            // to reset the calculation (it will give zero as the calculation for this second)
+            if (unlikely(rd->last_collected_value > rd->collected_value)) {
+                debug(
+                    D_STREAM,
+                    "%s.%s: RESET or OVERFLOW. Last collected value = " COLLECTED_NUMBER_FORMAT
+                    ", current = " COLLECTED_NUMBER_FORMAT,
+                    rd->rrdset->name,
+                    rd->name,
+                    rd->last_collected_value,
+                    rd->collected_value);
+
+                // if (!(rrddim_flag_check(rd, RRDDIM_FLAG_DONT_DETECT_RESETS_OR_OVERFLOWS)))
+                //     storage_flags = SN_EXISTS_RESET;
+
+                rd->last_collected_value = rd->collected_value;
+            }
+
+            // the percentage of the current increment
+            // over the increment of all dimensions together
+            if (unlikely(rd->rrdset->collected_total == rd->rrdset->last_collected_total))
+                rd->calculated_value = 0;
+            else
+                rd->calculated_value = (calculated_number)100 *
+                                       (calculated_number)(rd->collected_value - rd->last_collected_value) /
+                                       (calculated_number)(rd->rrdset->collected_total - rd->rrdset->last_collected_total);
+
+#ifdef NETDATA_INTERNAL_CHECKS
+            rrdset_debug(
+                rd->rrdset,
+                "%s: CALC PCENT-DIFF " CALCULATED_NUMBER_FORMAT " = 100"
+                " * (" COLLECTED_NUMBER_FORMAT " - " COLLECTED_NUMBER_FORMAT ")"
+                " / (" COLLECTED_NUMBER_FORMAT " - " COLLECTED_NUMBER_FORMAT ")",
+                rd->name,
+                rd->calculated_value,
+                rd->collected_value,
+                rd->last_collected_value,
+                rd->rrdset->collected_total,
+                rd->rrdset->last_collected_total);
+#endif
+
+            break;
+
+        default:
+            // make the default zero, to make sure
+            // it gets noticed when we add new types
+            rd->calculated_value = 0;
+
+#ifdef NETDATA_INTERNAL_CHECKS
+            rrdset_debug(rd->rrdset, "%s: CALC " CALCULATED_NUMBER_FORMAT " = 0", rd->name,rd->calculated_value);
+#endif
+
+            break;
+    }
+
+#ifdef NETDATA_INTERNAL_CHECKS
+    rrdset_debug(
+        rd->rrdset,
+        "%s: PHASE2 "
+        " last_collected_value = " COLLECTED_NUMBER_FORMAT " collected_value = " COLLECTED_NUMBER_FORMAT
+        " last_calculated_value = " CALCULATED_NUMBER_FORMAT " calculated_value = " CALCULATED_NUMBER_FORMAT,
+        rd->name,
+        rd->last_collected_value,
+        rd->collected_value,
+        rd->last_calculated_value,
+        rd->calculated_value);
+#endif
+}
+
+
+
 void rrdset_done_push_to_hops(RRDSET *st)
 {
     RRDHOST *host = st->rrdhost;
@@ -350,6 +793,7 @@ void rrdset_done_push_to_hops(RRDSET *st)
 
     // Send this chart to the grand parent
         rrdset_rdlock(st);
+        // rrdset_wrlock(st);
         sender_start(host->sender); // Locks the sender buffer
         if (need_to_send_chart_definition(st))
             rrdpush_send_chart_definition_nolock(st);
@@ -362,10 +806,12 @@ void rrdset_done_push_to_hops(RRDSET *st)
             case((VERSION_GAP_FILLING-1)):
             case(2):
             case(1):
+                //Inverse the algorithm and let the receiver's rrdset_done() to do the job for compatibility with stream version protocol 3.
+
                 rrdpush_send_chart_metrics_nolock(st, host->sender);
                 break;
             default:
-                error("Not compatible protocol version = %d. Cannot forward measurements to parent hop.", host->sender->version);
+                error("Not compatible streaming protocol version = %d. Cannot forward measurements to parent hop.", host->sender->version);
             }
 
         rrdset_unlock(st);
@@ -409,7 +855,7 @@ void rrddim_done_push_fill_empty_slots(RRDDIM *rd, time_t window_start, time_t w
         rd->collections_counter++;
         }
     rd->last_stored_value = unpack_storage_number(empty_value);
-    rd->collected_value = rd->last_collected_value =
+    rd->collected_value = rd->last_collected_value = 
         unpack_storage_number(empty_value) / (calculated_number)rd->multiplier * (calculated_number)rd->divisor;
     rd->last_collected_time.tv_sec = window_end;
     rd->last_collected_time.tv_usec = 0;

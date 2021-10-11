@@ -412,13 +412,20 @@ PARSER_RC streaming_rep_dim(char **words, void *user_v, PLUGINSD_ACTION *plugins
                 unpack_storage_number(value));
         }
     }
-    rd->last_stored_value = unpack_storage_number(value);
-    rd->collections_counter++;
-    rd->collected_value = rd->last_collected_value =
-        unpack_storage_number(value) / (calculated_number)rd->multiplier * (calculated_number)rd->divisor;
+    rd->collected_value = unpack_storage_number(value);
+    rd->calculated_value = unpack_storage_number(value) / (calculated_number)rd->multiplier * (calculated_number)rd->divisor;
+    rd->last_stored_value =  rd->calculated_value;
+    rd->collected_volume += rd->collected_value;
+    rd->stored_volume += rd->last_stored_value;    
     rd->last_collected_time.tv_sec = timestamp;
     rd->last_collected_time.tv_usec = 0;
-    rd->updated = 1;
+    rd->collections_counter++;
+    rd->updated = 1;        
+    // May need to apply the algorithms from rrdsetdone here but we don't have (last_)collected_total. This is necessary only for stream version compatibility.
+    // rrdset_done_apply_algorithm(rd); //define the calculated_value
+    rd->last_collected_value = rd->collected_value;
+    rd->last_calculated_value = rd->calculated_value;
+    
     return PARSER_RC_OK;
     disable:
         error(
@@ -456,6 +463,7 @@ PARSER_RC streaming_rep_end(char **words, void *user_v, PLUGINSD_ACTION *plugins
 
     struct rrdset_volatile *state = user->st->state;
 
+    user->st->usec_since_last_update = (user->st->last_updated.tv_sec)?(((state->window_end - user->st->update_every) - user->st->last_updated.tv_sec))*USEC_PER_SEC:0;
     user->st->last_updated.tv_sec = state->window_end - user->st->update_every;
     user->st->last_collected_time.tv_sec = user->st->last_updated.tv_sec;
     user->st->last_collected_time.tv_usec = USEC_PER_SEC/2;
@@ -468,7 +476,6 @@ PARSER_RC streaming_rep_end(char **words, void *user_v, PLUGINSD_ACTION *plugins
         while (user->st->current_entry >= user->st->entries)        // Once except for an exceptional corner-case
             user->st->current_entry -= user->st->entries;
         user->st->collected_total = col_total;
-        user->st->last_collected_total = last_total;
         debug(D_REPLICATION, "Finished replication %s: window %ld/%ld..%ld with %zu-pts transferred, advance=%ld-pts",
                              user->st->name, state->window_start, state->window_first, state->window_end, num_points,
                              advance);
@@ -478,8 +485,11 @@ PARSER_RC streaming_rep_end(char **words, void *user_v, PLUGINSD_ACTION *plugins
     // According to Andrew empty slot transmission signals the other hop for the absence of data. Do we need to keep it? or are we doing anything with this info?
     if (user->st->state->sync) {
         debug(D_STREAM, "Hop=1 and Hop=0 are in sync for %s", user->st->id);
-        if(user->host->rrdpush_send_enabled && user->host->rrdpush_sender_connected)
+        if(user->host->rrdpush_send_enabled && user->host->rrdpush_sender_connected){
             rrdset_done_push_to_hops(user->st);
+            user->st->last_collected_total = user->st->collected_total;
+
+        }
     }
 
     } else {
@@ -896,11 +906,12 @@ static int rrdpush_receive(struct receiver_state *rpt)
         aclk_host_state_update(rpt->host, ACLK_CMD_CHILD_CONNECT);
 #endif
 
-    if (rpt->stream_version == VERSION_GAP_FILLING) {
+    if (rpt->stream_version == VERSION_GAP_FILLING)
         receiver_tx_thread_spawn(rpt);
-        if (unlikely(rpt->host->rrdpush_send_enabled && !rpt->host->rrdpush_sender_spawn))
-            rrdpush_sender_thread_spawn(rpt->host);
-        }
+    
+    if (unlikely(rpt->host->rrdpush_send_enabled && !rpt->host->rrdpush_sender_spawn))
+        rrdpush_sender_thread_spawn(rpt->host);        
+    
     size_t count = streaming_parser(rpt, &cd, fp);
 
     log_stream_connection(rpt->client_ip, rpt->client_port, rpt->key, rpt->host->machine_guid, rpt->hostname,

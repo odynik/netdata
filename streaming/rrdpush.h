@@ -133,6 +133,8 @@ extern int configured_as_parent();
 extern void rrdset_done_push(RRDSET *st);
 extern void rrdset_done_push_to_hops(RRDSET *st);
 extern void rrdset_done_push_fill_empty_slots(RRDSET *st, time_t window_start, time_t window_end);
+extern void rrdset_done_apply_algorithm(RRDDIM *rd);
+
 extern void rrddim_done_push_fill_empty_slots(RRDDIM *rd, time_t window_start, time_t window_end, long offset);
 extern void rrdset_push_chart_definition_now(RRDSET *st);
 extern void *rrdpush_sender_thread(void *ptr);
