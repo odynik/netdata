@@ -350,10 +350,12 @@ class State(object):
             if n.started and len(sh(f"grep -i '{n.parser.matchers['Finished replication on'].pattern}\|{n.parser.matchers['Fill replication with'].pattern}' {n.log}",self.output))>0:
                 print(f"  Node {n.name} was involved in replication", file=self.output)
                 nodes_involved_replication+=1
+            else:
+                print(f"  Node {n.name} was NOT involved in replication", file=self.output)
         if(nodes_involved_replication == len(self.nodes.values())):
             print(f"  PASSED  replication detected on all {len(self.nodes.values())} nodes", file=self.output)
             return True
-        print(f"  FAILED no replication detected on nodes", file=self.output)
+        print(f"  FAILED no replication detected on all {len(self.nodes.values())} nodes", file=self.output)
         return False
 
 

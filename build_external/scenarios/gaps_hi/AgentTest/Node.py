@@ -55,11 +55,11 @@ class Node(object):
             print(f"version: '3.3'", file=f)
             print(f"services:", file=f)
             print(f"    {self.name}:", file=f)
-            if(list(self.stream_version.values())[0] == 4):
-                print(f"        image: debian_10_dev", file=f)
-            else:
-                print(f"        image: debian_10_master", file=f)
-            #print(f"        command: /usr/bin/gdb ", file=f)
+            # if(list(self.stream_version.values())[0] == 4):
+            #     print(f"        image: debian_10_dev", file=f)
+            # else:
+            #     print(f"        image: debian_10_master", file=f)
+            print(f"        image: debian_10_dev", file=f)
             if self.port is not None:
                 print(f"        ports:", file=f)
                 print(f"            - {self.port}:19999", file=f)
@@ -73,7 +73,8 @@ class Node(object):
             print(f"            - SYS_PTRACE", file=f)
         with open(conf, "w") as f:
             print(f"[global]", file=f)
-            print(f"    debug flags = 0x0000000840000000", file=f)
+            # print(f"    debug flags = 0x0000000840000000", file=f)
+            print(f"    debug flags = 0x0000000040000000", file=f)            
             print(f"    errors flood protection period = 0", file=f)
             print(f"    hostname = {self.name}", file=f)
             print(f"    memory mode = {self.db_mode}", file=f)
@@ -86,7 +87,7 @@ class Node(object):
             print(f"#    allow connections from = *", file=f)
             print(f"#    allow streaming from = *", file=f)
             print(f"#    tls version = 1.3", file=f)
-            print(f"#    tls ciphers = TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM_SHA256", file=f)            
+            print(f"#    tls ciphers = TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM_SHA256", file=f)
             if self.receiver and self.tls:
                 print(f"    ssl key = /etc/netdata/ssl/localhost.key", file=f)
                 print(f"    ssl certificate = /etc/netdata/ssl/localhost.crt", file=f)
@@ -96,10 +97,15 @@ class Node(object):
                 if file == "netdata.conf" and section == "web":
                     print(f"    {v}",file=f)
         with open(stream, "w") as f:
-            if self.stream_target is not None:
-                print(f"[stream]", file=f)
+            print(f"[stream]", file=f)
+            if self.stream_target is None:
+                print(f"    enabled = no", file=f)
+            else:
                 print(f"    enabled = yes", file=f)
-                print(f"    enable replication = yes", file=f)
+                if(list(self.stream_version.values())[0] > 3):
+                    print(f"    enable replication = yes", file=f)
+                else:
+                    print(f"    enable replication = no", file=f)                    
                 if self.tls:
                     print(f"    destination = tcp:{self.stream_target.name}:SSL", file=f)
                     print(f"    ssl skip certificate verification = yes", file=f)                    
@@ -113,7 +119,7 @@ class Node(object):
                 print(f"    send charts matching = *", file=f)
                 print(f"    buffer size bytes = 10485760", file=f)
                 print(f"    reconnect delay seconds = 5", file=f)
-                print(f"    initial clock resync iterations = 60", file=f)
+                print(f"    initial clock resync iterations = 1", file=f)
                 print(f"    gap replication block size = 60", file=f)
                 print(f"    history gap replication = 60", file=f)
                 print(f"    max gap replication = 60", file=f)
@@ -124,7 +130,10 @@ class Node(object):
             if self.receiver:
                 print(f"[{self.receive_from_api_key}]", file=f)
                 print(f"    enabled = yes", file=f)
-                print(f"    enable replication = yes", file=f)
+                if(list(self.stream_version.values())[0] > 3):
+                    print(f"    enable replication = yes", file=f)
+                else:
+                    print(f"    enable replication = no", file=f)
                 print(f"    allow from = *", file=f)
                 print(f"    default history = 3600", file=f)
                 print(f"    # default memory mode = ram", file=f)
