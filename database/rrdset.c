@@ -1921,7 +1921,7 @@ after_second_database_work:
     // ALL DONE ABOUT THE DATA UPDATE
     // --------------------------------------------------------------------
 
-    if(unlikely(st->rrdhost->rrdpush_send_enabled && st->rrdhost->rrdpush_sender_connected))
+    if(unlikely(st->rrdhost->rrdpush_send_enabled && st->rrdhost->rrdpush_sender_connected && !st->rrdhost->sender->overflow))
         sender_replicate(st);
 
     // find if there are any obsolete dimensions
