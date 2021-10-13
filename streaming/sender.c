@@ -559,6 +559,7 @@ static void sender_execute_commands(struct sender_state *s) {
                         start = after+1;
                         if (overflow) {
                             info("Stopped executing explicit replication commands because the send buffer is filling up.");
+                            debug(D_STREAM, "Stopped executing explicit replication commands because the send buffer is filling up.");
                             // break;
                             return;
                         }
@@ -748,7 +749,7 @@ void *rrdpush_sender_thread(void *ptr) {
             sender_execute_commands(s);
 
         // If we have data and have seen the TCP window open then try to close it by a transmission.
-        if (outstanding && fds[Socket].revents & POLLOUT)
+        if (outstanding && (fds[Socket].revents & POLLOUT))
         {
             size_t len;
             do {
@@ -756,10 +757,12 @@ void *rrdpush_sender_thread(void *ptr) {
                 netdata_mutex_lock(&s->mutex);
                 len = cbuffer_len_unsafe(s->host->sender->buffer); // TODO Code Refactor - put this check and overflow control in the attempt_to_send function.
                 netdata_mutex_unlock(&s->mutex);
-            } while(s->overflow && ( len >= (s->host->sender->buffer->max_size / 3)) && s->host->rrdpush_sender_connected);
+            } while(s->overflow && ( len >= (s->host->sender->buffer->max_size / 3)) && s->host->rrdpush_sender_connected && (fds[Socket].revents & POLLOUT));
             if(s->overflow){
                 info("STREAM %s [send to %s]: Sending to empty the overflowed(%d) buffer of size (%zu-bytes). Send bytes so far %zu bytes.",
                   s->host->hostname, s->connected_to, s->overflow, s->buffer->size, s->sent_bytes_on_this_connection);
+                debug(D_STREAM, "STREAM %s [send to %s]: Sending to empty the overflowed(%d) buffer of size (%zu-bytes). Send bytes so far %zu bytes.",
+                  s->host->hostname, s->connected_to, s->overflow, s->buffer->size, s->sent_bytes_on_this_connection);                  
                 s->overflow = 0; // Overflow protection by sending data to empty the sender buffer. Not restarting the connection.
             }
         }

@@ -267,7 +267,10 @@ PARSER_RC streaming_rep_begin(char **words, void *user_v, PLUGINSD_ACTION *plugi
     
     // Decide how much data can be replicated from the beginning of the window. This is how the sender_fill_gap works.
     // TODO: check if we need to check the window_end in sender_fill_gap_nolock. It is not the initial window_end value.
-    if ((st->state->window_start == st->state->latest_rep_req->start)){
+    time_t current_window_size = st->state->window_end - st->state->window_start;
+    time_t latest_rep_window_size = st->state->latest_rep_req->end - st->state->latest_rep_req->start;
+    if ((st->state->window_start == st->state->latest_rep_req->start) &&
+     (current_window_size >= latest_rep_window_size)){
             debug(D_STREAM, "RECEIVED LATEST REPLICATION REQs for %s [%d] ( REPBEGIN %ld, %ld, %ld)",
             st->id,
             st->state->replication_requests,
@@ -275,8 +278,9 @@ PARSER_RC streaming_rep_begin(char **words, void *user_v, PLUGINSD_ACTION *plugi
             st->state->window_first,
             st->state->window_end);
             st->state->replication_requests--;
-            if(!st->state->replication_requests)
-                st->state->sync = 1;
+            st->state->sync = 1;
+            // if(!st->state->replication_requests)
+            //     st->state->sync = 1;
     }
 
     time_t expected_t = st->last_updated.tv_sec + st->update_every;
@@ -478,8 +482,11 @@ PARSER_RC streaming_rep_end(char **words, void *user_v, PLUGINSD_ACTION *plugins
     // According to Andrew empty slot transmission signals the other hop for the absence of data. Do we need to keep it? or are we doing anything with this info?
     if (user->st->state->sync) {
         debug(D_STREAM, "Hop=1 and Hop=0 are in sync for %s", user->st->id);
-        if(user->host->rrdpush_send_enabled && user->host->rrdpush_sender_connected)
+        if(user->host->rrdpush_send_enabled && user->host->rrdpush_sender_connected){
             rrdset_done_push_to_hops(user->st);
+            debug(D_STREAM, "PUSH to HOP[%s]: Hop=1 and Hop=0 are in sync for %s", user->st->id, user->host->sender->connected_to);
+        }
+            
     }
 
     } else {
