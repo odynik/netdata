@@ -562,10 +562,10 @@ static void sender_execute_commands(struct sender_state *s) {
                         if (overflow) {
                             info("Stopped executing explicit replication commands because the send buffer is filling up.");
                             debug(D_STREAM, "Stopped executing explicit replication commands because the send buffer is filling up.");
-                            // break;
-                            return;
+                            break;
+                            // return;
                         }
-                        continue;
+                        // continue;
                     }
                 }
             }
