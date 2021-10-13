@@ -499,6 +499,8 @@ static void sender_attempt_read(struct sender_state *s) {
         debug(D_STREAM, "Cannot read any more bytes, read buffer is full, need to execute commands first.");
         return;
     }
+    debug(D_STREAM, "%s [send to %s] READ REP CMDS. Read buffer length (%d-bytes): \n%s\n", s->host->hostname,
+        s->connected_to, s->read_len, s->read_buffer);    
 #ifdef ENABLE_HTTPS
     if (s->host->ssl.conn && !s->host->stream_ssl.flags) {
         ERR_clear_error();
@@ -542,8 +544,8 @@ static void sender_execute_commands(struct sender_state *s) {
     char *start = s->read_buffer, *end = &s->read_buffer[s->read_len], *newline;
     int overflow;
     *end = 0;
-    //debug(D_STREAM, "%s [send to %s] received command over connection (%d-bytes): %s", s->host->hostname,
-    //      s->connected_to, s->read_len, start);
+    debug(D_STREAM, "%s [send to %s] EXECUTE REP CMDS. read buffer length (%d-bytes): \n%s\n", s->host->hostname,
+         s->connected_to, s->read_len, start);
     while( start<end && (newline=strchr(start, '\n')) ) {
         *newline = 0;
         if (!strncmp(start, "REPLICATE ", 10)) {
@@ -704,7 +706,7 @@ void *rrdpush_sender_thread(void *ptr) {
         size_t outstanding = cbuffer_next_unsafe(s->host->sender->buffer, &chunk);
         chunk = NULL;   // Do not cache pointer outside of region - could be invalidated
         netdata_mutex_unlock(&s->mutex);
-        if(outstanding) {
+        if(outstanding || s->overflow) {
             s->send_attempts++;
             fds[Socket].events = POLLIN | POLLOUT;
         }
@@ -713,8 +715,6 @@ void *rrdpush_sender_thread(void *ptr) {
         }
 
         int retval = poll(fds, 2, 1000);
-        debug(D_STREAM, "STREAM: poll() finished collector=%d socket=%d (current chunk %zu bytes)...",
-              fds[Collector].revents, fds[Socket].revents, outstanding);
         if(unlikely(netdata_exit)) break;
 
         // Spurious wake-ups without error - loop again
@@ -741,12 +741,14 @@ void *rrdpush_sender_thread(void *ptr) {
 
         // Read as much as possible to fill the buffer, split into full lines for execution.
         if (fds[Socket].revents & POLLIN)
-            if(!s->overflow && s->host->rrdpush_sender_connected)
+            if(!s->overflow && s->host->rrdpush_sender_connected){                
                 sender_attempt_read(s);
+            }
                 
         // Execute replication commands when connected to avoid filling the sender buffer during connection breaks.
-        if(!s->overflow && s->host->rrdpush_sender_connected)
+        if(!s->overflow && s->host->rrdpush_sender_connected){              
             sender_execute_commands(s);
+        }
 
         // If we have data and have seen the TCP window open then try to close it by a transmission.
         if (outstanding && (fds[Socket].revents & POLLOUT))
@@ -757,7 +759,7 @@ void *rrdpush_sender_thread(void *ptr) {
                 netdata_mutex_lock(&s->mutex);
                 len = cbuffer_len_unsafe(s->host->sender->buffer); // TODO Code Refactor - put this check and overflow control in the attempt_to_send function.
                 netdata_mutex_unlock(&s->mutex);
-            } while(s->overflow && ( len >= (s->host->sender->buffer->max_size / 3)) && s->host->rrdpush_sender_connected && (fds[Socket].revents & POLLOUT));
+            } while(s->overflow && ( len >= (s->host->sender->buffer->max_size / 2)) && s->host->rrdpush_sender_connected && (fds[Socket].revents & POLLOUT));
             if(s->overflow){
                 info("STREAM %s [send to %s]: Sending to empty the overflowed(%d) buffer of size (%zu-bytes). Send bytes so far %zu bytes.",
                   s->host->hostname, s->connected_to, s->overflow, s->buffer->size, s->sent_bytes_on_this_connection);
