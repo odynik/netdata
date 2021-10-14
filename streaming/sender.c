@@ -29,7 +29,7 @@ int sender_commit_no_overflow(struct sender_state *s) {
 
     size_t len = cbuffer_len_unsafe(s->host->sender->buffer);
     // check if 50% of the send buffer is filled
-    if (s->host->sender->build->len + len >= s->host->sender->buffer->max_size / 2)
+    if (s->host->sender->build->len + len >= (2* s->host->sender->buffer->max_size / 3))
         ret = 1;
     // check if an overflow occured
     if(cbuffer_add_unsafe(s->host->sender->buffer, buffer_tostring(s->host->sender->build),
@@ -476,9 +476,11 @@ void attempt_to_send(struct sender_state *s) {
         debug(D_STREAM, "STREAM %s [send to %s]: Sent %zd bytes", s->host->hostname, s->connected_to, ret);
         s->last_sent_t = now_monotonic_sec();
     }
-    else if (ret == -1 && (errno == EAGAIN || errno == EINTR || errno == EWOULDBLOCK))
+    else if (ret == -1 && (errno == EAGAIN || errno == EINTR || errno == EWOULDBLOCK)){
         debug(D_STREAM, "STREAM %s [send to %s]: unavailable after polling POLLOUT", s->host->hostname,
               s->connected_to);
+        sleep_usec(USEC_PER_SEC * 0.2); // 200 milliseconds              
+    }
     else if (ret == -1) {
         debug(D_STREAM, "STREAM: Send failed - closing socket...");
         error("STREAM %s [send to %s]: failed to send metrics - closing connection - we have sent %zu bytes on this connection.",  s->host->hostname, s->connected_to, s->sent_bytes_on_this_connection);
@@ -546,7 +548,7 @@ static void sender_execute_commands(struct sender_state *s) {
     *end = 0;
     debug(D_STREAM, "%s [send to %s] EXECUTE REP CMDS. read buffer length (%d-bytes): \n%s\n", s->host->hostname,
          s->connected_to, s->read_len, start);
-    while( start<end && (newline=strchr(start, '\n')) && !s->overflow ) {
+    while( start<end && (newline=strchr(start, '\n'))) {
         *newline = 0;
         if (!strncmp(start, "REPLICATE ", 10)) {
             char *next = strchr(start+10, ' ');
@@ -560,8 +562,8 @@ static void sender_execute_commands(struct sender_state *s) {
                         overflow = sender_execute_replicate(s, start+10, start_t, end_t);
                         start = after+1;
                         if (overflow) {
-                            info("Stopped executing explicit replication commands because the send buffer is filling up.");
-                            debug(D_STREAM, "Stopped executing explicit replication commands because the send buffer is filling up.");
+                            info("Stopped Executing explicit replication commands because the send buffer is filling up.");
+                            debug(D_STREAM, "Stopped Executing explicit replication commands because the send buffer is filling up.");
                             break;
                         }
                         continue;
@@ -738,34 +740,17 @@ void *rrdpush_sender_thread(void *ptr) {
                 error("STREAM %s [send to %s]: cannot read from internal pipe.", s->host->hostname, s->connected_to);
         }
 
-        // Read as much as possible to fill the buffer, split into full lines for execution.
-        if (fds[Socket].revents & POLLIN)
-            if(!s->overflow && s->host->rrdpush_sender_connected){                
+        if (!s->overflow) {
+            // Read as much as possible to fill the buffer, split into full lines for execution.
+            if (fds[Socket].revents & POLLIN)
                 sender_attempt_read(s);
-            }
-                
-        // Execute replication commands when connected to avoid filling the sender buffer during connection breaks.
-        if(!s->overflow && s->host->rrdpush_sender_connected){              
-            sender_execute_commands(s);
-        }
 
-        // If we have data and have seen the TCP window open then try to close it by a transmission.
-        if (outstanding && (fds[Socket].revents & POLLOUT))
-        {
-            size_t len;
-            do {
+            // Execute replication commands when connected to avoid filling the sender buffer during connection breaks.
+            sender_execute_commands(s);
+
+            // If we have data and have seen the TCP window open then try to close it by a transmission.
+            if (outstanding && (fds[Socket].revents & POLLOUT))
                 attempt_to_send(s);
-                netdata_mutex_lock(&s->mutex);
-                len = cbuffer_len_unsafe(s->host->sender->buffer); // TODO Code Refactor - put this check and overflow control in the attempt_to_send function.
-                netdata_mutex_unlock(&s->mutex);
-            } while(s->overflow && ( len >= (s->host->sender->buffer->max_size / 2)) && s->host->rrdpush_sender_connected && (fds[Socket].revents & POLLOUT));
-            if(s->overflow){
-                info("STREAM %s [send to %s]: Sending to empty the overflowed(%d) buffer of size (%zu-bytes). Send bytes so far %zu bytes.",
-                  s->host->hostname, s->connected_to, s->overflow, s->buffer->size, s->sent_bytes_on_this_connection);
-                debug(D_STREAM, "STREAM %s [send to %s]: Sending to empty the overflowed(%d) buffer of size (%zu-bytes). Send bytes so far %zu bytes.",
-                  s->host->hostname, s->connected_to, s->overflow, s->buffer->size, s->sent_bytes_on_this_connection);                  
-                s->overflow = 0; // Overflow protection by sending data to empty the sender buffer. Not restarting the connection.
-            }
         }
 
         // TODO-GAPS - why do we only check this on the socket, not the pipe?
@@ -785,12 +770,50 @@ void *rrdpush_sender_thread(void *ptr) {
         }
 
         // // protection from overflow
-        // if (s->overflow) {
-        //     errno = 0;
-        //     error("STREAM %s [send to %s]: buffer full (%zu-bytes) after %zu bytes. Restarting connection",
-        //           s->host->hostname, s->connected_to, s->buffer->size, s->sent_bytes_on_this_connection);
-        //     rrdpush_sender_thread_close_socket(s->host);
-        // }
+        if (s->overflow) {
+            // A sender buffer overflow most of the times occur after the restart of the remote receiver thread after a long down time.
+            // The restart causes a flood of replication requests that need to be executed in order to stabilize the replication of data in the past and then resume
+            // back to the normal streaming operation.
+            // The idead here is that the s->overflow flag is used to block any sender function that can feel the sender circular buffer such as the sender_replicate in rrdset_done or any other call in sender_fill_gap(). Then we prioritize the execution of the replication commands in order to synchronize the receiving and sending end.
+            size_t len = 0;
+            while ((s->read_len > (int)(sizeof(s->read_buffer)/10)) && (len >= (s->host->sender->buffer->max_size / 10))) {
+                // Drastically reduce the cmds in the sender buffer so it can accept the replication requests.
+                if ((fds[Socket].revents & POLLOUT)) {
+                    do {
+                        attempt_to_send(s);
+                        netdata_mutex_lock(&s->mutex);
+                        len = cbuffer_len_unsafe(
+                            s->host->sender
+                                ->buffer); // TODO Code Refactor - put this check and overflow control in the attempt_to_send function.
+                        netdata_mutex_unlock(&s->mutex);
+                    } while ((len >= (s->host->sender->buffer->max_size / 10)) &&
+                             (fds[Socket].revents & POLLOUT));
+                    info(
+                        "STREAM %s [send to %s]: Sending to empty the overflowed(%d) buffer of size (%zu-bytes). Send bytes so far %zu bytes.",
+                        s->host->hostname,
+                        s->connected_to,
+                        s->overflow,
+                        s->buffer->size,
+                        s->sent_bytes_on_this_connection);
+                    debug(
+                        D_STREAM,
+                        "STREAM %s [send to %s]: Sending to empty the overflowed(%d) buffer of size (%zu-bytes). Send bytes so far %zu bytes.",
+                        s->host->hostname,
+                        s->connected_to,
+                        s->overflow,
+                        s->buffer->size,
+                        s->sent_bytes_on_this_connection);
+                }
+                // Drastically reduce the rep cmds in the read buffer.
+                sender_execute_commands(s);
+                // The circular sender buffer is now filled with rep commands.
+                netdata_mutex_lock(&s->mutex);
+                len = cbuffer_len_unsafe(s->host->sender->buffer); // The length of the sender buffer with rep commands.
+                netdata_mutex_unlock(&s->mutex);
+            }
+            // Overflow protection by sending data to empty the sender buffer. Not restarting the connection.
+            s->overflow = 0;
+        }
 
     }
 
@@ -923,10 +946,10 @@ static int sender_execute_replicate(struct sender_state *s, char *st_id, long st
             rrdset_rdlock(st);
             sender_start(s);                    // Locks the sender buffer
             sender_fill_gap_nolock(s, st, start_t);
-            // overflow = sender_commit_no_overflow(s); // Releases the sender buffer
+            overflow = sender_commit_no_overflow(s); // Releases the sender buffer
             sender_commit(s);
             rrdset_unlock(st);
     }
-    overflow = s->overflow;
+    // overflow = s->overflow;
     return overflow;
 }
