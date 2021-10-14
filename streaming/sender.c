@@ -546,7 +546,7 @@ static void sender_execute_commands(struct sender_state *s) {
     *end = 0;
     debug(D_STREAM, "%s [send to %s] EXECUTE REP CMDS. read buffer length (%d-bytes): \n%s\n", s->host->hostname,
          s->connected_to, s->read_len, start);
-    while( start<end && (newline=strchr(start, '\n')) ) {
+    while( start<end && (newline=strchr(start, '\n')) && !s->overflow ) {
         *newline = 0;
         if (!strncmp(start, "REPLICATE ", 10)) {
             char *next = strchr(start+10, ' ');
@@ -563,9 +563,8 @@ static void sender_execute_commands(struct sender_state *s) {
                             info("Stopped executing explicit replication commands because the send buffer is filling up.");
                             debug(D_STREAM, "Stopped executing explicit replication commands because the send buffer is filling up.");
                             break;
-                            // return;
                         }
-                        // continue;
+                        continue;
                     }
                 }
             }
