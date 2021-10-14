@@ -479,7 +479,7 @@ void attempt_to_send(struct sender_state *s) {
     else if (ret == -1 && (errno == EAGAIN || errno == EINTR || errno == EWOULDBLOCK)){
         debug(D_STREAM, "STREAM %s [send to %s]: unavailable after polling POLLOUT", s->host->hostname,
               s->connected_to);
-        sleep_usec(USEC_PER_SEC * 0.2); // 200 milliseconds              
+        // sleep_usec(USEC_PER_SEC * 0.2); // 200 milliseconds
     }
     else if (ret == -1) {
         debug(D_STREAM, "STREAM: Send failed - closing socket...");
