@@ -781,6 +781,7 @@ void *rrdpush_sender_thread(void *ptr) {
                 if ((fds[Socket].revents & POLLOUT)) {
                     do {
                         attempt_to_send(s);
+                        sleep_usec(USEC_PER_SEC * 0.2); // 200 milliseconds to give time for TCP ack and not reduce the throughtput from the receiver.
                         netdata_mutex_lock(&s->mutex);
                         len = cbuffer_len_unsafe(
                             s->host->sender
