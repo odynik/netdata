@@ -442,7 +442,7 @@ class State(object):
         if not chart_info:
             print(f"  FAILED to retrieve charts from {self.nodes[current_hop].name}")
             return False
-        charts = ("system.cpu", "system.load", "system.io", "system.ram", "system.ip", "system.processes")
+        charts = ("system.cpu", "system.load", "system.io", "system.ram", "system.ip", "system.processes","memindex_testmemindex.inorder")
         passed = True            
         for mirror_host in mirrored_hosts:
             for ch in charts:

@@ -1,7 +1,8 @@
 import functools, itertools, math, operator, os, re, sys, time
 import AgentTest
 import numpy as np
-from test_cases import *
+from testcategories.interruptions import *
+from testcategories.startupinorder import *
 
 # Current directory
 me   = os.path.abspath(sys.argv[0])
@@ -52,9 +53,10 @@ mm_combinations = [
 pv_combinations = [
     ("rep", "rep", "rep"),
     ("master", "rep", "rep"),
-    ("rep", "rep", "master"),
-    ("rep", "master", "rep"),
-    ("master", "rep", "master")
+    # # ("rep", "rep", "master"),
+    # ("rep", "master", "rep"),
+    # ("master", "rep", "master"),
+    # ("master", "master", "master")
     ]
 # print("\GUID numbers(" + str(len(guids)) + "):")
 # print(*guids)
@@ -78,13 +80,33 @@ def add_agent_node(state, name, guid, port, mm, api_key, tls_on=False, stream_ve
 
 hop_configuration =[]
 hop_test_cases = [
-    AscendingOrderHopStart,
+    # AscendingOrderHopStart,
     # DescendingOrderHopStart,
     # MixedOrderHopStart,
-    # Hop1ShortRestartInSecs,
-    # Hop1ShortRestartGTmin,
+    Hop1ShortRestartInSecs,
+    Hop1ShortRestartGTmin,
     # Hop2RestartOverlapsHop1Restart,
-    # Hop1LongRestartHop0SenderBufferOverflow
+    # Hop1LongRestartHop0SenderBufferOverflow,
+    # AscendingOrderHopStart,
+    # DescendingOrderHopStart,
+    # MixedOrderHopStart,
+    # Hop0ShortRestartShort_stopnet,
+    # Hop0ShortRestartLong_stopnet,
+    # Hop0LongRestartShort_stopnet,
+    # Hop0LongRestartLong_stopnet,
+    # Hop1ShortRestartShort_stopnet,
+    # Hop1ShortRestartLong_stopnet,
+    # Hop1LongRestartShort_stopnet,
+    # Hop1LongRestartLong_stopnet,
+    # Hop0ShortRestartShort_kill,
+    # Hop0ShortRestartLong_kill,
+    # Hop0LongRestartShort_kill,
+    # Hop0LongRestartLong_kill,
+    # Hop1ShortRestartShort_kill,
+    # Hop1ShortRestartLong_kill,
+    # Hop1LongRestartShort_kill,
+    # Hop1LongRestartLong_kill,
+    # Hop2RestartOverlapsHop1Restart,
 ]    
 
 for stream_version in pv_combinations:

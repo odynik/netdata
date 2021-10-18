@@ -48,6 +48,8 @@ class Node(object):
         guid = os.path.join(base, f"{self.name}-guid")
         conf = os.path.join(base, f"{self.name}-netdata.conf")
         stream = os.path.join(base, f"{self.name}-stream.conf")
+        python_plugins_src = os.path.abspath(os.path.join(base, "../../../../../collectors/python.d.plugin/test_mem_index/memindex.chart.py"))    
+        python_plugins_conf = os.path.abspath(os.path.join(base, "../../../../../collectors/python.d.plugin/test_mem_index/memindex.conf"))
         tls_cert = os.path.abspath(os.path.join(base, "../../certificates"))
         with open(guid, "w") as f:
             print(self.guid,file=f)
@@ -67,6 +69,8 @@ class Node(object):
             print(f"            - {stream}:/etc/netdata/stream.conf:ro", file=f)
             print(f"            - {guid}:/var/lib/netdata/registry/netdata.public.unique.id:ro", file=f)
             print(f"            - {conf}:/etc/netdata/netdata.conf:ro", file=f)
+            print(f"            - {python_plugins_src}:/usr/libexec/netdata/python.d/memindex.chart.py:ro", file=f)
+            print(f"            - {python_plugins_conf}:/etc/netdata/python.d/memindex.conf:ro", file=f)
             if self.tls:
                 print(f"#            - {tls_cert}:/etc/netdata/ssl:ro", file=f)
             print(f"        cap_add:", file=f)
@@ -96,6 +100,21 @@ class Node(object):
                 file, section = k.split("/")
                 if file == "netdata.conf" and section == "web":
                     print(f"    {v}",file=f)
+            print(f"[plugins]", file=f)
+            print(f"#    enable running new plugins = yes", file=f)
+            print(f"#    check for new plugins every = 60", file=f)
+            print(f"#    charts.d = yes", file=f)
+            print(f"    python.d = yes", file=f)
+            for k,v in self.config.items():
+                file, section = k.split("/")
+                if file == "netdata.conf" and section == "plugins":
+                    print(f"    {v}",file=f)
+            print(f"[plugin:memindex]", file=f)
+            print(f"#    update every = 1", file=f)
+            for k,v in self.config.items():
+                file, section = k.split("/")
+                if file == "netdata.conf" and section == "plugin:memindex":
+                    print(f"    {v}",file=f)                                        
         with open(stream, "w") as f:
             print(f"[stream]", file=f)
             if self.stream_target is None:
