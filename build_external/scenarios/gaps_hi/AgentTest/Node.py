@@ -57,11 +57,11 @@ class Node(object):
             print(f"version: '3.3'", file=f)
             print(f"services:", file=f)
             print(f"    {self.name}:", file=f)
-            # if(list(self.stream_version.values())[0] == 4):
-            #     print(f"        image: debian_10_dev", file=f)
-            # else:
-            #     print(f"        image: debian_10_master", file=f)
-            print(f"        image: debian_10_dev", file=f)
+            if(list(self.stream_version.values())[0] == 4):
+                print(f"        image: debian_10_dev", file=f)
+            else:
+                print(f"        image: debian_10_master", file=f)
+            #print(f"        image: debian_10_dev", file=f)
             if self.port is not None:
                 print(f"        ports:", file=f)
                 print(f"            - {self.port}:19999", file=f)

@@ -1,8 +1,9 @@
 import functools, itertools, math, operator, os, re, sys, time
 import AgentTest
 import numpy as np
-from testcategories.interruptions import *
-from testcategories.startupinorder import *
+# from testcategories.interruptions import *
+# from testcategories.startupinorder import *
+from testcategories.firstsample import *
 
 # Current directory
 me   = os.path.abspath(sys.argv[0])
@@ -42,21 +43,21 @@ protocols_version = {"master": 3, "rep":4}
 memory_modes = ["dbengine", "save"] # add here any extra memory modes for testing
 
 # Combinations based on maths or most common use cases.
-# mm_combinations = list(itertools.product(memory_modes, repeat=numofagents))
-mm_combinations = [
-    ("dbengine", "dbengine", "dbengine"),
-    ("save", "dbengine", "dbengine"),
-    ("ram", "dbengine", "dbengine")
-    ]
+mm_combinations = list(itertools.product(memory_modes, repeat=numofagents))
+# mm_combinations = [
+#     ("dbengine", "dbengine", "dbengine"),
+#     ("save", "dbengine", "dbengine"),
+#     ("ram", "dbengine", "dbengine")
+#     ]
 
 # pv_combinations = list(itertools.product(protocols_version.keys(), repeat=numofagents))
 pv_combinations = [
-    ("rep", "rep", "rep"),
-    ("master", "rep", "rep"),
+    # ("rep", "rep", "rep"),
+    # ("master", "rep", "rep"),
     # # ("rep", "rep", "master"),
     # ("rep", "master", "rep"),
     # ("master", "rep", "master"),
-    # ("master", "master", "master")
+    ("master", "master", "master")
     ]
 # print("\GUID numbers(" + str(len(guids)) + "):")
 # print(*guids)
@@ -80,11 +81,14 @@ def add_agent_node(state, name, guid, port, mm, api_key, tls_on=False, stream_ve
 
 hop_configuration =[]
 hop_test_cases = [
+    # Hop0RetrieveSamplesInorder,
+    # Hop01RetrieveSamplesInorder,
+    Hop012RetrieveSamplesInorder,
     # AscendingOrderHopStart,
     # DescendingOrderHopStart,
     # MixedOrderHopStart,
-    Hop1ShortRestartInSecs,
-    Hop1ShortRestartGTmin,
+    # Hop1ShortRestartInSecs,
+    # Hop1ShortRestartGTmin,
     # Hop2RestartOverlapsHop1Restart,
     # Hop1LongRestartHop0SenderBufferOverflow,
     # AscendingOrderHopStart,

@@ -494,3 +494,27 @@ class State(object):
                     passed = False
         print(f'  {"PASSED" if passed else "FAILED"} check_sync', file=self.output)
         return passed
+
+    def get_api_data(self, current_hop):
+            chart_info = self.nodes[current_hop].get_charts()
+            if not chart_info:
+                print(f"  FAILED to retrieve charts from {self.nodes[current_hop].name}")
+                return False
+            charts = ("system.cpu", "system.load", "system.io", "system.ram", "system.ip", "system.processes","memindex_testmemindex.inorder")
+            passed = True            
+            for ch in charts:
+                update_every = chart_info["charts"][ch]["update_every"]
+                current_host_json = self.nodes[current_hop].get_data(ch)
+                if not current_host_json:
+                    print(f"  FAILED to check sync looking at {self.nodes[current_hop].http}localhost:{self.nodes[current_hop].port}", file=self.output)
+                    passed = False
+                    continue
+                if len(current_host_json["data"])==0:
+                    print(f"  FAILED to retrieve {ch} from {current_hop} - response has zero rows", file=self.output)
+                    passed = False
+                    continue
+                print(f"Save JSON data for {current_hop} {ch} {update_every}", file=self.output)
+                with open(os.path.join(self.test_base,f"{current_hop}-{ch}.json"),"wt") as f:
+                    f.write(json.dumps(current_host_json, sort_keys=True, indent=4))
+            print(f'  {"PASSED" if passed else "FAILED"} retrieve JSON data from {current_hop}', file=self.output)
+            return passed
