@@ -89,6 +89,7 @@ packaging/makeself/tmp/
 cov-int/
 netdata-coverity-analysis.tgz
 .coverity-scan.conf
+gdb.conf
 
 .cproject/
 .idea/
@@ -198,6 +199,9 @@ test-driver
 **/tests/*_testdriver
 **/tests/*_testdriver.trs
 python.d/python-modules-installer.sh
+*test_results.txt
+build_external/scenarios/gaps_hi/certificates/
+build_external/scenarios/gaps_hi/working/
 
 # documentation generated files
 docs/generator/src
