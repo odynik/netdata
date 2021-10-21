@@ -232,6 +232,7 @@ size_t streaming_parser(struct receiver_state *rpt, struct plugind *cd, FILE *fp
         int pos = 0;
         char *line;
         while ((line = receiver_next_line(rpt, &pos))) {
+            debug(D_STREAM, "RECV BUFFER(%s): [%s]", rpt->host->hostname, line);
             if (unlikely(netdata_exit || rpt->shutdown || parser_action(parser,  line)))
                 goto done;
         }

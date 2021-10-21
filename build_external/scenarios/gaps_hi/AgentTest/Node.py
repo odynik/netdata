@@ -17,7 +17,7 @@ class Node(object):
         self.receive_from_api_key = None
         self.tls = False
         self.http = "http://"
-        self.stream_version = {"rep": 4}
+        self.stream_version = {"clabel": 4}
         self.config = {}
 
     """ Returns a copy of the node object """
@@ -218,3 +218,23 @@ class Node(object):
             except requests.exceptions.ConnectionError:
                 print(f"  Mirrored hosts info fetch failed {url} -> connection refused")
                 return None
+
+    def get_clabels(self, chart="netdata.random_chart_0", host=None):
+        '''This function will retrieve and return the chart labels'''
+        if host is None:
+            url = f"{self.http}localhost:{self.port}/api/v1/chart?chart={chart}"
+        else:
+            url = f"{self.http}localhost:{self.port}/host/{host}/api/v1/chart?chart={chart}"
+        try:
+            r = requests.get(url)
+            chart_info = r.json()
+            if(len(chart_info['chart_labels']) > 0):
+                return chart_info['chart_labels']
+            if(len(chart_info['chart_labels']) == 0):
+                return "empty"
+        except json.decoder.JSONDecodeError:
+            print(f"  Fetch failed {url} -> {r.text}")
+            return None
+        except requests.exceptions.ConnectionError:
+            print(f"  Fetch failed {url} -> connection refused")
+            return None

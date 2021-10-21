@@ -301,6 +301,7 @@ static inline void rrdpush_send_chart_metrics_nolock(RRDSET *st, struct sender_s
         );
     }
     buffer_strcat(host->sender->build, "END\n");
+    debug(D_STREAM, "Send BUFFER(%s): [%s]",host->hostname, buffer_tostring(host->sender->build));
 }
 
 static void rrdpush_sender_thread_spawn(RRDHOST *host);

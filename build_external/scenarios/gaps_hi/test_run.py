@@ -3,7 +3,8 @@ import AgentTest
 import numpy as np
 # from testcategories.interruptions import *
 # from testcategories.startupinorder import *
-from testcategories.firstsample import *
+# from testcategories.firstsample import *
+from testcategories.sendclabels import *
 
 # Current directory
 me   = os.path.abspath(sys.argv[0])
@@ -39,7 +40,9 @@ numofagents = 3
 port_base = 20000
 agents = ["hop"+str(i) for i in range(numofagents)]
 ports = np.arange(port_base, (port_base + numofagents), 1)
-protocols_version = {"master": 3, "rep":4}
+# protocols_version = {"master": 3, "clabel": 4,"rep": 5}
+protocols_version = {"master": 3, "clabel": 4}
+# memory_modes = ["dbengine", "save", "ram", "none"] # add here any extra memory modes for testing
 memory_modes = ["dbengine", "save"] # add here any extra memory modes for testing
 
 # Combinations based on maths or most common use cases.
@@ -51,13 +54,27 @@ mm_combinations = list(itertools.product(memory_modes, repeat=numofagents))
 #     ]
 
 # pv_combinations = list(itertools.product(protocols_version.keys(), repeat=numofagents))
+# pv_combinations = [
+#     # ("rep", "rep", "rep"),
+#     # ("master", "rep", "rep"),
+#     # # ("rep", "rep", "master"),
+#     # ("rep", "master", "rep"),
+#     # ("master", "rep", "master"),
+#     ("clabel", "clabel", "clabel"),
+#     ("master", "clabel", "clabel"),
+#     ("clabel", "master", "clabel"),
+#     ("master", "master", "clabel")
+#     ]
 pv_combinations = [
-    # ("rep", "rep", "rep"),
-    # ("master", "rep", "rep"),
-    # # ("rep", "rep", "master"),
-    # ("rep", "master", "rep"),
-    # ("master", "rep", "master"),
-    ("master", "master", "master")
+    ("clabel", "clabel", "clabel"),
+    ("master", "clabel", "clabel"),
+    ("clabel", "master", "clabel"),
+    ("clabel", "clabel", "master"),
+    ("master", "clabel", "master")
+    # ("clabel", "clabel"),
+    # ("master", "clabel"),
+    # ("clabel", "master"),
+    # ("master", "master")
     ]
 # print("\GUID numbers(" + str(len(guids)) + "):")
 # print(*guids)
@@ -69,7 +86,7 @@ print(f"\nProtocol Version combinations(" + str(len(pv_combinations)) + "):")
 print(*pv_combinations, sep="\n")
 
 
-def add_agent_node(state, name, guid, port, mm, api_key, tls_on=False, stream_version={"rep":4}):
+def add_agent_node(state, name, guid, port, mm, api_key, tls_on=False, stream_version={"clabel": 4}):
     agent_node = state.add_node(name)
     agent_node.port = port
     agent_node.guid = guid
@@ -81,36 +98,9 @@ def add_agent_node(state, name, guid, port, mm, api_key, tls_on=False, stream_ve
 
 hop_configuration =[]
 hop_test_cases = [
-    # Hop0RetrieveSamplesInorder,
-    # Hop01RetrieveSamplesInorder,
-    Hop012RetrieveSamplesInorder,
-    # AscendingOrderHopStart,
-    # DescendingOrderHopStart,
-    # MixedOrderHopStart,
-    # Hop1ShortRestartInSecs,
-    # Hop1ShortRestartGTmin,
-    # Hop2RestartOverlapsHop1Restart,
-    # Hop1LongRestartHop0SenderBufferOverflow,
-    # AscendingOrderHopStart,
-    # DescendingOrderHopStart,
-    # MixedOrderHopStart,
-    # Hop0ShortRestartShort_stopnet,
-    # Hop0ShortRestartLong_stopnet,
-    # Hop0LongRestartShort_stopnet,
-    # Hop0LongRestartLong_stopnet,
-    # Hop1ShortRestartShort_stopnet,
-    # Hop1ShortRestartLong_stopnet,
-    # Hop1LongRestartShort_stopnet,
-    # Hop1LongRestartLong_stopnet,
-    # Hop0ShortRestartShort_kill,
-    # Hop0ShortRestartLong_kill,
-    # Hop0LongRestartShort_kill,
-    # Hop0LongRestartLong_kill,
-    # Hop1ShortRestartShort_kill,
-    # Hop1ShortRestartLong_kill,
-    # Hop1LongRestartShort_kill,
-    # Hop1LongRestartLong_kill,
-    # Hop2RestartOverlapsHop1Restart,
+    # Hop01RetrieveCLabels,
+    # Hop012RetrieveCLabels,
+    Hop012RetrieveCLabelsHop1Restart
 ]    
 
 for stream_version in pv_combinations:

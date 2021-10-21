@@ -931,6 +931,51 @@ void global_statistics_charts(void) {
     }
 #endif
 
+// To be removed....added only for testing of the PR#11675
+#define CHARTS 3
+    static RRDSET *st_random_stress[CHARTS];
+    static RRDDIM *rd_random_val_1[CHARTS];
+    static RRDDIM *rd_random_val_2[CHARTS];
+    struct label *chart_labels = NULL;
+
+    char id[100 + 1];
+    char title[100 + 1];
+
+    for (int i=0; i<CHARTS; i++) {
+        if (unlikely(!st_random_stress[i])) {
+
+            snprintfz(id, 100, "random_chart_%d", i);
+            snprintfz(title, 100, "Random Chart %d", i);
+
+            st_random_stress[i] = rrdset_create_localhost(
+                                                       "netdata"
+                                                       , id
+                                                       , NULL
+                                                       , "random"
+                                                       , NULL
+                                                       , title
+                                                       , "numbers"
+                                                       , "netdata"
+                                                       , "stress"
+                                                       , 130510+i
+                                                       , localhost->rrd_update_every
+                                                       , RRDSET_TYPE_LINE
+                                                       );
+            
+            rrdset_add_label_to_new_list(st_random_stress[i], "STRESS KEY", title, LABEL_SOURCE_AUTO);
+            rrdset_finalize_labels(st_random_stress[i]);
+
+            rd_random_val_1[i] = rrddim_add(st_random_stress[i], "random val 1", NULL, 1, 1, RRD_ALGORITHM_ABSOLUTE);
+            rd_random_val_2[i] = rrddim_add(st_random_stress[i], "random val 2", NULL, 1, 1, RRD_ALGORITHM_ABSOLUTE);
+        }
+        else
+            rrdset_next(st_random_stress[i]);
+
+        rrddim_set_by_pointer(st_random_stress[i], rd_random_val_1[i], random() * 10 / RAND_MAX);
+        rrddim_set_by_pointer(st_random_stress[i], rd_random_val_2[i], random() * 10 / RAND_MAX);
+
+        rrdset_done(st_random_stress[i]);
+    }
 }
 
 static void global_statistics_cleanup(void *ptr)

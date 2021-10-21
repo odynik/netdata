@@ -157,7 +157,8 @@ class State(object):
                                            "Finished replication on"  : "REPLICATE",
                                            "Fill replication with" : "REPLICATE",
                                            "GDB Signal Interrupt" : "received signal",
-                                           "TLS/SSL error": "SSL Handshake error"})
+                                           "TLS/SSL error": "SSL Handshake error",
+                                           "CLABEL/CLABEL_COMMIT" : "CLABEL"})
         # Suppress DNS failures in two node scenario on the top level
         self.parser2         = LogParser({ "child connect": "client willing",
                                            "child disconnect" : "STREAM child.*disconnected \(completed",
@@ -169,7 +170,8 @@ class State(object):
                                            "Finished replication on"  : "REPLICATE",
                                            "Fill replication with"  : "REPLICATE",
                                            "GDB Signal Interrupt" : "received signal",
-                                           "TLS/SSL error": "SSL Handshake error"})
+                                           "TLS/SSL error": "SSL Handshake error",
+                                           "CLABEL/CLABEL_COMMIT" : "CLABEL"})
 
     def copy(self):
         result = State(self.working[:], self.config[:], self.config_label[:], self.prefix[:],
@@ -357,6 +359,22 @@ class State(object):
             return True
         print(f"  FAILED no replication detected on all {len(self.nodes.values())} nodes", file=self.output)
         return False
+    
+    def check_clabels(self):
+        '''Check that clabels keywords (CLABEL, CLABEL_COMMIT) did occur during the test by scanning the logs for debug msgs.'''
+        nodes_transceive_clabels = 0
+        for n in self.nodes.values():
+            # print(f"  MATCHERS {n.parser.matchers} in clabels", file=self.output)
+            if n.started and len(sh(f"grep -i '{n.parser.matchers['CLABEL/CLABEL_COMMIT'].pattern}' {n.log}",self.output))>0:
+                print(f"  Node {n.name} was involved in CLABELS transmission/receipt", file=self.output)
+                nodes_transceive_clabels+=1
+            else:
+                print(f"  Node {n.name} was NOT involved in CLABELS transmission/receipt", file=self.output)
+        if(nodes_transceive_clabels == len(self.nodes.values())):
+            print(f"  PASSED  CLABELS transmission/receipt detected on all {len(self.nodes.values())} nodes", file=self.output)
+            return True
+        print(f"  FAILED no CLABELS transmission/receipt detected on all {len(self.nodes.values())} nodes", file=self.output)
+        return False        
 
 
     def check_sync(self, source, target, max_score=0, max_pre=0, max_post=0):
@@ -442,7 +460,7 @@ class State(object):
         if not chart_info:
             print(f"  FAILED to retrieve charts from {self.nodes[current_hop].name}")
             return False
-        charts = ("system.cpu", "system.load", "system.io", "system.ram", "system.ip", "system.processes","memindex_testmemindex.inorder")
+        charts = ("system.cpu", "system.load", "system.io", "system.ram", "system.ip", "system.processes","netdata.random_chart_0", "netdata.random_chart_1", "netdata.random_chart_2")
         passed = True            
         for mirror_host in mirrored_hosts:
             for ch in charts:
@@ -500,7 +518,7 @@ class State(object):
             if not chart_info:
                 print(f"  FAILED to retrieve charts from {self.nodes[current_hop].name}")
                 return False
-            charts = ("system.cpu", "system.load", "system.io", "system.ram", "system.ip", "system.processes","memindex_testmemindex.inorder")
+            charts = ("system.cpu", "system.load", "system.io", "system.ram", "system.ip", "system.processes","netdata.random_chart_0", "netdata.random_chart_1", "netdata.random_chart_2")
             passed = True            
             for ch in charts:
                 update_every = chart_info["charts"][ch]["update_every"]
@@ -518,3 +536,43 @@ class State(object):
                     f.write(json.dumps(current_host_json, sort_keys=True, indent=4))
             print(f'  {"PASSED" if passed else "FAILED"} retrieve JSON data from {current_hop}', file=self.output)
             return passed
+
+    def compare_clabels(self, current_hop):
+        mirrored_hosts = self.nodes[current_hop].get_mirrored_hosts()
+        if not mirrored_hosts:
+            print(f"  FAILED to retrieve mirrored hosts from {self.nodes[current_hop].name}")
+            return False
+        chart_info = self.nodes[current_hop].get_charts()
+        if not chart_info:
+            print(f"  FAILED to retrieve charts from {self.nodes[current_hop].name}")
+            return False
+        charts = ("system.cpu", "system.load", "system.io", "system.ram", "system.ip", "system.processes","netdata.random_chart_0", "netdata.random_chart_1", "netdata.random_chart_2")
+        passed = True            
+        for mirror_host in mirrored_hosts:
+            for ch in charts:
+                print(f"  compare_clabels {current_hop} {mirror_host} {ch} ", file=self.output)
+                mirror_host_json = self.nodes[mirror_host].get_clabels(ch)
+                if mirror_host_json is None:
+                    print(f"  FAILED to compare_clabels looking at {self.nodes[mirror_host].http}localhost:{self.nodes[mirror_host].port}", file=self.output)
+                    passed = False
+                    continue
+                if mirror_host_json is "empty":
+                    print(f"  No CLABELS for {ch} from {mirror_host} - response has zero rows", file=self.output)
+                    passed = True
+                    continue
+                current_hop_json = self.nodes[current_hop].get_clabels(ch, host=mirror_host)
+                if current_hop_json is None:
+                    print(f"  FAILED to compare_clabels looking at {self.nodes[current_hop].http}localhost:{self.nodes[current_hop].port}", file=self.output)
+                    passed = False
+                    continue
+                if current_hop_json is "empty":
+                    print(f"  No CLABELS for {ch} from {current_hop} - response has zero rows", file=self.output)
+                    passed = True
+                    continue
+                if mirror_host_json != current_hop_json:
+                    print(f"  Mismatch in chart labels on {ch}: mirror_host={mirror_host_json} current_hop={current_hop_json}", file=self.output)
+                    passed = False
+                else:
+                    print(f"  MATCH in chart labels on {ch}: mirror_host[{mirror_host}]={mirror_host_json} current_hop[{current_hop}]={current_hop_json}", file=self.output)
+        print(f'  {"PASSED" if passed else "FAILED"} compare_clabels', file=self.output)
+        return passed
