@@ -35,5 +35,5 @@ def Hop012RetrieveSamplesInorder(state):
     state.end_checks.append( lambda: state.check_sync_hops("hop1", max_pre=10))
     state.end_checks.append( lambda: state.check_sync_hops("hop2", max_pre=10))
     state.end_checks.append( lambda: state.get_api_data("hop2"))
-    state.post_checks.append( lambda: state.check_rep() )
+    # state.post_checks.append( lambda: state.check_rep() )
     #################### END OF TEST CASES ####################

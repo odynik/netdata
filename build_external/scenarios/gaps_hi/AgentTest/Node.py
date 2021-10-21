@@ -78,7 +78,7 @@ class Node(object):
         with open(conf, "w") as f:
             print(f"[global]", file=f)
             # print(f"    debug flags = 0x0000000840000000", file=f)
-            print(f"    debug flags = 0x0000000040000000", file=f)            
+            print(f"    debug flags = 0x0000000100000008", file=f)            
             print(f"    errors flood protection period = 0", file=f)
             print(f"    hostname = {self.name}", file=f)
             print(f"    memory mode = {self.db_mode}", file=f)
