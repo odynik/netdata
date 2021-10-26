@@ -1147,7 +1147,7 @@ static inline time_t rrdset_first_entry_t_nolock(RRDSET *st)
         if (unlikely(LONG_MAX == first_entry_t)) return 0;
         return first_entry_t;
     } else {
-        return (time_t)(rrdset_last_entry_t_nolock(st) - rrdset_duration(st));
+        return (time_t)(rrdset_last_entry_t_nolock(st) - (rrdset_duration(st) > 0 ? rrdset_duration(st) - 1 : 0));
     }
 }
 
@@ -1172,7 +1172,7 @@ static inline time_t rrddim_last_entry_t(RRDDIM *rd) {
 static inline time_t rrddim_first_entry_t(RRDDIM *rd) {
     if (rd->rrdset->rrd_memory_mode == RRD_MEMORY_MODE_DBENGINE)
         return rd->state->query_ops.oldest_time(rd);
-    return (time_t)(rd->rrdset->last_updated.tv_sec - rrdset_duration(rd->rrdset));
+    return (time_t)(rd->rrdset->last_updated.tv_sec - (rrdset_duration(rd->rrdset) > 0 ? rrdset_duration(rd->rrdset) - 1 : 0));
 }
 
 time_t rrdhost_last_entry_t(RRDHOST *h);
