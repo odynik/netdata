@@ -614,7 +614,7 @@ storage_number rrdeng_load_metric_next(struct rrddim_query_handle *rrdimm_handle
     }
     page = descr->pg_cache_descr->page;
     ret = page[position];
-    // info("WEB: values: [0] = %.1Lf, [1] = %.1Lf, [2] = %.1Lf, [3] = %.1Lf, [4] = %.1Lf, [5] = %.1Lf", unpack_storage_number(page[0]), unpack_storage_number(page[1]), unpack_storage_number(page[2]), unpack_storage_number(page[3]), unpack_storage_number(page[4]), unpack_storage_number(page[5]));
+    info("WEB: values: [0] = %.1Lf, [1] = %.1Lf, [2] = %.1Lf, [3] = %.1Lf, [4] = %.1Lf, [5] = %.1Lf", unpack_storage_number(page[0]), unpack_storage_number(page[1]), unpack_storage_number(page[2]), unpack_storage_number(page[3]), unpack_storage_number(page[4]), unpack_storage_number(page[5]));
     entries = page_length / sizeof(storage_number);
     if (entries > 1) {
         usec_t dt;
