@@ -149,6 +149,9 @@ static storage_number rrddim_query_next_metric(struct rrddim_query_handle *handl
     long entries = rd->rrdset->entries;
     long slot = handle->slotted.slot;
 
+    info("WEB: rd->collections_counter = %lu, rd->entries = %ld, rd->last_collected_time = %ld", rd->collections_counter, rd->entries, rd->last_collected_time.tv_sec);
+    info("WEB: values: [0] = %.1Lf, [1] = %.1Lf, [2] = %.1Lf, [3] = %.1Lf, [4] = %.1Lf, [5] = %.1Lf", unpack_storage_number(rd->values[0]), unpack_storage_number(rd->values[1]), unpack_storage_number(rd->values[2]), unpack_storage_number(rd->values[3]), unpack_storage_number(rd->values[4]), unpack_storage_number(rd->values[5]));
+
     (void)current_time;
     if (unlikely(handle->slotted.slot == handle->slotted.last_slot))
         handle->slotted.finished = 1;

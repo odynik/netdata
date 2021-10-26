@@ -532,6 +532,7 @@ static inline void do_dimension_fixedstep(
         , time_t before_wanted
 ){
     RRDSET *st = r->st;
+    info("WEB: after_wanted = %ld, before_wanted = %ld", after_wanted, before_wanted);
 
     time_t
             now = after_wanted,
@@ -958,6 +959,7 @@ static RRDR *rrd2rrdr_fixedstep(
         #endif
         points_wanted = 0;
     }
+    info("WEB: points_wanted = %ld", points_wanted);
 
 #ifdef NETDATA_INTERNAL_CHECKS
     duration = before_wanted - after_wanted;
@@ -1092,6 +1094,8 @@ static RRDR *rrd2rrdr_fixedstep(
 
         // reset the grouping for the new dimension
         r->internal.grouping_reset(r);
+
+        info("WEB: rd->collections_counter = %lu, rd->entries = %ld, rd->last_collected_time = %ld", rd->collections_counter, rd->entries, rd->last_collected_time.tv_sec);
 
         do_dimension_fixedstep(
                 r
@@ -1591,9 +1595,11 @@ RRDR *rrd2rrdr(
     }
 
     rrd_update_every = st->update_every;
+    info("WEB: after_requested = %lld, before_requested = %lld, first_entry_t = %ld, last_entry_t %ld", after_requested, before_requested, first_entry_t, last_entry_t);
     absolute_period_requested = rrdr_convert_before_after_to_absolute(&after_requested, &before_requested,
                                                                       rrd_update_every, first_entry_t,
                                                                       last_entry_t, options);
+    info("WEB: after_requested = %lld, before_requested = %lld", after_requested, before_requested);
     if (options & RRDR_OPTION_ALLOW_PAST)
         if (first_entry_t > after_requested)
             first_entry_t = after_requested;
