@@ -33,12 +33,16 @@ int do_proc_uptime(int update_every, usec_t dt) {
                 , RRDSET_TYPE_LINE
         );
 
-        rd = rrddim_add(st, "uptime", NULL, 1, 1000, RRD_ALGORITHM_ABSOLUTE);
+        rrdset_flag_set(st, RRDSET_FLAG_STORE_FIRST);
+
+        rd = rrddim_add(st, "uptime", NULL, 1, 1, RRD_ALGORITHM_ABSOLUTE);
+        sleep(5);
     }
     else
         rrdset_next(st);
 
-    rrddim_set_by_pointer(st, rd, uptime_msec(uptime_filename));
+    static int serial_number = 1;
+    rrddim_set_by_pointer(st, rd, serial_number++);
 
     rrdset_done(st);
 
