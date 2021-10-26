@@ -168,21 +168,6 @@ class Node(object):
                     if file == "stream.conf" and section == "API_KEY":
                         print(f"    {v}",file=f)
 
-    def get_data(self, chart, host=None):
-        if host is None:
-            url = f"{self.http}localhost:{self.port}/api/v1/data?chart={chart}"
-        else:
-            url = f"{self.http}localhost:{self.port}/host/{host}/api/v1/data?chart={chart}"
-        try:
-            r = requests.get(url)
-            return r.json()
-        except json.decoder.JSONDecodeError:
-            print(f"  Fetch failed {url} -> {r.text}")
-            return None
-        except requests.exceptions.ConnectionError:
-            print(f"  Fetch failed {url} -> connection refused")
-            return None
-
     def get_charts(self):
         url = f"{self.http}localhost:{self.port}/api/v1/charts"
         try:
@@ -194,6 +179,44 @@ class Node(object):
         except requests.exceptions.ConnectionError:
             print(f"  Fetch failed {url} -> connection refused")
             return None
+    
+    def get_chart_info(self, chart="system.cpu", host=None):
+        if chart is None:
+            print(f"  Chart ID is None. Provide a chart id")
+            return None           
+        if (host is None) or (host == self.name):
+            # print(f"  Condiser localhost. Either host value is None or localhost.")
+            url = f"{self.http}localhost:{self.port}/api/v1/chart?chart={chart}"
+            # print(url)
+        else:
+            url = f"{self.http}localhost:{self.port}/host/{host}/api/v1/chart?chart={chart}"
+        try:
+            r = requests.get(url)
+            return r.json()
+        except json.decoder.JSONDecodeError:
+            print(f"  Fetch failed {url} -> {r.text}")
+            return None
+        except requests.exceptions.ConnectionError:
+            print(f"  Fetch failed {url} -> connection refused")
+            return None
+    
+    def get_data(self, chart, host=None):
+        if chart is None:
+            print(f"  ERROR: NO DATA because chart ID is None. Provide a chart id")
+            return None
+        if (host is None) or (host == self.name):
+            url = f"{self.http}localhost:{self.port}/api/v1/data?chart={chart}"
+        else:
+            url = f"{self.http}localhost:{self.port}/host/{host}/api/v1/data?chart={chart}"
+        try:
+            r = requests.get(url)
+            return r.json()
+        except json.decoder.JSONDecodeError:
+            print(f"  Fetch failed {url} -> {r.text}")
+            return None
+        except requests.exceptions.ConnectionError:
+            print(f"  Fetch failed {url} -> connection refused")
+            return None            
 
     def get_mirrored_hosts(self):
         '''This function will retrieve all the *first time* connected or created image host databases in the

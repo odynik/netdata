@@ -201,6 +201,7 @@ class State(object):
 
             composes = " ".join([f"-f {self.test_base}/{n.name}-compose.yml" for n in self.nodes.values()])
             sh(f"docker-compose -p {self.prefix} {composes} down --remove-orphans", self.output)
+            sh(f"docker-compose -p {self.prefix} {composes} rm -f", self.output)
             passed = True
             try:
                 case(self)
@@ -242,7 +243,7 @@ class State(object):
     def start(self, node):
         # Create second-time config (used to override netdata config keys from instead test case)
         self.nodes[node].create_config(self.test_base)
-        sh(f"docker-compose -p {self.prefix} -f {self.test_base}/{node}-compose.yml up -d", self.output)
+        sh(f"docker-compose -p {self.prefix} -f {self.test_base}/{node}-compose.yml up --force-recreate -d", self.output)
         container = json.loads(sh(f"docker inspect {self.nodes[node].container_name}",self.output))
         # This catches dynamically assigned ports but auto-scaling is poor in Docker so we normally set these
         # in the test description.
@@ -518,3 +519,39 @@ class State(object):
                     f.write(json.dumps(current_host_json, sort_keys=True, indent=4))
             print(f'  {"PASSED" if passed else "FAILED"} retrieve JSON data from {current_hop}', file=self.output)
             return passed
+
+    def compare_increment_value_and_duration(self, current_hop):
+        ch = "memindex_testmemindex.inorder"
+        chart_info = self.nodes[current_hop].get_chart_info(ch, host=current_hop)
+        if not chart_info:
+            print(f"  FAILED to retrieve chart info {ch} from {self.nodes[current_hop].name}")
+            return False
+        passed = True            
+        update_every = chart_info["update_every"]
+        first_entry = chart_info["first_entry"]
+        last_entry = chart_info["last_entry"]
+        duration = chart_info["duration"]
+        current_host_json = self.nodes[current_hop].get_data(ch, host=current_hop)
+        if not current_host_json:
+            print(f"  FAILED to retrieve data JSON object from {ch} looking at {self.nodes[current_hop].http}localhost:{self.nodes[current_hop].port}", file=self.output)
+            passed = False
+        if len(current_host_json["data"])==0:
+            print(f"  FAILED to retrieve {ch} from {current_hop} - response has zero rows", file=self.output)
+            passed = False
+        data = current_host_json["data"]
+        if not ((data[0][0] == last_entry) and (data[-1][0] == first_entry)):
+            print(f"MISMATCH: First and Last entry timestamps. LE is{data[0][0]}/shouldbe{last_entry} - FE is{data[-1][0]}/shouldbe{first_entry}")
+            passed = False
+        elif not ((data[0][1] == duration) and (data[-1][1] == 1)):
+            print(f"MISMATCH: First and Last samples. LES(is_{data[0][1]}/shouldbe_{duration}) - FES LES(is_{data[-1][1]}/shouldbe_{1})")
+            passed = False
+        elif not ( duration == (data[0][1] - data[-1][1] + 1)):
+            diff = (data[0][1] - data[-1][1]) + 1
+            print(f"MISMATCH: Duration VS increment values duration. Duration is{duration}/shouldbe{diff}")
+            passed = False
+        with open(os.path.join(self.test_base,f"{current_hop}-{ch}.json"),"wt") as f:
+            f.write(json.dumps(current_host_json, sort_keys=True, indent=4))
+        print(f'  {"PASSED" if passed else "FAILED"} Compare increment values and duration for {current_hop}', file=self.output)
+        return passed        
+
+

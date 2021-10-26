@@ -40,15 +40,15 @@ port_base = 20000
 agents = ["hop"+str(i) for i in range(numofagents)]
 ports = np.arange(port_base, (port_base + numofagents), 1)
 protocols_version = {"master": 3, "rep":4}
-memory_modes = ["dbengine", "save"] # add here any extra memory modes for testing
+# memory_modes = ["ram", "dbengine"] # add here any extra memory modes for testing
 
 # Combinations based on maths or most common use cases.
-mm_combinations = list(itertools.product(memory_modes, repeat=numofagents))
-# mm_combinations = [
-#     ("dbengine", "dbengine", "dbengine"),
-#     ("save", "dbengine", "dbengine"),
-#     ("ram", "dbengine", "dbengine")
-#     ]
+# mm_combinations = list(itertools.product(memory_modes, repeat=numofagents))
+mm_combinations = [
+    ("dbengine", "dbengine", "dbengine"),
+    ("dbengine", "save", "dbengine"),
+    ("ram", "ram", "ram")
+    ]
 
 # pv_combinations = list(itertools.product(protocols_version.keys(), repeat=numofagents))
 pv_combinations = [
