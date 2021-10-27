@@ -1210,7 +1210,7 @@ static RRDR *rrd2rrdr_variablestep(
     int aligned = !(options & RRDR_OPTION_NOT_ALIGNED);
 
     // the duration of the chart
-    time_t duration = before_requested - after_requested;
+    time_t duration = before_requested - after_requested + 1;
     long available_points = duration / update_every;
 
     RRDDIM *temp_rd = context_param_list ? context_param_list->rd : NULL;
