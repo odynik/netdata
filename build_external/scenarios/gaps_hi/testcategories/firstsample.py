@@ -37,6 +37,9 @@ def Hop012RetrieveSamplesInorder(state):
     state.end_checks.append( lambda: state.compare_increment_value_and_duration("hop0", "memindex_testmemindex.inorder"))
     state.end_checks.append( lambda: state.compare_increment_value_and_duration("hop1", "memindex_testmemindex.inorder"))
     state.end_checks.append( lambda: state.compare_increment_value_and_duration("hop2", "memindex_testmemindex.inorder"))
+    # state.end_checks.append( lambda: state.compare_increment_value_and_duration("hop0", "system.uptime"))
+    # state.end_checks.append( lambda: state.compare_increment_value_and_duration("hop1", "system.uptime"))
+    # state.end_checks.append( lambda: state.compare_increment_value_and_duration("hop2", "system.uptime"))
     # state.end_checks.append( lambda: state.get_api_data("hop0"))
     # state.post_checks.append( lambda: state.check_rep() )
     #################### END OF TEST CASES ####################
