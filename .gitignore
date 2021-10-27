@@ -7,9 +7,6 @@ gcs-credentials.json
 .project
 .pydevproject
 
-# local dev outputs
-dist/
-
 *.o
 *.a
 config.h.in
@@ -168,7 +165,6 @@ diagrams/plantuml.jar
 # cppcheck
 cppcheck-build/
 
-# python virtual environment
 venv/
 
 # debugging / profiling
@@ -192,12 +188,21 @@ tests/urls/request.sh
 tests/alarm_repetition/alarm.sh
 tests/template_dimension/template_dim.sh
 aclk/legacy/tests/install-fake-charts.d.sh
+gdb.conf
 
 # tests and temp files
 test-driver
 **/tests/*_testdriver
 **/tests/*_testdriver.trs
 python.d/python-modules-installer.sh
+build_external/scenarios/gaps_hi/working
+build_external/scenarios/gaps_hi/certificates/*.crt
+build_external/scenarios/gaps_hi/certificates/*.pem
+build_external/scenarios/gaps_hi/certificates/*.ext
+build_external/scenarios/gaps_hi/certificates/*.srl
+build_external/scenarios/gaps_hi/certificates/*.key
+build_external/scenarios/gaps_hi/certificates/*.csr
+*test_results.txt
 
 # documentation generated files
 docs/generator/src
@@ -213,10 +218,3 @@ netdata.cbp
 
 # External dependencies
 externaldeps/
-
-# vim sessions
-Session.vim
-Session.*.vim
-
-# Special exceptions
-!packaging/repoconfig/Makefile

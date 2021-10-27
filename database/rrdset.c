@@ -1139,9 +1139,9 @@ static inline size_t rrdset_done_interpolate(
 
     if (has_reset_value)
         storage_flags |= SN_EXISTS_RESET;
-
+    info("WEB: Interpolation Init for %s, st->counter = %lu, st->counter_done= %lu, st->last_collected_time = %ld, st->last_updated = %ld [last_stored_ut = %llu, next_store_ut=%llu, last_collect_ut=%llu, now_collect_ut=%llu], store_this_entry[%d]", st->id, st->counter, st->counter_done, st->last_collected_time.tv_sec, st->last_updated.tv_sec, last_stored_ut, next_store_ut, last_collect_ut, now_collect_ut, (int)store_this_entry);
     for( ; next_store_ut <= now_collect_ut ; last_collect_ut = next_store_ut, next_store_ut += update_every_ut, iterations-- ) {
-
+    
         #ifdef NETDATA_INTERNAL_CHECKS
         if(iterations < 0) { error("INTERNAL CHECK: %s: iterations calculation wrapped! first_ut = %llu, last_stored_ut = %llu, next_store_ut = %llu, now_collect_ut = %llu", st->name, first_ut, last_stored_ut, next_store_ut, now_collect_ut); }
         rrdset_debug(st, "last_stored_ut = %0.3" LONG_DOUBLE_MODIFIER " (last updated time)", (LONG_DOUBLE)last_stored_ut/USEC_PER_SEC);
@@ -1236,6 +1236,7 @@ static inline size_t rrdset_done_interpolate(
                     break;
             }
 
+            info("WEB: %ld Interpolation Value("CALCULATED_NUMBER_FORMAT_AUTO") for %s, st->counter = %lu, st->counter_done= %lu, st->last_collected_time = %ld, st->last_updated = %ld [last_stored_ut = %llu, next_store_ut=%llu, last_collect_ut=%llu, now_collect_ut=%llu], store_this_entry[%d]", iterations, new_value, st->id, st->counter, st->counter_done, st->last_collected_time.tv_sec, st->last_updated.tv_sec, last_stored_ut, next_store_ut, last_collect_ut, now_collect_ut, (int)store_this_entry);
             if(unlikely(!store_this_entry)) {
                 rd->state->collect_ops.store_metric(rd, next_store_ut, SN_EMPTY_SLOT);
 //                rd->values[current_entry] = SN_EMPTY_SLOT;
@@ -1426,11 +1427,13 @@ void rrdset_done(RRDSET *st) {
         // the first entry should not be stored
         store_this_entry = 0;
         first_entry = 1;
+        info("WEB: First entry for %s, st->counter = %lu, st->counter_done= %lu, st->last_collected_time = %ld, st->last_updated = %ld [last_collect_ut = %llu, store_this_entry[%d]", st->id, st->counter, st->counter_done, st->last_collected_time.tv_sec, st->last_updated.tv_sec, last_collect_ut, (int)store_this_entry);
     }
     else {
         // it is not the first entry
         // calculate the proper last_collected_time, using usec_since_last_update
         last_collect_ut = rrdset_update_last_collected_time(st);
+        info("WEB: Other entries for %s, st->counter = %lu, st->counter_done= %lu, st->last_collected_time = %ld, st->last_updated = %ld [last_collect_ut = %llu, store_this_entry[%d]", st->id, st->counter, st->counter_done, st->last_collected_time.tv_sec, st->last_updated.tv_sec, last_collect_ut, (int)store_this_entry);
     }
     if (unlikely(st->rrd_memory_mode == RRD_MEMORY_MODE_NONE)) {
         goto after_first_database_work;
