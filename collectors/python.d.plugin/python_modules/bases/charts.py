@@ -14,7 +14,7 @@ DIMENSION_ALGORITHMS = ['absolute', 'incremental', 'percentage-of-absolute-row',
 
 CHART_BEGIN = 'BEGIN {type}.{id} {since_last}\n'
 CHART_CREATE = "CHART {type}.{id} '{name}' '{title}' '{units}' '{family}' '{context}' " \
-               "{chart_type} {priority} {update_every} '{hidden}' 'python.d.plugin' '{module_name}'\n"
+               "{chart_type} {priority} {update_every} '{hidden} store_first' 'python.d.plugin' '{module_name}'\n"
 CHART_OBSOLETE = "CHART {type}.{id} '{name}' '{title}' '{units}' '{family}' '{context}' " \
                  "{chart_type} {priority} {update_every} '{hidden} obsolete'\n"
 
