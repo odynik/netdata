@@ -830,11 +830,13 @@ static RRDR *rrd2rrdr_fixedstep(
         , int absolute_period_requested
         , struct context_param *context_param_list
 ) {
+    info("WEB: points_requested = %ld, after_requested = %lld, before_requested = %lld, resampling_time_requested %ld, first_entry_t = %ld, last_entry_t = %ld, absolute_period_requested = %d", points_requested, after_requested, before_requested, resampling_time_requested, first_entry_t, last_entry_t, absolute_period_requested);
     int aligned = !(options & RRDR_OPTION_NOT_ALIGNED);
 
     // the duration of the chart
     time_t duration = before_requested - after_requested + 1;
     long available_points = duration / update_every;
+    info("WEB: duration = %ld, available_points = %ld, after_requested = %lld, before_requested = %lld", duration, available_points, after_requested, before_requested);
 
     RRDDIM *temp_rd = context_param_list ? context_param_list->rd : NULL;
 
