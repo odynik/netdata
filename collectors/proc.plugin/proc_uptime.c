@@ -36,6 +36,7 @@ int do_proc_uptime(int update_every, usec_t dt) {
         rrdset_flag_set(st, RRDSET_FLAG_STORE_FIRST);
 
         rd = rrddim_add(st, "uptime", NULL, 1, 1, RRD_ALGORITHM_ABSOLUTE);
+        sleep(5);
     }
     else
         rrdset_next(st);
