@@ -840,6 +840,9 @@ static RRDR *rrd2rrdr_fixedstep(
 
     RRDDIM *temp_rd = context_param_list ? context_param_list->rd : NULL;
 
+    info("WEB:FXSTEP after_requested = %lld, before_requested = %lld, points_requested=%ld, duration=%ld, first_entry_t = %ld, last_entry_t %ld", after_requested, before_requested, points_requested, duration, first_entry_t, last_entry_t);
+    info("WEB:FXSTEP update_every = %d, available_points = %ld, group_method = %u, resampling_time_requested = %ld, options = %u, absolute_period_requested = %d", update_every, available_points, group_method, resampling_time_requested, options, absolute_period_requested);
+
     if(duration <= 0 || available_points <= 0)
         return rrdr_create(st, 1, context_param_list);
 
@@ -928,7 +931,7 @@ static RRDR *rrd2rrdr_fixedstep(
     time_t after_wanted  = before_wanted - (points_wanted * group * update_every) + update_every;
     if(unlikely(after_wanted < first_entry_t)) {
         // hm... we go to the past, calculate again points_wanted using all the db from before_wanted to the beginning
-        points_wanted = ((before_wanted - first_entry_t) + update_every) / group;
+        points_wanted = ((before_wanted - first_entry_t) + update_every) / (update_every * group);
 
         // recalculate after wanted with the new number of points
         after_wanted  = before_wanted - (points_wanted * group * update_every) + update_every;
@@ -954,14 +957,18 @@ static RRDR *rrd2rrdr_fixedstep(
         // recalculate points_wanted using the final time-frame
         points_wanted = ((before_wanted - after_requested) + update_every) / (update_every * group);
     }
-
+    // recalculate points_wanted using the final time-frame
+    // points_wanted   = (before_wanted - after_wanted) / update_every / group + 1;
     if(unlikely(points_wanted < 0)) {
         #ifdef NETDATA_INTERNAL_CHECKS
         error("INTERNAL ERROR: rrd2rrdr() on %s, points_wanted is %ld", st->name, points_wanted);
         #endif
         points_wanted = 0;
     }
-    info("WEB: points_wanted = %ld", points_wanted);
+
+    info("WEB:FXSTEP after_requested = %lld, before_requested = %lld, points_requested=%ld, duration=%ld, first_entry_t = %ld, last_entry_t %ld", after_requested, before_requested, points_requested, duration, first_entry_t, last_entry_t);
+    info("WEB:FXSTEP after_wanted = %ld, before_wanted = %ld, points_wanted=%ld", after_wanted, before_wanted, points_wanted);
+    info("WEB:FXSTEP update_every = %d, group_method = %u, resampling_time_requested = %ld, options = %u, absolute_period_requested = %d", update_every, group_method, resampling_time_requested, options, absolute_period_requested);
 
 #ifdef NETDATA_INTERNAL_CHECKS
     duration = before_wanted - after_wanted;
@@ -1597,11 +1604,12 @@ RRDR *rrd2rrdr(
     }
 
     rrd_update_every = st->update_every;
-    info("WEB: after_requested = %lld, before_requested = %lld, first_entry_t = %ld, last_entry_t %ld", after_requested, before_requested, first_entry_t, last_entry_t);
+    info("WEB: RRD2RRDR after_requested = %lld, before_requested = %lld, first_entry_t = %ld, last_entry_t %ld", after_requested, before_requested, first_entry_t, last_entry_t);
+    info("WEB: RRD2RRDR group_method = %u, resampling_time_requested = %ld, options = %u", group_method, resampling_time_requested, options);
     absolute_period_requested = rrdr_convert_before_after_to_absolute(&after_requested, &before_requested,
                                                                       rrd_update_every, first_entry_t,
                                                                       last_entry_t, options);
-    info("WEB: after_requested = %lld, before_requested = %lld", after_requested, before_requested);
+    info("WEB: RRD2RRDR after_requested = %lld, before_requested = %lld, absolute_period_requested = %d", after_requested, before_requested, absolute_period_requested);
     if (options & RRDR_OPTION_ALLOW_PAST)
         if (first_entry_t > after_requested)
             first_entry_t = after_requested;
@@ -1621,6 +1629,7 @@ RRDR *rrd2rrdr(
         /* This call takes the chart read-lock */
         regions = rrdeng_variable_step_boundaries(st, after_requested, before_requested,
                                                   &region_info_array, &max_interval, context_param_list);
+        info("WEB: RRD2RRDR DBENGINE regions = %u", regions);                                                  
         if (1 == regions) {
             if (region_info_array) {
                 if (rrd_update_every != region_info_array[0].update_every) {
@@ -1629,6 +1638,7 @@ RRDR *rrd2rrdr(
                     absolute_period_requested =
                             rrdr_convert_before_after_to_absolute(&after_requested, &before_requested, rrd_update_every,
                                                                   first_entry_t, last_entry_t, options);
+                    info("WEB: RRD2RRDR after_requested = %lld, before_requested = %lld, absolute_period_requested = %d", after_requested, before_requested, absolute_period_requested);
                 }
                 freez(region_info_array);
             }
@@ -1642,6 +1652,7 @@ RRDR *rrd2rrdr(
                 absolute_period_requested = rrdr_convert_before_after_to_absolute(&after_requested, &before_requested,
                                                                                   rrd_update_every, first_entry_t,
                                                                                   last_entry_t, options);
+                info("WEB: RRD2RRDR after_requested = %lld, before_requested = %lld, absolute_period_requested = %d", after_requested, before_requested, absolute_period_requested);                                                                                  
             }
             return rrd2rrdr_variablestep(st, points_requested, after_requested, before_requested, group_method,
                                          resampling_time_requested, options, dimensions, rrd_update_every,
