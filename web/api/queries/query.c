@@ -926,7 +926,7 @@ static RRDR *rrd2rrdr_fixedstep(
 
     // we need to estimate the number of points, for having
     // an integer number of values per point
-    long points_wanted = ((before_wanted - after_requested) + update_every) / (update_every * group);
+    long points_wanted = (before_wanted - after_requested) / (update_every * group);
 
     time_t after_wanted  = before_wanted - (points_wanted * group * update_every) + update_every;
     if(unlikely(after_wanted < first_entry_t)) {
@@ -954,11 +954,10 @@ static RRDR *rrd2rrdr_fixedstep(
         time_t tmp = before_wanted;
         before_wanted = after_wanted;
         after_wanted = tmp;
-        // recalculate points_wanted using the final time-frame
-        points_wanted = ((before_wanted - after_requested) + update_every) / (update_every * group);
     }
+
     // recalculate points_wanted using the final time-frame
-    // points_wanted   = (before_wanted - after_wanted) / update_every / group + 1;
+    points_wanted   = (before_wanted - after_wanted) / update_every / group + 1;
     if(unlikely(points_wanted < 0)) {
         #ifdef NETDATA_INTERNAL_CHECKS
         error("INTERNAL ERROR: rrd2rrdr() on %s, points_wanted is %ld", st->name, points_wanted);
@@ -1217,7 +1216,7 @@ static RRDR *rrd2rrdr_variablestep(
     int aligned = !(options & RRDR_OPTION_NOT_ALIGNED);
 
     // the duration of the chart
-    time_t duration = before_requested - after_requested + 1;
+    time_t duration = before_requested - after_requested;
     long available_points = duration / update_every;
 
     RRDDIM *temp_rd = context_param_list ? context_param_list->rd : NULL;
@@ -1307,12 +1306,12 @@ static RRDR *rrd2rrdr_variablestep(
 
     // we need to estimate the number of points, for having
     // an integer number of values per point
-    long points_wanted = ((before_wanted - after_requested) + update_every) / (update_every * group);
+    long points_wanted = (before_wanted - after_requested) / (update_every * group);
 
     time_t after_wanted  = before_wanted - (points_wanted * group * update_every) + update_every;
     if(unlikely(after_wanted < first_entry_t)) {
         // hm... we go to the past, calculate again points_wanted using all the db from before_wanted to the beginning
-        points_wanted = ((before_wanted - first_entry_t) + update_every) / group;
+        points_wanted = (before_wanted - first_entry_t) / group;
 
         // recalculate after wanted with the new number of points
         after_wanted  = before_wanted - (points_wanted * group * update_every) + update_every;
@@ -1335,10 +1334,10 @@ static RRDR *rrd2rrdr_variablestep(
         time_t tmp = before_wanted;
         before_wanted = after_wanted;
         after_wanted = tmp;
-        // recalculate points_wanted using the final time-frame
-        points_wanted = ((before_wanted - after_requested) + update_every) / (update_every * group);
     }
 
+    // recalculate points_wanted using the final time-frame
+    points_wanted   = (before_wanted - after_wanted) / update_every / group + 1;
     if(unlikely(points_wanted < 0)) {
         #ifdef NETDATA_INTERNAL_CHECKS
         error("INTERNAL ERROR: rrd2rrdr() on %s, points_wanted is %ld", st->name, points_wanted);
