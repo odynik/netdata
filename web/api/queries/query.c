@@ -830,12 +830,14 @@ static RRDR *rrd2rrdr_fixedstep(
         , int absolute_period_requested
         , struct context_param *context_param_list
 ) {
+    info("WEB: points_requested = %ld, after_requested = %lld, before_requested = %lld, resampling_time_requested %ld, first_entry_t = %ld, last_entry_t = %ld, absolute_period_requested = %d", points_requested, after_requested, before_requested, resampling_time_requested, first_entry_t, last_entry_t, absolute_period_requested);
     int aligned = !(options & RRDR_OPTION_NOT_ALIGNED);
 
     // the duration of the chart
     time_t duration = before_requested - after_requested;
     // time_t duration = (before_requested - after_requested) + update_every;
     long available_points = duration / update_every;
+    info("WEB: duration = %ld, available_points = %ld, after_requested = %lld, before_requested = %lld", duration, available_points, after_requested, before_requested);
 
     RRDDIM *temp_rd = context_param_list ? context_param_list->rd : NULL;
 
@@ -929,14 +931,20 @@ static RRDR *rrd2rrdr_fixedstep(
     // long points_wanted = (before_wanted - after_requested) / (update_every * group);
 
     time_t after_wanted  = before_wanted - (points_wanted * group * update_every) + update_every;
+<<<<<<< HEAD
     // time_t after_wanted  = before_wanted - (points_wanted * group * update_every);
+=======
+>>>>>>> c3718d7cef3fda727c4305d311ba92369ca469c0
     if(unlikely(after_wanted < first_entry_t)) {
         // hm... we go to the past, calculate again points_wanted using all the db from before_wanted to the beginning
         points_wanted = ((before_wanted - first_entry_t) + update_every) / (update_every * group);
         // points_wanted = (before_wanted - first_entry_t) / (update_every * group);
 
         // recalculate after wanted with the new number of points
+<<<<<<< HEAD
         // after_wanted  = before_wanted - (points_wanted * group * update_every);
+=======
+>>>>>>> c3718d7cef3fda727c4305d311ba92369ca469c0
         after_wanted  = before_wanted - (points_wanted * group * update_every) + update_every;
 
         if(unlikely(after_wanted < first_entry_t)) {
