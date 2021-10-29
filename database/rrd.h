@@ -1151,13 +1151,8 @@ static inline time_t rrdset_first_entry_t_nolock(RRDSET *st)
         if (unlikely(LONG_MAX == first_entry_t)) return 0;
         return first_entry_t;
     } else {
-<<<<<<< HEAD
-        info("WEB: st->counter = %lu, st->counter_done= %lu, st->last_collected_time = %ld, st->last_updated = %ld, duration = %ld", st->counter, st->counter_done, st->last_collected_time.tv_sec, st->last_updated.tv_sec, rrdset_duration(st));
-        return (time_t)(rrdset_last_entry_t_nolock(st) - (rrdset_duration(st) > 0 ? rrdset_duration(st) - 1 : 0));
-=======
         info("WEB: st->counter = %lu, st->last_collected_time = %ld, st->last_updated = %ld, duration = %ld", st->counter, st->last_collected_time.tv_sec, st->last_updated.tv_sec, rrdset_duration(st));
         return (time_t)(rrdset_last_entry_t_nolock(st) - rrdset_duration(st));
->>>>>>> c3718d7cef3fda727c4305d311ba92369ca469c0
     }
 }
 
