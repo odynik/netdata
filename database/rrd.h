@@ -1139,12 +1139,14 @@ static inline time_t rrdset_first_entry_t_nolock(RRDSET *st)
     time_t first_entry_t = LONG_MAX;
 
     if (st->rrd_memory_mode == RRD_MEMORY_MODE_DBENGINE) {
+        info("WEB: st->counter = %lu, st->last_collected_time = %ld, st->last_updated = %ld", st->counter, st->last_collected_time.tv_sec, st->last_updated.tv_sec);
         RRDDIM *rd;
 
         rrddim_foreach_read(rd, st) {
             first_entry_t = MIN(first_entry_t, rd->state->query_ops.oldest_time(rd));
         }
     } else {
+        info("WEB: st->counter = %lu, st->last_collected_time = %ld, st->last_updated = %ld, duration = %ld", st->counter, st->last_collected_time.tv_sec, st->last_updated.tv_sec, rrdset_duration(st));
         if (rrdset_last_entry_t_nolock(st) > 0 && rrdset_duration(st) > 0)
             first_entry_t = MIN(first_entry_t, rrdset_last_entry_t_nolock(st) - rrdset_duration(st) + st->update_every);
     }
