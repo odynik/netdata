@@ -832,12 +832,12 @@ static RRDR *rrd2rrdr_fixedstep(
     int aligned = !(options & RRDR_OPTION_NOT_ALIGNED);
 
     // the duration of the chart
-    time_t duration = before_requested - after_requested;
+    time_t duration = before_requested - after_requested + update_every;
     long available_points = duration / update_every;
 
     RRDDIM *temp_rd = context_param_list ? context_param_list->rd : NULL;
 
-    if(duration <= 0 || available_points <= 0)
+    if(duration <= 0 || available_points <= 0 || (after_requested == 0 && before_requested == 0))
         return rrdr_create(st, 1, context_param_list);
 
     // check the number of wanted points in the result
@@ -862,7 +862,7 @@ static RRDR *rrd2rrdr_fixedstep(
             #endif
 
             after_requested = before_requested - resampling_time_requested;
-            duration = before_requested - after_requested;
+            duration = before_requested - after_requested + update_every;
             available_points = duration / update_every;
             group = available_points / points_requested;
         }
@@ -874,7 +874,7 @@ static RRDR *rrd2rrdr_fixedstep(
             time_t delta = duration % resampling_time_requested;
             if(delta > resampling_time_requested / 10) {
                 after_requested -= resampling_time_requested - delta;
-                duration = before_requested - after_requested;
+                duration = before_requested - after_requested + update_every;
                 available_points = duration / update_every;
                 group = available_points / points_requested;
             }
@@ -920,7 +920,7 @@ static RRDR *rrd2rrdr_fixedstep(
 
     // we need to estimate the number of points, for having
     // an integer number of values per point
-    long points_wanted = (before_wanted - after_requested) / (update_every * group);
+    long points_wanted = (before_wanted - after_requested + update_every) / (update_every * group);
 
     time_t after_wanted  = before_wanted - (points_wanted * group * update_every) + update_every;
     if(unlikely(after_wanted < first_entry_t)) {
