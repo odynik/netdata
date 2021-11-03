@@ -928,10 +928,8 @@ static RRDR *rrd2rrdr_fixedstep(
     // we need to estimate the number of points, for having
     // an integer number of values per point
     long points_wanted = ((before_wanted - after_requested) + update_every) / (update_every * group);
-    //points_wanted = ((long)st->counter < points_wanted)?(long)st->counter:points_wanted;
 
-    // time_t after_wanted  = before_wanted - (points_wanted * group * update_every) + update_every;
-    time_t after_wanted  = before_wanted - (points_wanted * group * update_every);
+    time_t after_wanted  = before_wanted - (points_wanted * group * update_every) + update_every;
     if(unlikely(after_wanted < first_entry_t)) {
         // hm... we go to the past, calculate again points_wanted using all the db from before_wanted to the beginning
         points_wanted = ((before_wanted - first_entry_t) + update_every) / (update_every * group);
@@ -944,7 +942,7 @@ static RRDR *rrd2rrdr_fixedstep(
             error("INTERNAL ERROR: rrd2rrdr() on %s, after_wanted is before db min", st->name);
             #endif
 
-            after_wanted = first_entry_t - (first_entry_t % ( ((aligned)?group:1) * update_every ));
+            after_wanted = first_entry_t - (first_entry_t % ( ((aligned)?group:1) * update_every )) + ( ((aligned)?group:1) * update_every );
         }
     }
     //size_t after_slot = rrdset_time2slot(st, after_wanted);
@@ -957,8 +955,7 @@ static RRDR *rrd2rrdr_fixedstep(
         time_t tmp = before_wanted;
         before_wanted = after_wanted;
         after_wanted = tmp;
-        points_wanted = ((before_wanted - after_requested) + update_every) / (update_every * group);        
-        //points_wanted = ((long)st->counter < points_wanted)?(long)st->counter:points_wanted;
+        points_wanted = ((before_wanted - after_requested) + update_every) / (update_every * group);
     }
 
     // recalculate points_wanted using the final time-frame
