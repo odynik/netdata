@@ -84,6 +84,7 @@ hop_test_cases = [
     # Hop0RetrieveSamplesInorder,
     # Hop01RetrieveSamplesInorder,
     Hop012RetrieveSamplesInorder,
+    # Hop012ReStartHop1SamplesInorder
     # AscendingOrderHopStart,
     # DescendingOrderHopStart,
     # MixedOrderHopStart,

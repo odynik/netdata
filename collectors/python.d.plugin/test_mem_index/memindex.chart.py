@@ -27,7 +27,7 @@ class Service(SimpleService):
         self.num_lines = self.configuration.get('num_lines', 1)
         self.lower = self.configuration.get('lower', 0)
         self.upper = self.configuration.get('upper', 4096)
-        self.update_every = self.configuration.get('update_every', 1)
+        self.update_every = self.configuration.get('update_every', 5)
         self.current = None
 
     @staticmethod

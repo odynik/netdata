@@ -200,14 +200,14 @@ class Node(object):
             print(f"  Fetch failed {url} -> connection refused")
             return None
     
-    def get_data(self, chart, host=None):
+    def get_data(self, chart, host=None, after=-600, before=0):
         if chart is None:
             print(f"  ERROR: NO DATA because chart ID is None. Provide a chart id")
             return None
         if (host is None) or (host == self.name):
-            url = f"{self.http}localhost:{self.port}/api/v1/data?chart={chart}"
+            url = f"{self.http}localhost:{self.port}/api/v1/data?chart={chart}&after={after}&before={before}"
         else:
-            url = f"{self.http}localhost:{self.port}/host/{host}/api/v1/data?chart={chart}"
+            url = f"{self.http}localhost:{self.port}/host/{host}/api/v1/data?chart={chart}&after={after}&before={before}"
         try:
             r = requests.get(url)
             return r.json()

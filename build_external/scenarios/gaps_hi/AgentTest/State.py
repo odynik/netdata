@@ -250,6 +250,11 @@ class State(object):
         self.nodes[node].port = container[0]["NetworkSettings"]["Ports"]["19999/tcp"][0]["HostPort"]
         self.nodes[node].started = True
 
+    def destroy(self, node):
+        self.nodes[node].create_config(self.test_base)
+        sh(f"docker-compose -p {self.prefix} {self.test_base}/{node}-compose.yml down --remove-orphans", self.output)
+        sh(f"docker-compose -p {self.prefix} {self.test_base}/{node}-compose.yml rm -f", self.output)
+    
     def stop_net(self, node):
         sh(f"docker network disconnect {self.network} {self.nodes[node].container_name}", self.output)
 
@@ -520,7 +525,7 @@ class State(object):
             print(f'  {"PASSED" if passed else "FAILED"} retrieve JSON data from {current_hop}', file=self.output)
             return passed
 
-    def compare_increment_value_and_duration(self, current_hop, chart="memindex_testmemindex.inorder"):
+    def compare_increment_value_and_duration(self, current_hop, chart="memindex_testmemindex.inorder", after=-600, before=0):
         ch = chart
         chart_info = self.nodes[current_hop].get_chart_info(ch, host=current_hop)
         if not chart_info:
@@ -531,26 +536,43 @@ class State(object):
         first_entry = chart_info["first_entry"]
         last_entry = chart_info["last_entry"]
         duration = chart_info["duration"]
-        current_host_json = self.nodes[current_hop].get_data(ch, host=current_hop)
-        if not current_host_json:
-            print(f"  FAILED to retrieve data JSON object from {ch} looking at {self.nodes[current_hop].http}localhost:{self.nodes[current_hop].port}", file=self.output)
-            passed = False
-        if len(current_host_json["data"])==0:
-            print(f"  FAILED to retrieve {ch} from {current_hop} - response has zero rows", file=self.output)
-            passed = False
-        data = current_host_json["data"]
-        if not ((data[0][0] == last_entry) and (data[-1][0] == first_entry)):
-            print(f"MISMATCH on {self.nodes[current_hop].name}: First and Last entry timestamps. LE is{data[0][0]}/shouldbe{last_entry} - FE is{data[-1][0]}/shouldbe{first_entry}")
-            passed = False
-        elif not ((data[0][1] == duration) and (data[-1][1] == 1)):
-            print(f"MISMATCH on {self.nodes[current_hop].name}: First and Last samples. LES(is_{data[0][1]}/shouldbe_{duration}) - FES LES(is_{data[-1][1]}/shouldbe_{1})")
-            passed = False
-        elif not ( duration == (data[0][1] - data[-1][1] + 1)):
-            diff = (data[0][1] - data[-1][1]) + 1
-            print(f"MISMATCH on {self.nodes[current_hop].name}: Duration VS increment values duration. Duration is{duration}/shouldbe{diff}")
-            passed = False
-        with open(os.path.join(self.test_base,f"{current_hop}-{ch}.json"),"wt") as f:
-            f.write(json.dumps(current_host_json, sort_keys=True, indent=4))
+        for after in range(0, 1*update_every, update_every):
+            current_host_json = self.nodes[current_hop].get_data(ch, host=current_hop, after=(-after), before=0)
+            if not current_host_json:
+                print(f"  FAILED to retrieve data JSON object from {ch} looking at {self.nodes[current_hop].http}localhost:{self.nodes[current_hop].port}", file=self.output)
+                return False
+            if (len(current_host_json["data"]) == 0) or (current_host_json["data"] is None):
+                print(f"  FAILED to retrieve {ch} from {current_hop} - response has zero rows", file=self.output)
+                return False
+            data = current_host_json["data"]
+            print(data)
+            if chart == "memindex_testmemindex.inorder":
+                starting_value = 0
+            elif chart == "system.uptime":
+                starting_value = 1
+            else:
+                starting_value = -1
+            try:
+                json_last_entry = data[0][0]
+                json_first_entry = data[-1][0]
+                json_last_sample = data[0][1]
+                json_first_sample = data[-1][1]
+                json_sample_diff = (json_last_sample - json_first_sample) + update_every
+            except Exception as e:
+                print("ERROR: " + str(e))
+                passed = False
+                return False            
+            if not ((json_last_entry == last_entry) and (json_first_entry == first_entry)):
+                print(f"MISMATCH on {self.nodes[current_hop].name}: First and Last entry timestamps. LE is{json_last_entry}/shouldbe{last_entry} - FE is{json_first_entry}/shouldbe{first_entry}")
+                passed = False
+            if not ((json_last_sample == (duration - update_every)) and (json_first_sample == starting_value)):
+                print(f"MISMATCH on {self.nodes[current_hop].name}: First and Last samples. LES(is_{json_last_sample}/shouldbe_{(duration - update_every)}) - FES (is_{json_first_sample}/shouldbe_{starting_value})")
+                passed = False
+            if not ( duration == json_sample_diff):
+                print(f"MISMATCH on {self.nodes[current_hop].name}: Duration VS increment values duration. Duration is{duration}/IncrValueis{json_sample_diff}")
+                passed = False
+            with open(os.path.join(self.test_base,f"{current_hop}-{ch}_after_{-after}_before_{before}.json"),"wt") as f:
+                f.write(json.dumps(current_host_json, sort_keys=True, indent=4))
         print(f'  {"PASSED" if passed else "FAILED"} Compare increment values and duration for {current_hop}', file=self.output)
         return passed        
 
