@@ -84,6 +84,8 @@ void build_context_param_list(struct context_param **param_list, RRDSET *st)
 
     (*param_list)->first_entry_t = MIN((*param_list)->first_entry_t, rrdset_first_entry_t_nolock(st));
     (*param_list)->last_entry_t  = MAX((*param_list)->last_entry_t, rrdset_last_entry_t_nolock(st));
+    info("WEB: BLDCONTEXT_PARAM_1stENTRY(%ld) st->counter = %lu, st->counter_done= %lu, st->last_collected_time = %ld, st->last_updated = %ld", (*param_list)->first_entry_t, st->counter, st->counter_done, st->last_collected_time.tv_sec, st->last_updated.tv_sec);
+    info("WEB: BLDCONTEXT_PARAM_LastENTRY(%ld) st->counter = %lu, st->counter_done= %lu, st->last_collected_time = %ld, st->last_updated = %ld", (*param_list)->last_entry_t, st->counter, st->counter_done, st->last_collected_time.tv_sec, st->last_updated.tv_sec);
 
     rrddim_foreach_read(rd1, st) {
         RRDDIM *rd = mallocz(rd1->memsize);

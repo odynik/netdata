@@ -1108,16 +1108,18 @@ extern void rrdset_isnot_obsolete(RRDSET *st);
 // get the timestamp of the last entry in the round robin database
 static inline time_t rrdset_last_entry_t_nolock(RRDSET *st)
 {
-    if (st->rrd_memory_mode == RRD_MEMORY_MODE_DBENGINE) {
+    if (st->rrd_memory_mode == RRD_MEMORY_MODE_DBENGINE) {        
         RRDDIM *rd;
         time_t last_entry_t  = 0;
 
         rrddim_foreach_read(rd, st) {
             last_entry_t = MAX(last_entry_t, rd->state->query_ops.latest_time(rd));
         }
-
+        
+        info("WEB: RRDSET_LastENTRY_DB(%ld) st->counter = %lu, st->counter_done= %lu, st->last_collected_time = %ld, st->last_updated = %ld", last_entry_t, st->counter, st->counter_done, st->last_collected_time.tv_sec, st->last_updated.tv_sec);
         return last_entry_t;
     } else {
+        info("WEB: RRDSET_LastENTRY_RAM(%ld) st->counter = %lu, st->counter_done= %lu, st->last_collected_time = %ld, st->last_updated = %ld", (time_t)st->last_updated.tv_sec, st->counter, st->counter_done, st->last_collected_time.tv_sec, st->last_updated.tv_sec);
         return (time_t)st->last_updated.tv_sec;
     }
 }
@@ -1137,22 +1139,19 @@ static inline time_t rrdset_last_entry_t(RRDSET *st)
 static inline time_t rrdset_first_entry_t_nolock(RRDSET *st)
 {
     if (st->rrd_memory_mode == RRD_MEMORY_MODE_DBENGINE) {
-        info("WEB: st->counter = %lu, st->counter_done= %lu, st->last_collected_time = %ld, st->last_updated = %ld", st->counter, st->counter_done, st->last_collected_time.tv_sec, st->last_updated.tv_sec);
         RRDDIM *rd;
         time_t first_entry_t = LONG_MAX;
 
         rrddim_foreach_read(rd, st) {
-            first_entry_t =
-                MIN(first_entry_t,
-                    rd->state->query_ops.oldest_time(rd) > st->update_every ?
-                        rd->state->query_ops.oldest_time(rd) - st->update_every : 0);
+            first_entry_t = MIN(first_entry_t, rd->state->query_ops.oldest_time(rd));
         }
 
         if (unlikely(LONG_MAX == first_entry_t)) return 0;
+        info("WEB: RRDSET_1stENTRY_DB(%ld) st->counter = %lu, st->counter_done= %lu, st->last_collected_time = %ld, st->last_updated = %ld", first_entry_t, st->counter, st->counter_done, st->last_collected_time.tv_sec, st->last_updated.tv_sec);        
         return first_entry_t;
     } else {
-        info("WEB: st->counter = %lu, st->counter_done= %lu, st->last_collected_time = %ld, st->last_updated = %ld, duration = %ld", st->counter, st->counter_done, st->last_collected_time.tv_sec, st->last_updated.tv_sec, rrdset_duration(st));
-        return (time_t)(rrdset_last_entry_t_nolock(st) - rrdset_duration(st));
+        info("WEB: RRDSET_1stENTRY_RAM(%ld) st->counter = %lu, st->counter_done= %lu, st->last_collected_time = %ld, st->last_updated = %ld, duration = %ld", (time_t)(rrdset_last_entry_t_nolock(st) - rrdset_duration(st)), st->counter, st->counter_done, st->last_collected_time.tv_sec, st->last_updated.tv_sec, rrdset_duration(st));
+        return (time_t)((rrdset_last_entry_t_nolock(st) - rrdset_duration(st)) + st->update_every);
     }
 }
 
@@ -1177,7 +1176,7 @@ static inline time_t rrddim_last_entry_t(RRDDIM *rd) {
 static inline time_t rrddim_first_entry_t(RRDDIM *rd) {
     if (rd->rrdset->rrd_memory_mode == RRD_MEMORY_MODE_DBENGINE)
         return rd->state->query_ops.oldest_time(rd);
-    return (time_t)(rd->rrdset->last_updated.tv_sec - rrdset_duration(rd->rrdset));
+    return (time_t)((rd->rrdset->last_updated.tv_sec - rrdset_duration(rd->rrdset)) + rd->update_every);
 }
 
 time_t rrdhost_last_entry_t(RRDHOST *h);
