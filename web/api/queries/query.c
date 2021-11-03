@@ -786,7 +786,7 @@ static int rrdr_convert_before_after_to_absolute(
             if(after_requested < 0) after_requested = after_requested - update_every - after_requested % update_every;
             else after_requested = after_requested + update_every - after_requested % update_every;
         }
-        after_requested = before_requested + after_requested;
+        after_requested = before_requested + after_requested + update_every;
         absolute_period_requested = 0;
     }
 
