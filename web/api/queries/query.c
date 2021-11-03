@@ -836,7 +836,6 @@ static RRDR *rrd2rrdr_fixedstep(
     // the duration of the chart
     time_t duration = before_requested - after_requested + update_every;
     long available_points = duration / update_every;
-    // available_points = ((long)st->counter < available_points)?(long)st->counter:available_points;
     info("WEB: duration = %ld, available_points = %ld, after_requested = %lld, before_requested = %lld", duration, available_points, after_requested, before_requested);
 
     RRDDIM *temp_rd = context_param_list ? context_param_list->rd : NULL;
