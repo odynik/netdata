@@ -1662,15 +1662,17 @@ static int test_dbengine_check_metrics(RRDSET *st[CHARTS], RRDDIM *rd[CHARTS][DI
                     same = (calculated_number_round(value) == calculated_number_round(expected)) ? 1 : 0;
                     if(!same) {
                         fprintf(stderr, "    DB-engine unittest %s/%s: at %lu secs, expecting value "
-                                        CALCULATED_NUMBER_FORMAT ", found " CALCULATED_NUMBER_FORMAT ", ### E R R O R ###\n",
+                                        CALCULATED_NUMBER_FORMAT ", found " CALCULATED_NUMBER_FORMAT ", ### E R R O R 0 ###\n",
                                 st[i]->name, rd[i][j]->name, (unsigned long)time_now + k * update_every, expected, value);
                         errors++;
                     }
                     if(time_retrieved != time_now + k * update_every) {
-                        fprintf(stderr, "    DB-engine unittest %s/%s: at %lu secs, found timestamp %lu ### E R R O R ###\n",
+                        fprintf(stderr, "    DB-engine unittest %s/%s: at %lu secs, found timestamp %lu ### E R R O R 0 ###\n",
                                 st[i]->name, rd[i][j]->name, (unsigned long)time_now + k * update_every, (unsigned long)time_retrieved);
                         errors++;
                     }
+                    if (errors > 30)
+                        return errors;
                 }
                 rd[i][j]->state->query_ops.finalize(&handle);
             }
@@ -1694,37 +1696,46 @@ static int test_dbengine_check_rrdr(RRDSET *st[CHARTS], RRDDIM *rd[CHARTS][DIMS]
     update_every = REGION_UPDATE_EVERY[current_region];
     long points = (time_end - time_start) / update_every - 1;
     for (i = 0 ; i < CHARTS ; ++i) {
+        fprintf(stderr, "WEB: TEST: points = %ld, time_start = %ld, update_every = %d, time_end = %ld\n", points, time_start, update_every, time_end);
         RRDR *r = rrd2rrdr(st[i], points, time_start + update_every, time_end, RRDR_GROUPING_AVERAGE, 0, 0, NULL, NULL);
         if (!r) {
             fprintf(stderr, "    DB-engine unittest %s: empty RRDR ### E R R O R ###\n", st[i]->name);
             return ++errors;
         } else {
             assert(r->st == st[i]);
+            fprintf(stderr, "WEB: TEST: rrdr_rows = %ld\n", rrdr_rows(r));
             for (c = 0; c != rrdr_rows(r) ; ++c) {
                 RRDDIM *d;
                 time_now = time_start + (c + 2) * update_every;
                 time_retrieved = r->t[c];
+                if (c < 3) fprintf(stderr, "WEB: TEST: c = %ld, time_start = %ld, update_every = %d, time_now = %ld, time_retrieved = %ld\n", c, time_start, update_every, time_now, time_retrieved);
 
                 // for each dimension
                 for (j = 0, d = r->st->dimensions ; d && j < r->d ; ++j, d = d->next) {
                     calculated_number *cn = &r->v[ c * r->d ];
                     value = cn[j];
+                    if (c == 0 && j == 0) fprintf(stderr, "WEB: TEST: r->d = %d, values: [0] = %Lf, [1] = %Lf, [2] = %Lf, [3] = %Lf, [4] = %Lf\n", r->d, cn[0], cn[1], cn[2], cn[3], cn[4]); 
                     assert(rd[i][j] == d);
 
                     last = i * DIMS * REGION_POINTS[current_region] + j * REGION_POINTS[current_region] + c;
                     expected = unpack_storage_number(pack_storage_number((calculated_number)last, SN_DEFAULT_FLAGS));
+                    if (c < 3 && j < 3) fprintf(stderr, "WEB: TEST: current_region = %d, i = %d, j = %d, last = %lld, expected = %Lf, value = %Lf\n", current_region, i, j, last, expected, value);
 
                     same = (calculated_number_round(value) == calculated_number_round(expected)) ? 1 : 0;
                     if(!same) {
                         fprintf(stderr, "    DB-engine unittest %s/%s: at %lu secs, expecting value "
-                                        CALCULATED_NUMBER_FORMAT ", RRDR found " CALCULATED_NUMBER_FORMAT ", ### E R R O R ###\n",
+                                        CALCULATED_NUMBER_FORMAT ", RRDR found " CALCULATED_NUMBER_FORMAT ", ### E R R O R 1 ###\n",
                                 st[i]->name, rd[i][j]->name, (unsigned long)time_now, expected, value);
                         errors++;
                     }
                     if(time_retrieved != time_now) {
-                        fprintf(stderr, "    DB-engine unittest %s/%s: at %lu secs, found RRDR timestamp %lu ### E R R O R ###\n",
+                        fprintf(stderr, "    DB-engine unittest %s/%s: at %lu secs, found RRDR timestamp %lu ### E R R O R 1 ###\n",
                                 st[i]->name, rd[i][j]->name, (unsigned long)time_now, (unsigned long)time_retrieved);
                         errors++;
+                    }
+                    if (errors > 30) {
+                        rrdr_free(r);
+                        return errors;
                     }
                 }
             }
@@ -1812,6 +1823,7 @@ int test_dbengine(void)
     errors = 0;
     long points = (time_end[REGIONS - 1] - time_start[0]) / update_every - 1; // cover all time regions with RRDR
     long point_offset = (time_start[current_region] - time_start[0]) / update_every;
+    fprintf(stderr, "WEB: TEST: points = %ld, point_offset = %ld, time_start_current = %ld, time_start_0 = %ld, update_every = %d\n", points, point_offset, time_start[current_region], time_start[0], update_every);
     for (i = 0 ; i < CHARTS ; ++i) {
         RRDR *r = rrd2rrdr(st[i], points, time_start[0] + update_every, time_end[REGIONS - 1], RRDR_GROUPING_AVERAGE, 0, 0, NULL, NULL);
         if (!r) {
@@ -1839,14 +1851,18 @@ int test_dbengine(void)
                     uint8_t same = (calculated_number_round(value) == calculated_number_round(expected)) ? 1 : 0;
                     if(!same) {
                         fprintf(stderr, "    DB-engine unittest %s/%s: at %lu secs, expecting value "
-                                        CALCULATED_NUMBER_FORMAT ", RRDR found " CALCULATED_NUMBER_FORMAT ", ### E R R O R ###\n",
+                                        CALCULATED_NUMBER_FORMAT ", RRDR found " CALCULATED_NUMBER_FORMAT ", ### E R R O R 2 ###\n",
                                 st[i]->name, rd[i][j]->name, (unsigned long)time_now, expected, value);
                         errors++;
                     }
                     if(time_retrieved != time_now) {
-                        fprintf(stderr, "    DB-engine unittest %s/%s: at %lu secs, found RRDR timestamp %lu ### E R R O R ###\n",
+                        fprintf(stderr, "    DB-engine unittest %s/%s: at %lu secs, found RRDR timestamp %lu ### E R R O R 2 ###\n",
                                 st[i]->name, rd[i][j]->name, (unsigned long)time_now, (unsigned long)time_retrieved);
                         errors++;
+                    }
+                    if (errors > 30) {
+                        rrdr_free(r);
+                        goto error_out;
                     }
                 }
             }
