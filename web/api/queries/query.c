@@ -786,7 +786,7 @@ static int rrdr_convert_before_after_to_absolute(
             if(after_requested < 0) after_requested = after_requested - update_every - after_requested % update_every;
             else after_requested = after_requested + update_every - after_requested % update_every;
         }
-        after_requested = before_requested + after_requested;
+        after_requested = before_requested + after_requested + update_every;
         absolute_period_requested = 0;
     }
 
@@ -836,15 +836,13 @@ static RRDR *rrd2rrdr_fixedstep(
     // the duration of the chart
     time_t duration = before_requested - after_requested + update_every;
     long available_points = duration / update_every;
-    // available_points = ((long)st->counter < available_points)?(long)st->counter:available_points;
     info("WEB: duration = %ld, available_points = %ld, after_requested = %lld, before_requested = %lld", duration, available_points, after_requested, before_requested);
 
     RRDDIM *temp_rd = context_param_list ? context_param_list->rd : NULL;
-
+    
     info("WEB:FXSTEP after_requested = %lld, before_requested = %lld, points_requested=%ld, duration=%ld, first_entry_t = %ld, last_entry_t %ld", after_requested, before_requested, points_requested, duration, first_entry_t, last_entry_t);
     info("WEB:FXSTEP update_every = %d, available_points = %ld, group_method = %u, resampling_time_requested = %ld, options = %u, absolute_period_requested = %d", update_every, available_points, group_method, resampling_time_requested, options, absolute_period_requested);
-
-    if(duration <= 0 || available_points <= 0)
+    if(duration <= 0 || available_points <= 0 || (after_requested == 0 && before_requested == 0))
         return rrdr_create(st, 1, context_param_list);
 
     // check the number of wanted points in the result
@@ -927,8 +925,7 @@ static RRDR *rrd2rrdr_fixedstep(
 
     // we need to estimate the number of points, for having
     // an integer number of values per point
-    long points_wanted = ((before_wanted - after_requested) + update_every) / (update_every * group);
-    //points_wanted = ((long)st->counter < points_wanted)?(long)st->counter:points_wanted;
+    long points_wanted = (before_wanted - after_requested + update_every) / (update_every * group);
 
     // time_t after_wanted  = before_wanted - (points_wanted * group * update_every) + update_every;
     time_t after_wanted  = before_wanted - (points_wanted * group * update_every);
@@ -970,6 +967,7 @@ static RRDR *rrd2rrdr_fixedstep(
         #endif
         points_wanted = 0;
     }
+    info("WEB: points_wanted = %ld", points_wanted);
 
     info("WEB:FXSTEP after_requested = %lld, before_requested = %lld, points_requested=%ld, duration=%ld, first_entry_t = %ld, last_entry_t %ld", after_requested, before_requested, points_requested, duration, first_entry_t, last_entry_t);
     info("WEB:FXSTEP after_wanted = %ld, before_wanted = %ld, points_wanted=%ld", after_wanted, before_wanted, points_wanted);

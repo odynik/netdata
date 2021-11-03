@@ -1138,21 +1138,23 @@ static inline time_t rrdset_last_entry_t(RRDSET *st)
 // get the timestamp of first entry in the round robin database
 static inline time_t rrdset_first_entry_t_nolock(RRDSET *st)
 {
+    time_t first_entry_t = LONG_MAX;
+
     if (st->rrd_memory_mode == RRD_MEMORY_MODE_DBENGINE) {
+        info("WEB: st->counter = %lu, st->last_collected_time = %ld, st->last_updated = %ld", st->counter, st->last_collected_time.tv_sec, st->last_updated.tv_sec);
         RRDDIM *rd;
-        time_t first_entry_t = LONG_MAX;
 
         rrddim_foreach_read(rd, st) {
             first_entry_t = MIN(first_entry_t, rd->state->query_ops.oldest_time(rd));
         }
-
-        if (unlikely(LONG_MAX == first_entry_t)) return 0;
         info("WEB: RRDSET_1stENTRY_DB(%ld) st->counter = %lu, st->counter_done= %lu, st->last_collected_time = %ld, st->last_updated = %ld", first_entry_t, st->counter, st->counter_done, st->last_collected_time.tv_sec, st->last_updated.tv_sec);        
-        return first_entry_t;
     } else {
-        info("WEB: RRDSET_1stENTRY_RAM(%ld) st->counter = %lu, st->counter_done= %lu, st->last_collected_time = %ld, st->last_updated = %ld, duration = %ld", (time_t)(rrdset_last_entry_t_nolock(st) - rrdset_duration(st)), st->counter, st->counter_done, st->last_collected_time.tv_sec, st->last_updated.tv_sec, rrdset_duration(st));
-        return (time_t)((rrdset_last_entry_t_nolock(st) - rrdset_duration(st)) + st->update_every);
+        info("WEB: st->counter = %lu, st->last_collected_time = %ld, st->last_updated = %ld, duration = %ld", st->counter, st->last_collected_time.tv_sec, st->last_updated.tv_sec, rrdset_duration(st));
+        if (rrdset_last_entry_t_nolock(st) > 0 && rrdset_duration(st) > 0)
+            first_entry_t = MIN(first_entry_t, rrdset_last_entry_t_nolock(st) - rrdset_duration(st) + st->update_every);
     }
+    if (unlikely(LONG_MAX == first_entry_t)) return 0;
+    return first_entry_t;
 }
 
 static inline time_t rrdset_first_entry_t(RRDSET *st)
@@ -1176,7 +1178,12 @@ static inline time_t rrddim_last_entry_t(RRDDIM *rd) {
 static inline time_t rrddim_first_entry_t(RRDDIM *rd) {
     if (rd->rrdset->rrd_memory_mode == RRD_MEMORY_MODE_DBENGINE)
         return rd->state->query_ops.oldest_time(rd);
-    return (time_t)((rd->rrdset->last_updated.tv_sec - rrdset_duration(rd->rrdset)) + rd->update_every);
+    
+    time_t first_entry_t = 0;
+    if (rd->rrdset->last_updated.tv_sec > 0 && rrdset_duration(rd->rrdset) > 0)
+        first_entry_t = (time_t)(rd->rrdset->last_updated.tv_sec - rrdset_duration(rd->rrdset) + rd->rrdset->update_every);
+    
+    return first_entry_t;
 }
 
 time_t rrdhost_last_entry_t(RRDHOST *h);
