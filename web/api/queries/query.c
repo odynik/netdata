@@ -928,50 +928,30 @@ static RRDR *rrd2rrdr_fixedstep(
     // we need to estimate the number of points, for having
     // an integer number of values per point
     long points_wanted = ((before_wanted - after_requested) + update_every) / (update_every * group);
-<<<<<<< HEAD
-    //points_wanted = ((long)st->counter < points_wanted)?(long)st->counter:points_wanted;
 
-    // time_t after_wanted  = before_wanted - (points_wanted * group * update_every) + update_every;
-    time_t after_wanted  = before_wanted - (points_wanted * group * update_every);
+    time_t after_wanted  = before_wanted - (points_wanted * group * update_every) + update_every;
     if(unlikely(after_wanted < first_entry_t)) {
         // hm... we go to the past, calculate again points_wanted using all the db from before_wanted to the beginning
         points_wanted = ((before_wanted - after_requested) + update_every) / (update_every * group);
-        //points_wanted = ((long)st->counter < points_wanted)?(long)st->counter:points_wanted;
         
         // recalculate after wanted with the new number of points
-        after_wanted  = before_wanted - (points_wanted * group * update_every);
-=======
-    // long points_wanted = (before_wanted - after_requested) / (update_every * group);
+        after_wanted  = before_wanted - (points_wanted * group * update_every) + update_every;
 
     time_t after_wanted  = before_wanted - (points_wanted * group * update_every) + update_every;
-<<<<<<< HEAD
     // time_t after_wanted  = before_wanted - (points_wanted * group * update_every);
-=======
->>>>>>> c3718d7cef3fda727c4305d311ba92369ca469c0
     if(unlikely(after_wanted < first_entry_t)) {
         // hm... we go to the past, calculate again points_wanted using all the db from before_wanted to the beginning
         points_wanted = ((before_wanted - first_entry_t) + update_every) / (update_every * group);
-        // points_wanted = (before_wanted - first_entry_t) / (update_every * group);
 
         // recalculate after wanted with the new number of points
-<<<<<<< HEAD
-        // after_wanted  = before_wanted - (points_wanted * group * update_every);
-=======
->>>>>>> c3718d7cef3fda727c4305d311ba92369ca469c0
         after_wanted  = before_wanted - (points_wanted * group * update_every) + update_every;
->>>>>>> 9ec5f5a3d9e1463eee9136ddd7e3dfe8644525c4
 
         if(unlikely(after_wanted < first_entry_t)) {
             #ifdef NETDATA_INTERNAL_CHECKS
             error("INTERNAL ERROR: rrd2rrdr() on %s, after_wanted is before db min", st->name);
             #endif
 
-<<<<<<< HEAD
-            after_wanted = first_entry_t - (first_entry_t % ( ((aligned)?group:1) * update_every ));
-=======
             after_wanted = first_entry_t - (first_entry_t % ( ((aligned)?group:1) * update_every )) + ( ((aligned)?group:1) * update_every );
-            // after_wanted = first_entry_t - (first_entry_t % ( ((aligned)?group:1) * update_every ));
->>>>>>> 9ec5f5a3d9e1463eee9136ddd7e3dfe8644525c4
         }
     }
     //size_t after_slot = rrdset_time2slot(st, after_wanted);
@@ -984,14 +964,7 @@ static RRDR *rrd2rrdr_fixedstep(
         time_t tmp = before_wanted;
         before_wanted = after_wanted;
         after_wanted = tmp;
-<<<<<<< HEAD
-        points_wanted = ((before_wanted - after_requested) + update_every) / (update_every * group);        
-        //points_wanted = ((long)st->counter < points_wanted)?(long)st->counter:points_wanted;
-=======
-        // recalculate points_wanted using the final time-frame
         points_wanted = ((before_wanted - after_requested) + update_every) / (update_every * group);
-        // points_wanted = (before_wanted - after_requested) / (update_every * group);
->>>>>>> 9ec5f5a3d9e1463eee9136ddd7e3dfe8644525c4
     }
     // recalculate points_wanted using the final time-frame
     // points_wanted   = (before_wanted - after_wanted) / update_every / group + 1;
@@ -1645,11 +1618,7 @@ RRDR *rrd2rrdr(
     absolute_period_requested = rrdr_convert_before_after_to_absolute(&after_requested, &before_requested,
                                                                       rrd_update_every, first_entry_t,
                                                                       last_entry_t, options);
-<<<<<<< HEAD
     info("WEB: RRD2RRDR_AFTER_ABS_CONVERT(%d) after_requested = %lld, before_requested = %lld, first_entry_t = %ld, last_entry_t %ld", absolute_period_requested, after_requested, before_requested, first_entry_t, last_entry_t);
-=======
-    info("WEB: RRD2RRDR after_requested = %lld, before_requested = %lld, absolute_period_requested = %d", after_requested, before_requested, absolute_period_requested);
->>>>>>> 9ec5f5a3d9e1463eee9136ddd7e3dfe8644525c4
     if (options & RRDR_OPTION_ALLOW_PAST)
         if (first_entry_t > after_requested)
             first_entry_t = after_requested;
@@ -1696,11 +1665,7 @@ RRDR *rrd2rrdr(
                 absolute_period_requested = rrdr_convert_before_after_to_absolute(&after_requested, &before_requested,
                                                                                   rrd_update_every, first_entry_t,
                                                                                   last_entry_t, options);
-<<<<<<< HEAD
                 info("WEB: VAR STEP RRD2RRDR_AFTER_ABS_CONVERT DBENGINE after_requested = %lld, before_requested = %lld, absolute_period_requested = %d", after_requested, before_requested, absolute_period_requested);                                                                                  
-=======
-                info("WEB: RRD2RRDR after_requested = %lld, before_requested = %lld, absolute_period_requested = %d", after_requested, before_requested, absolute_period_requested);                                                                                  
->>>>>>> 9ec5f5a3d9e1463eee9136ddd7e3dfe8644525c4
             }
             return rrd2rrdr_variablestep(st, points_requested, after_requested, before_requested, group_method,
                                          resampling_time_requested, options, dimensions, rrd_update_every,
