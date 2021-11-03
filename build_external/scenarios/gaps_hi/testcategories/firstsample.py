@@ -31,7 +31,11 @@ def Hop012RetrieveSamplesInorder(state):
     state.wait_up("hop2")    
     state.wait_connected("hop0", "hop1")
     state.wait_connected("hop1", "hop2")
+<<<<<<< HEAD
     time.sleep(10)
+=======
+    time.sleep(5)
+>>>>>>> 9ec5f5a3d9e1463eee9136ddd7e3dfe8644525c4
     # state.end_checks.append( lambda: state.check_sync_hops("hop1", max_pre=1))
     # state.end_checks.append( lambda: state.check_sync_hops("hop2", max_pre=1))
     state.end_checks.append( lambda: state.compare_increment_value_and_duration("hop0", "memindex_testmemindex.inorder"))
