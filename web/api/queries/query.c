@@ -836,7 +836,6 @@ static RRDR *rrd2rrdr_fixedstep(
     // the duration of the chart
     time_t duration = before_requested - after_requested + update_every;
     long available_points = duration / update_every;
-    // available_points = ((long)st->counter < available_points)?(long)st->counter:available_points;
     info("WEB: duration = %ld, available_points = %ld, after_requested = %lld, before_requested = %lld", duration, available_points, after_requested, before_requested);
 
     RRDDIM *temp_rd = context_param_list ? context_param_list->rd : NULL;
@@ -930,15 +929,6 @@ static RRDR *rrd2rrdr_fixedstep(
     long points_wanted = ((before_wanted - after_requested) + update_every) / (update_every * group);
 
     time_t after_wanted  = before_wanted - (points_wanted * group * update_every) + update_every;
-    if(unlikely(after_wanted < first_entry_t)) {
-        // hm... we go to the past, calculate again points_wanted using all the db from before_wanted to the beginning
-        points_wanted = ((before_wanted - after_requested) + update_every) / (update_every * group);
-        
-        // recalculate after wanted with the new number of points
-        after_wanted  = before_wanted - (points_wanted * group * update_every) + update_every;
-
-    time_t after_wanted  = before_wanted - (points_wanted * group * update_every) + update_every;
-    // time_t after_wanted  = before_wanted - (points_wanted * group * update_every);
     if(unlikely(after_wanted < first_entry_t)) {
         // hm... we go to the past, calculate again points_wanted using all the db from before_wanted to the beginning
         points_wanted = ((before_wanted - first_entry_t) + update_every) / (update_every * group);
@@ -1647,11 +1637,7 @@ RRDR *rrd2rrdr(
                     absolute_period_requested =
                             rrdr_convert_before_after_to_absolute(&after_requested, &before_requested, rrd_update_every,
                                                                   first_entry_t, last_entry_t, options);
-<<<<<<< HEAD
                     info("WEB: RRD2RRDR_AFTER_ABS_CONVERT DBENGINE after_requested = %lld, before_requested = %lld, absolute_period_requested = %d", after_requested, before_requested, absolute_period_requested);
-=======
-                    info("WEB: RRD2RRDR after_requested = %lld, before_requested = %lld, absolute_period_requested = %d", after_requested, before_requested, absolute_period_requested);
->>>>>>> 9ec5f5a3d9e1463eee9136ddd7e3dfe8644525c4
                 }
                 freez(region_info_array);
             }
