@@ -1,6 +1,7 @@
 import json, os, os.path, re, requests, shutil, time, traceback
 from AgentTest.misc import sh
 from AgentTest.Node import Node
+from AgentTest.QueryUtils import *
 
 class DSlice(object):
     def __init__(self, raw_json, skew):
@@ -525,7 +526,7 @@ class State(object):
             print(f'  {"PASSED" if passed else "FAILED"} retrieve JSON data from {current_hop}', file=self.output)
             return passed
 
-    def compare_increment_value_and_duration(self, current_hop, chart="memindex_testmemindex.inorder", after=-600, before=0):
+    def compare_increment_value_and_duration(self, current_hop, chart="test_increment_x1.increment_x1"):
         ch = chart
         chart_info = self.nodes[current_hop].get_chart_info(ch, host=current_hop)
         if not chart_info:
@@ -536,8 +537,12 @@ class State(object):
         first_entry = chart_info["first_entry"]
         last_entry = chart_info["last_entry"]
         duration = chart_info["duration"]
-        for after in range(0, 1*update_every, update_every):
-            current_host_json = self.nodes[current_hop].get_data(ch, host=current_hop, after=(-after), before=0)
+        tcs = exercise_after_before(5, False)
+        print(f"The test cases are: {tcs}")
+        for tc in tcs.keys():
+            tc_params=tcs[tc]
+            print(f"Test Case: {tc_params}={tcs[tc]}")
+            current_host_json = self.nodes[current_hop].get_data(ch, host=current_hop, **tc_params)
             if not current_host_json:
                 print(f"  FAILED to retrieve data JSON object from {ch} looking at {self.nodes[current_hop].http}localhost:{self.nodes[current_hop].port}", file=self.output)
                 return False
@@ -546,7 +551,7 @@ class State(object):
                 return False
             data = current_host_json["data"]
             print(data)
-            if chart == "memindex_testmemindex.inorder":
+            if (chart == "memindex_testmemindex.inorder") or (chart.startswith("test_increment_x")):
                 starting_value = 0
             elif chart == "system.uptime":
                 starting_value = 1
@@ -559,7 +564,7 @@ class State(object):
                 json_first_sample = data[-1][1]
                 json_sample_diff = (json_last_sample - json_first_sample) + update_every
             except Exception as e:
-                print("ERROR: " + str(e))
+                print("ERROR - Comparing incremental values: " + str(e))
                 passed = False
                 return False            
             if not ((json_last_entry == last_entry) and (json_first_entry == first_entry)):
@@ -571,9 +576,142 @@ class State(object):
             if not ( duration == json_sample_diff):
                 print(f"MISMATCH on {self.nodes[current_hop].name}: Duration VS increment values duration. Duration is{duration}/IncrValueis{json_sample_diff}")
                 passed = False
-            with open(os.path.join(self.test_base,f"{current_hop}-{ch}_after_{-after}_before_{before}.json"),"wt") as f:
+            with open(os.path.join(self.test_base,f"{current_hop}-{ch}_after_{tc_params['after']}_before_{tc_params['before']}.json"),"wt") as f:
                 f.write(json.dumps(current_host_json, sort_keys=True, indent=4))
         print(f'  {"PASSED" if passed else "FAILED"} Compare increment values and duration for {current_hop}', file=self.output)
         return passed        
 
+    def first_sample_increment_value_and_duration(self, current_hop, chart="test_increment_xX.increment_xX"):
+        chart_under_test = list()
+        update_every_ut = 2
+        update_every_ut = [i for i in range(1, (update_every_ut + 1))]
+        update_every_ut.append(11)
+        update_every_ut.append(13)
+        if (chart is None) or (chart == "test_increment_xX.increment_xX"):
+            ch = "test_increment_x.increment_x"
+            for i in update_every_ut:
+                chart_under_test.append('.'.join([astr + str(i) for astr in ch.split('.')]))
+        else:
+            chart_under_test.append(chart)
+        passed = True             
+        for ch in chart_under_test:
+            chart_info = self.nodes[current_hop].get_chart_info(ch, host=current_hop)
+            if not chart_info:
+                print(f"  FAILED to retrieve chart info {ch} from {self.nodes[current_hop].name}")
+                return False           
+            update_every = chart_info["update_every"]
+            first_entry = chart_info["first_entry"]
+            last_entry = chart_info["last_entry"]
+            duration = chart_info["duration"]
+            after = -duration
+            tc_params={"after": after, "before": 0}
+            print(f"Test Case: {tc_params}")
+            current_host_json = self.nodes[current_hop].get_data(ch, host=current_hop, **tc_params)
+            if not current_host_json:
+                print(f"  FAILED to retrieve data JSON object from {ch} looking at {self.nodes[current_hop].http}localhost:{self.nodes[current_hop].port}", file=self.output)
+                return False
+            if (len(current_host_json["data"]) == 0) or (current_host_json["data"] is None):
+                print(f"  FAILED to retrieve {ch} from {current_hop} - response has zero rows", file=self.output)
+                return False
+            data = current_host_json["data"]
+            # print(data)
+            if (chart == "memindex_testmemindex.inorder") or (chart.startswith("test_increment_x")):
+                starting_value = 1
+            elif chart == "system.uptime":
+                starting_value = 1
+            else:
+                starting_value = -1
+            try:
+                json_last_entry = data[0][0]
+                json_first_entry = data[-1][0]
+                json_last_sample = data[0][1]
+                json_first_sample = data[-1][1]
+                json_sample_diff = json_last_sample - json_first_sample + update_every
+                if starting_value == 1:
+                    expected_last_sample = (duration - update_every + starting_value)
+                else:
+                    expected_last_sample = duration
+            except Exception as e:
+                print("ERROR - Fetch first sample of incremental collector values: " + str(e))
+                passed = False
+                return False            
+            if not ((json_last_entry == last_entry) and (json_first_entry == first_entry)):
+                print(f"MISMATCH on {self.nodes[current_hop].name} chart {ch}: First and Last entry timestamps. LE is{json_last_entry}/shouldbe{last_entry} - FE is{json_first_entry}/shouldbe{first_entry}")
+                passed = False
+            if not ((json_last_sample == expected_last_sample) and (json_first_sample == starting_value)):
+                print(f"MISMATCH on {self.nodes[current_hop].name} chart {ch}: First and Last samples. LES(is_{json_last_sample}/shouldbe_{expected_last_sample}) - FES (is_{json_first_sample}/shouldbe_{starting_value})")
+                passed = False
+            if not ( duration == json_sample_diff):
+                print(f"MISMATCH on {self.nodes[current_hop].name} chart {ch}: Duration VS increment values duration. Duration is{duration}/IncrValue is{json_sample_diff}")
+                passed = False
+            with open(os.path.join(self.test_base,f"{current_hop}-{ch}_after_{tc_params['after']}_before_{tc_params['before']}.json"),"wt") as f:
+                f.write(json.dumps(current_host_json, sort_keys=True, indent=4))
+        print(f'  {"PASSED" if passed else "FAILED"} Compare increment values and duration for {current_hop}', file=self.output)
+        return passed
 
+    def limited_first_sample_increment_value_and_duration(self, current_hop, chart="test_increment_xX.increment_xX"):
+        chart_under_test = list()
+        update_every_ut = 2
+        update_every_ut = [i for i in range(1, (update_every_ut + 1))]
+        # update_every_ut.append(11)
+        # update_every_ut.append(13)
+        if (chart is None) or (chart == "test_increment_xX.increment_xX"):
+            ch = "test_increment_x.increment_x"
+            for i in update_every_ut:
+                chart_under_test.append('.'.join([astr + str(i) for astr in ch.split('.')]))
+        else:
+            chart_under_test.append(chart)
+        passed = True             
+        for ch in chart_under_test:
+            chart_info = self.nodes[current_hop].get_chart_info(ch, host=current_hop)
+            if not chart_info:
+                print(f"  FAILED to retrieve chart info {ch} from {self.nodes[current_hop].name}")
+                return False           
+            update_every = chart_info["update_every"]
+            first_entry = chart_info["first_entry"]
+            last_entry = chart_info["last_entry"]
+            duration = chart_info["duration"]
+            numofsamples = 1
+            absolute = True
+            tc_params = per_sample_after_before(chart_info=chart_info, numofsamples=numofsamples, absolute=absolute)
+            print(f"Test Case: {tc_params}")
+            current_host_json = self.nodes[current_hop].get_data(ch, host=current_hop, **tc_params)
+            if not current_host_json:
+                print(f"  FAILED to retrieve data JSON object from {ch} looking at {self.nodes[current_hop].http}localhost:{self.nodes[current_hop].port}", file=self.output)
+                print(f"  FAILED to retrieve data JSON object from {ch} looking at {self.nodes[current_hop].http}localhost:{self.nodes[current_hop].port}")
+                return False
+            if (len(current_host_json["data"]) == 0) or (current_host_json["data"] is None):
+                print(f"  FAILED to retrieve {ch} from {current_hop} - response has zero rows", file=self.output)
+                print(f"  FAILED to retrieve {ch} from {current_hop} - response has zero rows")
+                return False
+            data = current_host_json["data"]
+            if (chart == "memindex_testmemindex.inorder") or (chart.startswith("test_increment_x")):
+                starting_value = 1
+            elif chart == "system.uptime":
+                starting_value = 1
+            else:
+                starting_value = -1
+            try:
+                json_last_entry = data[0][0]
+                json_first_entry = data[-1][0]
+                json_last_sample = data[0][1]
+                json_first_sample = data[-1][1]
+                expected_last_entry = first_entry + numofsamples*update_every
+                if starting_value == 1:
+                    expected_last_sample = ((numofsamples - 1)*update_every) + starting_value
+                else:
+                    expected_last_sample = duration
+            except Exception as e:
+                print(f"ERROR - Fetch first sample of incremental collector values: {str(e)}")
+                passed = False
+                return False            
+            if not ((json_last_entry == expected_last_entry) and (json_first_entry == first_entry)):
+                print(f"MISMATCH on {self.nodes[current_hop].name} chart {ch}: First and Last entry timestamps. LE is{json_last_entry}/shouldbe{expected_last_entry} - FE is{json_first_entry}/shouldbe{first_entry}")
+                passed = False
+            if not ((json_last_sample == expected_last_sample) and (json_first_sample == starting_value)):
+                print(f"MISMATCH on {self.nodes[current_hop].name} chart {ch}: First and Last samples. LES(is_{json_last_sample}/shouldbe_{expected_last_sample}) - FES (is_{json_first_sample}/shouldbe_{starting_value})")
+                passed = False
+            with open(os.path.join(self.test_base,f"{current_hop}-{ch}_after_{tc_params['after']}_before_{tc_params['before']}.json"),"wt") as f:
+                f.write(json.dumps(current_host_json, sort_keys=True, indent=4))
+        print(f'  {"PASSED" if passed else "FAILED"} Compare increment values and duration for {current_hop}', file=self.output)
+        return passed

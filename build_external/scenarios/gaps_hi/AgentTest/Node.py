@@ -48,8 +48,11 @@ class Node(object):
         guid = os.path.join(base, f"{self.name}-guid")
         conf = os.path.join(base, f"{self.name}-netdata.conf")
         stream = os.path.join(base, f"{self.name}-stream.conf")
+        python_d_conf = os.path.abspath(os.path.join(base, "../../../../../collectors/python.d.plugin/python.d.conf"))
         python_plugins_src = os.path.abspath(os.path.join(base, "../../../../../collectors/python.d.plugin/test_mem_index/memindex.chart.py"))    
         python_plugins_conf = os.path.abspath(os.path.join(base, "../../../../../collectors/python.d.plugin/test_mem_index/memindex.conf"))
+        python_plugins_src_test_increment = os.path.abspath(os.path.join(base, "../../../../../collectors/python.d.plugin/test_increment/test_increment.chart.py"))    
+        python_plugins_conf_test_increment = os.path.abspath(os.path.join(base, "../../../../../collectors/python.d.plugin/test_increment/test_increment.conf"))        
         tls_cert = os.path.abspath(os.path.join(base, "../../certificates"))
         with open(guid, "w") as f:
             print(self.guid,file=f)
@@ -69,8 +72,11 @@ class Node(object):
             print(f"            - {stream}:/etc/netdata/stream.conf:ro", file=f)
             print(f"            - {guid}:/var/lib/netdata/registry/netdata.public.unique.id:ro", file=f)
             print(f"            - {conf}:/etc/netdata/netdata.conf:ro", file=f)
+            print(f"            - {python_d_conf}:/etc/netdata/python.d.conf:ro", file=f)
             print(f"            - {python_plugins_src}:/usr/libexec/netdata/python.d/memindex.chart.py:ro", file=f)
             print(f"            - {python_plugins_conf}:/etc/netdata/python.d/memindex.conf:ro", file=f)
+            print(f"            - {python_plugins_src_test_increment}:/usr/libexec/netdata/python.d/test_increment.chart.py:ro", file=f)
+            print(f"            - {python_plugins_conf_test_increment}:/etc/netdata/python.d/test_increment.conf:ro", file=f)
             if self.tls:
                 print(f"#            - {tls_cert}:/etc/netdata/ssl:ro", file=f)
             print(f"        cap_add:", file=f)
@@ -111,6 +117,8 @@ class Node(object):
                     print(f"    {v}",file=f)
             print(f"[plugin:memindex]", file=f)
             print(f"#    update every = 1", file=f)
+            print(f"[plugin:test_increment]", file=f)
+            print(f"#    update every = 1", file=f)            
             for k,v in self.config.items():
                 file, section = k.split("/")
                 if file == "netdata.conf" and section == "plugin:memindex":
@@ -200,14 +208,15 @@ class Node(object):
             print(f"  Fetch failed {url} -> connection refused")
             return None
     
-    def get_data(self, chart, host=None, after=-600, before=0):
+    def get_data(self, chart, host=None, **url_params):
+        # print(f"Per Node({self.name}) url_params={url_params}")
         if chart is None:
             print(f"  ERROR: NO DATA because chart ID is None. Provide a chart id")
             return None
         if (host is None) or (host == self.name):
-            url = f"{self.http}localhost:{self.port}/api/v1/data?chart={chart}&after={after}&before={before}"
+            url = f"{self.http}localhost:{self.port}/api/v1/data?chart={chart}&after={url_params['after']}&before={url_params['before']}"
         else:
-            url = f"{self.http}localhost:{self.port}/host/{host}/api/v1/data?chart={chart}&after={after}&before={before}"
+            url = f"{self.http}localhost:{self.port}/host/{host}/api/v1/data?chart={chart}&after={url_params['after']}&before={url_params['before']}"
         try:
             r = requests.get(url)
             return r.json()

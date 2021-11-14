@@ -786,7 +786,7 @@ static int rrdr_convert_before_after_to_absolute(
             if(after_requested < 0) after_requested = after_requested - update_every - after_requested % update_every;
             else after_requested = after_requested + update_every - after_requested % update_every;
         }
-        after_requested = before_requested + after_requested + update_every;
+        after_requested = before_requested + after_requested;
         absolute_period_requested = 0;
     }
 
@@ -834,7 +834,7 @@ static RRDR *rrd2rrdr_fixedstep(
     int aligned = !(options & RRDR_OPTION_NOT_ALIGNED);
 
     // the duration of the chart
-    time_t duration = before_requested - after_requested + update_every;
+    time_t duration = before_requested - after_requested;
     long available_points = duration / update_every;
     info("WEB: duration = %ld, available_points = %ld, after_requested = %lld, before_requested = %lld", duration, available_points, after_requested, before_requested);
 
@@ -842,7 +842,7 @@ static RRDR *rrd2rrdr_fixedstep(
     
     info("WEB:FXSTEP after_requested = %lld, before_requested = %lld, points_requested=%ld, duration=%ld, first_entry_t = %ld, last_entry_t %ld", after_requested, before_requested, points_requested, duration, first_entry_t, last_entry_t);
     info("WEB:FXSTEP update_every = %d, available_points = %ld, group_method = %u, resampling_time_requested = %ld, options = %u, absolute_period_requested = %d", update_every, available_points, group_method, resampling_time_requested, options, absolute_period_requested);
-    if(duration <= 0 || available_points <= 0 || (after_requested == 0 && before_requested == 0))
+    if(duration <= 0 || available_points <= 0)
         return rrdr_create(st, 1, context_param_list);
 
     // check the number of wanted points in the result
@@ -867,7 +867,7 @@ static RRDR *rrd2rrdr_fixedstep(
             #endif
 
             after_requested = before_requested - resampling_time_requested;
-            duration = before_requested - after_requested + update_every;
+            duration = before_requested - after_requested;
             available_points = duration / update_every;
             group = available_points / points_requested;
         }
@@ -879,7 +879,7 @@ static RRDR *rrd2rrdr_fixedstep(
             time_t delta = duration % resampling_time_requested;
             if(delta > resampling_time_requested / 10) {
                 after_requested -= resampling_time_requested - delta;
-                duration = before_requested - after_requested + update_every;
+                duration = before_requested - after_requested;
                 available_points = duration / update_every;
                 group = available_points / points_requested;
             }
@@ -925,24 +925,23 @@ static RRDR *rrd2rrdr_fixedstep(
 
     // we need to estimate the number of points, for having
     // an integer number of values per point
-    long points_wanted = (before_wanted - after_requested + update_every) / (update_every * group);
+    long points_wanted = (before_wanted - after_requested) / (update_every * group);
 
-    // time_t after_wanted  = before_wanted - (points_wanted * group * update_every) + update_every;
-    time_t after_wanted  = before_wanted - (points_wanted * group * update_every);
+    time_t after_wanted  = before_wanted - (points_wanted * group * update_every) + update_every;
     if(unlikely(after_wanted < first_entry_t)) {
         // hm... we go to the past, calculate again points_wanted using all the db from before_wanted to the beginning
-        points_wanted = ((before_wanted - after_requested) + update_every) / (update_every * group);
+        points_wanted = (before_wanted - first_entry_t) / (update_every * group);
         //points_wanted = ((long)st->counter < points_wanted)?(long)st->counter:points_wanted;
         
         // recalculate after wanted with the new number of points
-        after_wanted  = before_wanted - (points_wanted * group * update_every);
+        after_wanted  = before_wanted - (points_wanted * group * update_every) + update_every;
 
         if(unlikely(after_wanted < first_entry_t)) {
             #ifdef NETDATA_INTERNAL_CHECKS
             error("INTERNAL ERROR: rrd2rrdr() on %s, after_wanted is before db min", st->name);
             #endif
 
-            after_wanted = first_entry_t - (first_entry_t % ( ((aligned)?group:1) * update_every ));
+            after_wanted = first_entry_t - (first_entry_t % ( ((aligned)?group:1) * update_every )) + ( ((aligned)?group:1) * update_every );
         }
     }
     //size_t after_slot = rrdset_time2slot(st, after_wanted);
@@ -955,12 +954,10 @@ static RRDR *rrd2rrdr_fixedstep(
         time_t tmp = before_wanted;
         before_wanted = after_wanted;
         after_wanted = tmp;
-        points_wanted = ((before_wanted - after_requested) + update_every) / (update_every * group);        
-        //points_wanted = ((long)st->counter < points_wanted)?(long)st->counter:points_wanted;
     }
 
     // recalculate points_wanted using the final time-frame
-    // points_wanted   = (before_wanted - after_wanted) / update_every / group + 1;
+    points_wanted   = (before_wanted - after_wanted) / update_every / group + 1;
     if(unlikely(points_wanted < 0)) {
         #ifdef NETDATA_INTERNAL_CHECKS
         error("INTERNAL ERROR: rrd2rrdr() on %s, points_wanted is %ld", st->name, points_wanted);
@@ -1220,7 +1217,7 @@ static RRDR *rrd2rrdr_variablestep(
     int aligned = !(options & RRDR_OPTION_NOT_ALIGNED);
 
     // the duration of the chart
-    time_t duration = before_requested - after_requested + update_every;
+    time_t duration = before_requested - after_requested;
     long available_points = duration / update_every;
 
     RRDDIM *temp_rd = context_param_list ? context_param_list->rd : NULL;
@@ -1252,7 +1249,7 @@ static RRDR *rrd2rrdr_variablestep(
             #endif
 
             after_requested = before_requested - resampling_time_requested;
-            duration = before_requested - after_requested + update_every;
+            duration = before_requested - after_requested;
             available_points = duration / update_every;
             group = available_points / points_requested;
         }
@@ -1264,7 +1261,7 @@ static RRDR *rrd2rrdr_variablestep(
             time_t delta = duration % resampling_time_requested;
             if(delta > resampling_time_requested / 10) {
                 after_requested -= resampling_time_requested - delta;
-                duration = before_requested - after_requested + update_every;
+                duration = before_requested - after_requested;
                 available_points = duration / update_every;
                 group = available_points / points_requested;
             }
@@ -1310,7 +1307,7 @@ static RRDR *rrd2rrdr_variablestep(
 
     // we need to estimate the number of points, for having
     // an integer number of values per point
-    long points_wanted = ((before_wanted - after_requested) + update_every) / (update_every * group);
+    long points_wanted = (before_wanted - after_requested) / (update_every * group);
 
     time_t after_wanted  = before_wanted - (points_wanted * group * update_every) + update_every;
     if(unlikely(after_wanted < first_entry_t)) {

@@ -48,7 +48,7 @@ mm_combinations = [
     ("dbengine", "dbengine", "dbengine"),
     ("dbengine", "save", "dbengine"),
     ("ram", "ram", "ram")
-    ]
+]
 
 # pv_combinations = list(itertools.product(protocols_version.keys(), repeat=numofagents))
 pv_combinations = [
@@ -83,8 +83,10 @@ hop_configuration =[]
 hop_test_cases = [
     # Hop0RetrieveSamplesInorder,
     # Hop01RetrieveSamplesInorder,
-    Hop012RetrieveSamplesInorder,
-    # Hop012ReStartHop1SamplesInorder
+    # Hop012RetrieveFirstSample,
+    # Hop012RetrieveLimitedFirstSample,
+    # Hop012RetrieveSamplesInorder,
+    Hop012ReStartHop1SamplesInorder
     # AscendingOrderHopStart,
     # DescendingOrderHopStart,
     # MixedOrderHopStart,

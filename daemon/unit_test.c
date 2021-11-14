@@ -1706,7 +1706,7 @@ static int test_dbengine_check_rrdr(RRDSET *st[CHARTS], RRDDIM *rd[CHARTS][DIMS]
             fprintf(stderr, "WEB: TEST: rrdr_rows = %ld\n", rrdr_rows(r));
             for (c = 0; c != rrdr_rows(r) ; ++c) {
                 RRDDIM *d;
-                time_now = time_start + (c + 1) * update_every;
+                time_now = time_start + (c + 2) * update_every;
                 time_retrieved = r->t[c];
                 if (c < 3) fprintf(stderr, "WEB: TEST: c = %ld, time_start = %ld, update_every = %d, time_now = %ld, time_retrieved = %ld\n", c, time_start, update_every, time_now, time_retrieved);
 
@@ -1717,7 +1717,7 @@ static int test_dbengine_check_rrdr(RRDSET *st[CHARTS], RRDDIM *rd[CHARTS][DIMS]
                     if (c == 0 && j == 0) fprintf(stderr, "WEB: TEST: r->d = %d, values: [0] = %Lf, [1] = %Lf, [2] = %Lf, [3] = %Lf, [4] = %Lf\n", r->d, cn[0], cn[1], cn[2], cn[3], cn[4]); 
                     assert(rd[i][j] == d);
 
-                    last = i * DIMS * REGION_POINTS[current_region] + j * REGION_POINTS[current_region] + c;
+                    last = i * DIMS * REGION_POINTS[current_region] + j * REGION_POINTS[current_region] + c + 1;
                     expected = unpack_storage_number(pack_storage_number((calculated_number)last, SN_DEFAULT_FLAGS));
                     if (c < 3 && j < 3) fprintf(stderr, "WEB: TEST: current_region = %d, i = %d, j = %d, last = %lld, expected = %Lf, value = %Lf\n", current_region, i, j, last, expected, value);
 
