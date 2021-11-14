@@ -964,7 +964,6 @@ static RRDR *rrd2rrdr_fixedstep(
         #endif
         points_wanted = 0;
     }
-    info("WEB: points_wanted = %ld", points_wanted);
 
     info("WEB:FXSTEP after_requested = %lld, before_requested = %lld, points_requested=%ld, duration=%ld, first_entry_t = %ld, last_entry_t %ld", after_requested, before_requested, points_requested, duration, first_entry_t, last_entry_t);
     info("WEB:FXSTEP after_wanted = %ld, before_wanted = %ld, points_wanted=%ld", after_wanted, before_wanted, points_wanted);
