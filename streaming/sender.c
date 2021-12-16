@@ -718,6 +718,7 @@ void *rrdpush_sender_thread(void *ptr) {
                 sender_start(s);
                 buffer_sprintf(s->build, "TIMESTAMP %"PRId64"", (int64_t)now);
                 sender_commit(s);
+                // Send here the REP on command to the parent
             }
             rrdpush_claimed_id(s->host);
             continue;
