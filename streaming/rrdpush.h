@@ -20,6 +20,7 @@
 #else
 #define STREAMING_PROTOCOL_CURRENT_VERSION (uint32_t)(STREAM_VERSION_CLABELS)
 #endif  //ENABLE_COMPRESSION
+// #define STREAMING_PROTOCOL_CURRENT_VERSION (uint32_t)(VERSION_GAP_FILLING)
 
 #define STREAMING_PROTOCOL_VERSION "1.1"
 #define START_STREAMING_PROMPT "Hit me baby, push them over..."
@@ -143,6 +144,7 @@ extern unsigned int default_rrdpush_enabled;
 #ifdef ENABLE_COMPRESSION
 extern unsigned int default_compression_enabled;
 #endif
+extern unsigned int default_rrdpush_replication_enabled;
 extern char *default_rrdpush_destination;
 extern char *default_rrdpush_api_key;
 extern char *default_rrdpush_send_charts_matching;
