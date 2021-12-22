@@ -43,6 +43,7 @@ unsigned int default_rrdpush_enabled = 0;
 #ifdef ENABLE_COMPRESSION
 unsigned int default_compression_enabled = 1;
 #endif
+unsigned int default_rrdpush_replication_enabled = 1;
 char *default_rrdpush_destination = NULL;
 char *default_rrdpush_api_key = NULL;
 char *default_rrdpush_send_charts_matching = NULL;
@@ -80,10 +81,18 @@ int rrdpush_init() {
     default_compression_enabled = (unsigned int)appconfig_get_boolean(&stream_config, CONFIG_SECTION_STREAM,
         "enable compression", default_compression_enabled);
 #endif
+    default_rrdpush_replication_enabled = (unsigned int)appconfig_get_boolean(&stream_config, CONFIG_SECTION_STREAM, "enable replication", default_rrdpush_replication_enabled);
+
 
     if(default_rrdpush_enabled && (!default_rrdpush_destination || !*default_rrdpush_destination || !default_rrdpush_api_key || !*default_rrdpush_api_key)) {
         error("STREAM [send]: cannot enable sending thread - information is missing.");
         default_rrdpush_enabled = 0;
+    }
+
+    // Disable replication if streaming is disabled. Guarded with #ifdef ?
+    if(!default_rrdpush_enabled && STREAMING_PROTOCOL_CURRENT_VERSION >= VERSION_GAP_FILLING) {
+        error("STREAM [send]: Cannot enable replication mechanism - Streaming is disabled.");
+        default_rrdpush_replication_enabled = 0;
     }
 
 #ifdef ENABLE_HTTPS
