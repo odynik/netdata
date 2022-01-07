@@ -103,6 +103,8 @@ struct sender_state {
     unsigned int rrdpush_compression;
     struct compressor_state *compressor;
 #endif
+    // Replication status
+    REPLICATION_STATE *replication;
 };
 
 struct receiver_state {
@@ -137,6 +139,10 @@ struct receiver_state {
     unsigned int rrdpush_compression;
     struct decompressor_state *decompressor;
 #endif
+    unsigned int shutdown:1;    // Tell the thread to exit
+    unsigned int exited;      // Indicates that the thread has exited  (NOT A BITFIELD!)
+    // Replication status
+    REPLICATION_STATE *replication;
 };
 
 

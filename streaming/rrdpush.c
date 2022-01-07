@@ -81,6 +81,7 @@ int rrdpush_init() {
     default_compression_enabled = (unsigned int)appconfig_get_boolean(&stream_config, CONFIG_SECTION_STREAM,
         "enable compression", default_compression_enabled);
 #endif
+    // replication
     default_rrdpush_replication_enabled = (unsigned int)appconfig_get_boolean(&stream_config, CONFIG_SECTION_STREAM, "enable replication", default_rrdpush_replication_enabled);
 
 
@@ -89,8 +90,10 @@ int rrdpush_init() {
         default_rrdpush_enabled = 0;
     }
 
-    // Disable replication if streaming is disabled. Guarded with #ifdef ?
-    if(!default_rrdpush_enabled && STREAMING_PROTOCOL_CURRENT_VERSION >= VERSION_GAP_FILLING) {
+    // Replication
+    if (!default_rrdpush_replication_enabled
+    || (STREAMING_PROTOCOL_CURRENT_VERSION < VERSION_GAP_FILLING)
+    || !default_rrdpush_enabled) {
         error("STREAM [send]: Cannot enable replication mechanism - Streaming is disabled.");
         default_rrdpush_replication_enabled = 0;
     }
