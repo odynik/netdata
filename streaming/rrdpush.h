@@ -7,6 +7,7 @@
 #include "libnetdata/libnetdata.h"
 #include "web/server/web_client.h"
 #include "daemon/common.h"
+#include "streaming/replication.h"
 
 #define CONNECTED_TO_SIZE 100
 
@@ -176,5 +177,13 @@ struct compressor_state *create_compressor();
 struct decompressor_state *create_decompressor();
 size_t is_compressed_data(const char *data, size_t data_size);
 #endif
+// Replication functions definitions
+// Initialization
+extern void replication_sender_init(struct sender_state *sender);
+extern void replication_receiver_init(struct receiver_state *receiver, struct config *stream_config);
+// Threads
+extern void replication_sender_thread_spawn(RRDHOST *host);
+extern void replication_receiver_thread_spawn(RRDHOST *host);
+extern void replication_sender_thread_stop(RRDHOST *host);
 
 #endif //NETDATA_RRDPUSH_H
