@@ -112,6 +112,7 @@ struct receiver_state {
     RRDHOST *host;
     netdata_thread_t thread;
     int fd;
+    int timeout;
     char *key;
     char *hostname;
     char *registry_hostname;
