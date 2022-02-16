@@ -64,8 +64,6 @@ dist_noinst_DATA = \
     packaging/bundle-ebpf.sh \
     packaging/bundle-judy.sh \
     packaging/bundle-libbpf.sh \
-    packaging/bundle-lws.sh \
-    packaging/bundle-mosquitto.sh \
     packaging/check-kernel-config.sh \
     packaging/ebpf.checksums \
     packaging/ebpf.version \
@@ -80,10 +78,6 @@ dist_noinst_DATA = \
     packaging/judy.version \
     packaging/libbpf.checksums \
     packaging/libbpf.version \
-    packaging/libwebsockets.checksums \
-    packaging/libwebsockets.version \
-    packaging/mosquitto.checksums \
-    packaging/mosquitto.version \
     packaging/protobuf.checksums \
     packaging/protobuf.version \
     packaging/version \
@@ -120,12 +114,6 @@ SUBDIRS += \
     spawn \
     ml \
     $(NULL)
-
-if ENABLE_ACLK
-SUBDIRS += \
-    aclk/legacy \
-    $(NULL)
-endif
 
 AM_CFLAGS = \
     $(OPTIONAL_MATH_CFLAGS) \
@@ -172,6 +160,8 @@ LIBNETDATA_FILES = \
     libnetdata/popen/popen.h \
     libnetdata/procfile/procfile.c \
     libnetdata/procfile/procfile.h \
+    libnetdata/queue/queue.c \
+    libnetdata/queue/queue.h \
     libnetdata/os.c \
     libnetdata/os.h \
     libnetdata/simple_pattern/simple_pattern.c \
@@ -620,8 +610,8 @@ PARSER_FILES = \
     parser/parser.h \
     $(NULL)
 
-if ACLK_NG
-ACLK_NG_FILES = \
+if ENABLE_ACLK
+ACLK_FILES = \
     aclk/aclk.c \
     aclk/aclk.h \
     aclk/aclk_util.c \
@@ -654,7 +644,7 @@ ACLK_NG_FILES = \
     $(NULL)
 
 if ENABLE_NEW_CLOUD_PROTOCOL
-ACLK_NG_FILES += \
+ACLK_FILES += \
     aclk/aclk_charts_api.c \
     aclk/aclk_charts_api.h \
     aclk/aclk_alarm_api.c \
@@ -680,7 +670,7 @@ ACLK_NG_FILES += \
     aclk/schema-wrappers/schema_wrapper_utils.h \
     $(NULL)
 
-ACLK_NG_PROTO_DEFINITIONS = \
+ACLK_PROTO_DEFINITIONS = \
     aclk/aclk-schemas/proto/aclk/v1/lib.proto \
     aclk/aclk-schemas/proto/agent/v1/disconnect.proto \
     aclk/aclk-schemas/proto/agent/v1/connection.proto \
@@ -695,9 +685,9 @@ ACLK_NG_PROTO_DEFINITIONS = \
     aclk/aclk-schemas/proto/nodeinstance/info/v1/info.proto \
     $(NULL)
 
-dist_noinst_DATA += $(ACLK_NG_PROTO_DEFINITIONS)
+dist_noinst_DATA += $(ACLK_PROTO_DEFINITIONS)
 
-ACLK_NG_PROTO_BUILT_FILES = aclk/aclk-schemas/proto/agent/v1/connection.pb.cc \
+ACLK_PROTO_BUILT_FILES = aclk/aclk-schemas/proto/agent/v1/connection.pb.cc \
     aclk/aclk-schemas/proto/agent/v1/connection.pb.h \
     aclk/aclk-schemas/proto/nodeinstance/connection/v1/connection.pb.cc \
     aclk/aclk-schemas/proto/nodeinstance/connection/v1/connection.pb.h \
@@ -723,9 +713,9 @@ ACLK_NG_PROTO_BUILT_FILES = aclk/aclk-schemas/proto/agent/v1/connection.pb.cc \
     aclk/aclk-schemas/proto/nodeinstance/info/v1/info.pb.h \
     $(NULL)
 
-BUILT_SOURCES += $(ACLK_NG_PROTO_BUILT_FILES)
-nodist_netdata_SOURCES += $(ACLK_NG_PROTO_BUILT_FILES)
-CLEANFILES += $(ACLK_NG_PROTO_BUILT_FILES)
+BUILT_SOURCES += $(ACLK_PROTO_BUILT_FILES)
+nodist_netdata_SOURCES += $(ACLK_PROTO_BUILT_FILES)
+CLEANFILES += $(ACLK_PROTO_BUILT_FILES)
 
 aclk/aclk-schemas/proto/agent/v1/connection.pb.cc \
 aclk/aclk-schemas/proto/agent/v1/connection.pb.h: aclk/aclk-schemas/proto/agent/v1/connection.proto
@@ -777,7 +767,7 @@ aclk/aclk-schemas/proto/nodeinstance/info/v1/info.pb.h: aclk/aclk-schemas/proto/
 
 endif #ENABLE_NEW_CLOUD_PROTOCOL
 
-endif #ACLK_NG
+endif #ENABLE_ACLK
 
 if ENABLE_ACLK
 ACLK_COMMON_FILES = \
@@ -793,27 +783,6 @@ ACLK_ALWAYS_BUILD_FILES = \
     aclk/aclk_proxy.c \
     aclk/aclk_proxy.h \
     $(NULL)
-
-if ACLK_LEGACY
-ACLK_LEGACY_FILES = \
-    aclk/legacy/agent_cloud_link.c \
-    aclk/legacy/agent_cloud_link.h \
-    aclk/legacy/aclk_query.c \
-    aclk/legacy/aclk_query.h \
-    aclk/legacy/mqtt.c \
-    aclk/legacy/mqtt.h \
-    aclk/legacy/aclk_rx_msgs.c \
-    aclk/legacy/aclk_rx_msgs.h \
-    aclk/legacy/aclk_lws_wss_client.c \
-    aclk/legacy/aclk_lws_wss_client.h \
-    aclk/legacy/aclk_lws_https_client.c \
-    aclk/legacy/aclk_lws_https_client.h \
-    aclk/legacy/aclk_common.c \
-    aclk/legacy/aclk_common.h \
-    aclk/legacy/aclk_stats.c \
-    aclk/legacy/aclk_stats.h \
-    $(NULL)
-endif #ACLK_LEGACY
 
 SPAWN_PLUGIN_FILES = \
     spawn/spawn.c \
@@ -931,8 +900,7 @@ NETDATA_FILES = \
     $(PARSER_FILES) \
     $(ACLK_ALWAYS_BUILD_FILES) \
     $(ACLK_COMMON_FILES) \
-    $(ACLK_LEGACY_FILES) \
-    $(ACLK_NG_FILES) \
+    $(ACLK_FILES) \
     $(SPAWN_PLUGIN_FILES) \
     $(NULL)
 
@@ -996,23 +964,16 @@ netdata_LDADD = \
     $(NETDATA_COMMON_LIBS) \
     $(NULL)
 
-if ACLK_NG
+if ENABLE_ACLK
     netdata_LDADD += $(OPTIONAL_PROTOBUF_LIBS) \
-        $(NULL)
+    $(OPTIONAL_ATOMIC_LIBS) \
+    $(NULL)
 endif
 
 if ENABLE_ML_TESTS
     netdata_LDADD += $(OPTIONAL_ML_TESTS_LIBS) \
         $(NULL)
 endif
-
-if ACLK_LEGACY
-    netdata_LDADD += \
-        $(abs_top_srcdir)/externaldeps/mosquitto/libmosquitto.a \
-        $(OPTIONAL_LWS_LIBS) \
-        $(OPTIONAL_LIBCAP_LIBS) \
-        $(NULL)
-endif #ACLK_LEGACY
 
 if ENABLE_CXX_LINKER
     netdata_LINK = $(CXXLD) $(CXXFLAGS) $(LDFLAGS) -o $@
