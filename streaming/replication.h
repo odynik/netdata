@@ -1,3 +1,4 @@
+// #include "libnetdata/libnetdata.h"
 //Includes
 #define REPLICATION_MSG "REPLICATION_STREAM"
 #define REPLICATE_CMD "REPLICATE"
@@ -15,7 +16,7 @@ enum REP_ARG {
 #define RDATA_CMD "RDATA"
 // GAP command with arguments TBD?? probably a timewindow struct
 #define GAP_CMD "GAP"
-#define RECEIVER_CMD_Q_MAX_SIZE (32768)
+#define REPLICATION_RX_CMD_Q_MAX_SIZE (512)
 
 typedef struct gaps_queue GAPS;
 typedef struct gap GAP;
@@ -77,12 +78,17 @@ typedef struct gap {
     TIME_WINDOW t_window; // This is the time window variables of a gap
 } GAP;
 
+// typedef struct gaps_queue {
+//     unsigned head, tail;
+//     struct gap gaps_timeline[RECEIVER_CMD_Q_MAX_SIZE];
+//     uv_mutex_t gaps_mutex;
+//     uv_cond_t gaps_cond;
+//     unsigned queue_size;
+//     uint8_t stop_thread; // if set to 1 the thread should shut down
+//     time_t beginoftime;
+// } GAPS;
+
 typedef struct gaps_queue {
-    unsigned head, tail;
-    struct gap gaps_timeline[RECEIVER_CMD_Q_MAX_SIZE];
-    uv_mutex_t gaps_mutex;
-    uv_cond_t gaps_cond;
-    unsigned queue_size;
-    uint8_t stop_thread; // if set to 1 the thread should shut down
+    queue_t gaps;
     time_t beginoftime;
 } GAPS;

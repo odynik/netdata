@@ -2,23 +2,6 @@
 
 #include "queue.h"
 
-struct node_s{
-	void *item;
-	struct node_s *next;			
-};
-
-typedef struct node_s *node;
-
-struct queue_s{		
-	pthread_cond_t conde;
-	pthread_cond_t condf;
-	pthread_mutex_t lock;
-	node front;			
-	node rear;
-	int max;
-	int count;
-};
-
 /*
  * @Input:
  *      q / The queue instance that the item will be pushed into

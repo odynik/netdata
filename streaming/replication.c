@@ -8,11 +8,8 @@ extern int netdata_use_ssl_on_stream;
 static void replication_receiver_thread_cleanup_callback(void *host);
 static void replication_sender_thread_cleanup_callback(void *ptr);
 static void print_replication_state(REPLICATION_STATE *state);
-
-static GAPS* gaps_timeline_create() {
-    
-    return NULL;
-}
+static void print_replication_gap(GAP *a_gap);
+static int gaps_init(GAPS *new_gaps);
 
 // Thread Initialization
 static void replication_state_init(REPLICATION_STATE *state)
@@ -25,12 +22,19 @@ static void replication_state_init(REPLICATION_STATE *state)
 #ifdef ENABLE_HTTPS
     state->ssl = (struct netdata_ssl *)callocz(1, sizeof(struct netdata_ssl));
 #endif
-//     memset(state->gaps_timeline, 0, sizeof(*state->gaps_timeline));
+    int ret = gaps_init(state->gaps_timeline);
+    if(ret)
+    {
+        error("%s Disabling replication", REPLICATION_MSG);
+        default_rrdpush_replication_enabled = 0;
+        state->enabled = 0;
+        // Do something here to shutdown replication
+    }
     netdata_mutex_init(&state->mutex);
 }
 
 static void print_replication_state(REPLICATION_STATE *state){
-    info("%s: Replication State is ...\n pthread_id: %lu\n, enabled: %u\n, spawned: %u\n, socket: %d\n, connected: %u\n, connected_to: %s\n, reconnects_counter: %lu\n",
+    info("%s: Replication State is ...\n pthread_id: %lu\n, enabled: %u\n, spawned: %u\n, socket: %d\n, connected: %u\n, connected_to: %s\n, reconnects_counter: %lu\n, gaps_beginoftime: %lu\n",
     REPLICATION_MSG,
     state->thread,
     state->enabled,
@@ -38,8 +42,20 @@ static void print_replication_state(REPLICATION_STATE *state){
     state->socket,
     state->connected,
     state->connected_to,
-    state->reconnects_counter        
+    state->reconnects_counter,
+    state->gaps_timeline->beginoftime        
     );
+}
+
+static void print_replication_gap(GAP *a_gap){
+    info("%s: GAP details are: \nstatus: %s\n, t_s: %lu t_f: %lu t_e: %lu\n, mguid: %s\n",
+    REPLICATION_MSG,
+    a_gap->status,
+    a_gap->t_window.t_start,
+    a_gap->t_window.t_first,
+    a_gap->t_window.t_end,
+    a_gap->uuid         
+    );    
 }
 
 static void replication_state_destroy(REPLICATION_STATE *state)
@@ -101,6 +117,7 @@ void replication_receiver_init(struct receiver_state *receiver, struct config *s
     receiver->replication = (REPLICATION_STATE *)callocz(1, sizeof(REPLICATION_STATE));
     replication_state_init(receiver->replication);
     receiver->replication->enabled = rrdpush_replication_enable;
+    receiver->replication->gaps_timeline->beginoftime = rrdhost_first_entry_t(receiver->host);
     info("%s: Initialize Rx for host %s ", REPLICATION_MSG, receiver->host->hostname);
     print_replication_state(receiver->replication);
 }
@@ -956,29 +973,44 @@ done:
 }
 
 // GAP creation and processing
-GAP *init_gap(){
-    GAP *agap = malloc(sizeof(GAP));
-    //memset(&agap, 0, sizeof(GAP));
-    return agap;
+static void timewindow_init(TIME_WINDOW *new_tw) {
+    new_tw = (TIME_WINDOW *)callocz(1, sizeof(TIME_WINDOW));
 }
 
-GAP *generate_new_gap(struct receiver_state *stream_recv){
-    GAP *newgap = init_gap();
-    // newgap->uid = uuidgen(); // find a way to create unique identifiers for gaps
-    newgap->uuid = stream_recv->machine_guid;
-    newgap->t_window.t_first = now_realtime_sec();
-    newgap->status = "oncreate";
+static void gap_init(GAP *new_gap) {
+    new_gap = (GAP *)callocz(1, sizeof(GAP));
+    timewindow_init(&new_gap->t_window);
+}
+
+static int gaps_init(GAPS *new_gaps) {
+    new_gaps = (GAPS *)callocz(1, sizeof(GAPS));
+    new_gaps->gaps = queue_new(REPLICATION_RX_CMD_Q_MAX_SIZE);
+    if(!new_gaps->gaps){
+        error("%s Gaps timeline queue could not be created", REPLICATION_MSG);
+        return 1;
+        //Handle this case. Probably shutdown replication.
+    }
+    return 0;
+}
+
+GAP generate_new_gap(struct receiver_state *stream_recv) {
+    GAP newgap;
+    gap_init(&newgap);
+    // newgap.uid = uuidgen(); // find a way to create unique identifiers for gaps or take it from the database
+    newgap.uuid = stream_recv->machine_guid;
+    newgap.t_window.t_first = now_realtime_sec();
+    newgap.status = "oncreate";
     return newgap;
 }
 
 int complete_new_gap(GAP *potential_gap){
     if(!strcmp("oncreate", potential_gap->status)) {
         error("%s: This GAP cannot be completed. Need to create it first.", REPLICATION_MSG);
-        return 0;
+        return 1;
     }
     potential_gap->t_window.t_end = now_realtime_sec();
     potential_gap->status = "oncompletion";
-    return 1;
+    return 0;
 }
 
 int verify_new_gap(GAP *new_gap){
@@ -989,6 +1021,37 @@ int verify_new_gap(GAP *new_gap){
     // Respect any retention period
     // push the gap in the queue
     return 0;
+}
+
+void evaluate_gap_onconnection(struct receiver_state *stream_recv){
+    GAPS *the_gaps = stream_recv->replication->gaps_timeline;
+    GAP *front = (GAP *)the_gaps->gaps->front->item;
+    // First connection
+    if(the_gaps->gaps->count == 0)
+        return;
+    // Handle the retention check here
+    // Re-connection
+    if(complete_new_gap(front)){
+        error("%s: GAP status is %s", REPLICATION_MSG, front->status);
+        // Need to take some action here? Maybe added in the back of the Q?
+    }
+    info("%s: A new GAP was detected", REPLICATION_MSG);
+    print_replication_gap(front);
+    //verify it in memory
+    //send it to child
+}
+
+void evaluate_gap_ondisconnection(struct receiver_state *stream_recv){
+    GAPS *the_gaps = stream_recv->replication->gaps_timeline;
+    // The queue seems to hold only the pointer...so where should I keep the 
+    // values of the GAP? 
+    GAP a_gap = generate_new_gap(stream_recv);
+    if(!queue_push(the_gaps->gaps, (void *)&a_gap)){
+        error("%s: Cannot insert the new GAP in the queue!", REPLICATION_MSG);
+        print_replication_gap(&a_gap);
+    }
+    info("%s: New GAP is being born!", REPLICATION_MSG);
+    print_replication_gap(&a_gap);
 }
 
 // Push a new gap in the queue

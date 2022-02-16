@@ -613,6 +613,7 @@ static int rrdpush_receive(struct receiver_state *rpt)
     }
     // Here is the first proof of connection with the sender thread.
     // rpt->last_msg_t = now_realtime_sec();
+    evaluate_gap_onconnection(rpt);
 
     // remove the non-blocking flag from the socket
     if(sock_delnonblock(rpt->fd) < 0)
@@ -677,6 +678,8 @@ static int rrdpush_receive(struct receiver_state *rpt)
     if (netdata_cloud_setting)
         aclk_host_state_update(rpt->host, 0);
 #endif
+
+    evaluate_gap_ondisconnection(rpt);
 
     // During a shutdown there is cleanup code in rrdhost that will cancel the sender thread
     if (!netdata_exit && rpt->host) {
