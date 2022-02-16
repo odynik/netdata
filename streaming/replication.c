@@ -1029,6 +1029,7 @@ int verify_new_gap(GAP *new_gap){
 }
 
 void evaluate_gap_onconnection(struct receiver_state *stream_recv){
+    info("%s: Evaluate GAPs on connection", REPLICATION_MSG);
     GAPS *the_gaps = stream_recv->replication->gaps_timeline;
     GAP *front = (GAP *)the_gaps->gaps->front->item;
     // First connection
@@ -1047,6 +1048,7 @@ void evaluate_gap_onconnection(struct receiver_state *stream_recv){
 }
 
 void evaluate_gap_ondisconnection(struct receiver_state *stream_recv){
+    info("%s: Evaluate GAPs on dis-connection", REPLICATION_MSG);
     GAPS *the_gaps = stream_recv->replication->gaps_timeline;
     // The queue seems to hold only the pointer...so where should I keep the 
     // values of the GAP? 
