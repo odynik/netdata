@@ -848,7 +848,8 @@ void rrdhost_free(RRDHOST *host) {
     rrd_check_wrlock();     // make sure the RRDs are write locked
 
     // ------------------------------------------------------------------------
-    // clean up streaming
+    // clean up streaming & replication
+    replication_sender_thread_stop(host); // stop a possibly running Tx replication thread and clean-up the state of the REP Tx thread.
     rrdpush_sender_thread_stop(host); // stop a possibly running thread
     cbuffer_free(host->sender->buffer);
     buffer_free(host->sender->build);
