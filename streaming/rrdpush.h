@@ -188,5 +188,7 @@ extern void replication_sender_thread_spawn(RRDHOST *host);
 extern int replication_receiver_thread_spawn(struct web_client *w, char *url);
 extern void replication_sender_thread_stop(RRDHOST *host);
 extern void *replication_sender_thread(void *ptr);
+extern void evaluate_gap_onconnection(struct receiver_state *stream_recv);
+extern void evaluate_gap_ondisconnection(struct receiver_state *stream_recv);
 
 #endif //NETDATA_RRDPUSH_H

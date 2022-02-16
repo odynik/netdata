@@ -22,19 +22,19 @@ static void replication_state_init(REPLICATION_STATE *state)
 #ifdef ENABLE_HTTPS
     state->ssl = (struct netdata_ssl *)callocz(1, sizeof(struct netdata_ssl));
 #endif
+    state->gaps_timeline = (GAPS *)callocz(1, sizeof(GAPS));
     int ret = gaps_init(state->gaps_timeline);
     if(ret)
     {
         error("%s Disabling replication", REPLICATION_MSG);
         default_rrdpush_replication_enabled = 0;
-        state->enabled = 0;
         // Do something here to shutdown replication
     }
     netdata_mutex_init(&state->mutex);
 }
 
 static void print_replication_state(REPLICATION_STATE *state){
-    info("%s: Replication State is ...\n pthread_id: %lu\n, enabled: %u\n, spawned: %u\n, socket: %d\n, connected: %u\n, connected_to: %s\n, reconnects_counter: %lu\n, gaps_beginoftime: %lu\n",
+    info("%s: Replication State is ...\n pthread_id: %lu\n, enabled: %u\n, spawned: %u\n, socket: %d\n, connected: %u\n, connected_to: %s\n, reconnects_counter: %lu\n, gaps_beginoftime: %ld\n",
     REPLICATION_MSG,
     state->thread,
     state->enabled,
@@ -48,7 +48,7 @@ static void print_replication_state(REPLICATION_STATE *state){
 }
 
 static void print_replication_gap(GAP *a_gap){
-    info("%s: GAP details are: \nstatus: %s\n, t_s: %lu t_f: %lu t_e: %lu\n, mguid: %s\n",
+    info("%s: GAP details are: \nstatus: %s\n, t_s: %ld t_f: %ld t_e: %ld\n, mguid: %s\n",
     REPLICATION_MSG,
     a_gap->status,
     a_gap->t_window.t_start,
@@ -60,7 +60,7 @@ static void print_replication_gap(GAP *a_gap){
 
 static void replication_state_destroy(REPLICATION_STATE *state)
 {
-    info("%s: Destroying replication state %s .", REPLICATION_MSG);
+    info("%s: Destroying replication state.", REPLICATION_MSG);
     pthread_mutex_destroy(&state->mutex);
     freez(state->buffer);
     freez(state->build);
@@ -86,6 +86,10 @@ void replication_sender_init(struct sender_state *sender){
     sender->replication = (REPLICATION_STATE *)callocz(1, sizeof(REPLICATION_STATE));
     replication_state_init(sender->replication);
     sender->replication->enabled = default_rrdpush_replication_enabled;
+    info("%s Begin of time is the problem", REPLICATION_MSG);
+    sender->replication->gaps_timeline->beginoftime = rrdhost_first_entry_t(sender->host);
+    // sender->replication->gaps_timeline->beginoftime = now_realtime_sec();    
+    info("%s Begin of time is not a problem", REPLICATION_MSG);
 #ifdef ENABLE_HTTPS
     sender->replication->ssl = &sender->host->stream_ssl;
 #endif
@@ -983,13 +987,14 @@ static void gap_init(GAP *new_gap) {
 }
 
 static int gaps_init(GAPS *new_gaps) {
-    new_gaps = (GAPS *)callocz(1, sizeof(GAPS));
+    info("LIBQUEUE Initialization");    
     new_gaps->gaps = queue_new(REPLICATION_RX_CMD_Q_MAX_SIZE);
     if(!new_gaps->gaps){
         error("%s Gaps timeline queue could not be created", REPLICATION_MSG);
         return 1;
         //Handle this case. Probably shutdown replication.
     }
+    info("%s: GAPs Initialization", REPLICATION_MSG);
     return 0;
 }
 
