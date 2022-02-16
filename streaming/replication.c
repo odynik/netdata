@@ -10,6 +10,7 @@ static void replication_sender_thread_cleanup_callback(void *ptr);
 static void print_replication_state(REPLICATION_STATE *state);
 
 static GAPS* gaps_timeline_create() {
+    
     return NULL;
 }
 
@@ -21,9 +22,9 @@ static void replication_state_init(REPLICATION_STATE *state)
     state->buffer = cbuffer_new(1024, 1024*1024);
     state->build = buffer_create(1);
     state->socket = -1;
-// #ifdef ENABLE_HTTPS
-//     memset(&state->ssl, 0, sizeof(state->ssl));
-// #endif
+#ifdef ENABLE_HTTPS
+    state->ssl = (struct netdata_ssl *)callocz(1, sizeof(struct netdata_ssl));
+#endif
 //     memset(state->gaps_timeline, 0, sizeof(*state->gaps_timeline));
     netdata_mutex_init(&state->mutex);
 }
@@ -43,12 +44,17 @@ static void print_replication_state(REPLICATION_STATE *state){
 
 static void replication_state_destroy(REPLICATION_STATE *state)
 {
+    info("%s: Destroying replication state %s .", REPLICATION_MSG);
     pthread_mutex_destroy(&state->mutex);
     freez(state->buffer);
-    freez(state->read_buffer);
-    freez(state->gaps_timeline);
+    freez(state->build);
+    // freez(state->read_buffer);
+    // freez(state->gaps_timeline);
 #ifdef ENABLE_HTTPS
-    freez(&state->ssl);
+    if(state->ssl->conn){
+        SSL_free(state->ssl->conn);
+    }
+    freez(state->ssl);
 #endif    
     freez(state);
 }
@@ -57,13 +63,16 @@ void replication_sender_init(struct sender_state *sender){
     if(!default_rrdpush_replication_enabled)
         return;
     if(!sender || !sender->host){
-        error("%s: Host or host's sender state is not initialized! - Tx thread Initialization failed!", REPLICATION_MSG);
+        error("%s: Host or host's replication sender state is not initialized! - Tx thread Initialization failed!", REPLICATION_MSG);
         return;
     }
 
     sender->replication = (REPLICATION_STATE *)callocz(1, sizeof(REPLICATION_STATE));
     replication_state_init(sender->replication);
     sender->replication->enabled = default_rrdpush_replication_enabled;
+#ifdef ENABLE_HTTPS
+    sender->replication->ssl = &sender->host->stream_ssl;
+#endif
     info("%s: Initialize REP Tx state during host creation %s .", REPLICATION_MSG, sender->host->hostname);
     print_replication_state(sender->replication);
 }
@@ -391,6 +400,7 @@ void *replication_receiver_thread(void *ptr){
     netdata_thread_cleanup_push(replication_receiver_thread_cleanup_callback, ptr);
     struct receiver_state *rpt = (struct receiver_state *)ptr;
     unsigned int rrdpush_replication_enabled =  rpt->replication->enabled;
+    rpt->replication->exited = 0; //latch down the exited flag on Rx thread start up.
     // GAPS *gaps_timeline = rpt->replication->gaps_timeline;
     //read configuration
     //create pluginds cd object
@@ -425,8 +435,8 @@ void *replication_receiver_thread(void *ptr){
     // debug(D_REPLICATION, "Initial REPLICATION response to %s: %s", rpt->client_ip, initial_response);
     info("%s: Initial REPLICATION response to [%s:%s]: %s", REPLICATION_MSG, rpt->replication->client_ip, rpt->replication->client_port, initial_response);
     #ifdef ENABLE_HTTPS
-    rpt->host->stream_ssl.conn = rpt->replication->ssl.conn;
-    rpt->host->stream_ssl.flags = rpt->replication->ssl.flags;
+    rpt->host->stream_ssl.conn = rpt->replication->ssl->conn;
+    rpt->host->stream_ssl.flags = rpt->replication->ssl->flags;
     if(send_timeout(&rpt->replication->ssl, rpt->replication->socket, initial_response, strlen(initial_response), 0, 60) != (ssize_t)strlen(initial_response)) {
 #else
     if(send_timeout(rpt->replication->socket, initial_response, strlen(initial_response), 0, 60) != strlen(initial_response)) {
@@ -681,8 +691,8 @@ int replication_receiver_thread_spawn(struct web_client *w, char *url) {
     host->receiver->replication->client_ip = strdupz(w->client_ip);
     host->receiver->replication->client_port = strdupz(w->client_port);
 #ifdef ENABLE_HTTPS
-    host->receiver->replication->ssl.conn = w->ssl.conn;
-    host->receiver->replication->ssl.flags = w->ssl.flags;
+    host->receiver->replication->ssl->conn = w->ssl.conn;
+    host->receiver->replication->ssl->flags = w->ssl.flags;
     w->ssl.conn = NULL;
     w->ssl.flags = NETDATA_SSL_START;
 #endif
@@ -735,7 +745,7 @@ static void replication_sender_thread_cleanup_callback(void *ptr) {
     // follow the shutdown sequence with the sender thread from the rrdhost.c file
 
     // TBD - Check if joining the streaming threads is good for shutting down the replication threads.
-    if(!host->rrdpush_sender_join) {
+    if(!host->sender->replication->sender_thread_join) {
         info("%s %s [send]: sending thread detaches itself.", REPLICATION_MSG, host->hostname);
         netdata_thread_detach(netdata_thread_self());
     }
@@ -747,11 +757,34 @@ static void replication_sender_thread_cleanup_callback(void *ptr) {
     netdata_mutex_unlock(&host->sender->replication->mutex);
 }
 
-void replication_receiver_thread_cleanup_callback(void *host)
+void replication_receiver_thread_cleanup_callback(void *ptr)
 {
-    // follow the receiver clean-up
-    // destroy the replication rx structs
+    // destroy the replication rx structs - TBD
     info("%s: Hey you, add something here...I need to cleanup the receiver thread!!! :P", REPLICATION_MSG);
+
+    static __thread int executed = 0;
+    if(!executed) {
+        executed = 1;
+        struct receiver_state *rpt = (struct receiver_state *) ptr;
+        // If the shutdown sequence has started, and this receiver is still attached to the host then we cannot touch
+        // the host pointer as it is unpredictable when the RRDHOST is deleted. Do the cleanup from rrdhost_free().
+        if (netdata_exit && rpt->host) {
+            rpt->replication->exited = 1;
+            return;
+        }
+
+        // Make sure that we detach this thread and don't kill a freshly arriving receiver
+        if (!netdata_exit && rpt->host) {
+            netdata_mutex_lock(&rpt->replication->mutex);
+            if (rpt->host->receiver == rpt)
+                rpt->host->receiver = NULL;
+            netdata_mutex_unlock(&rpt->replication->mutex);
+        }
+
+        info("%s %s [receive from [%s]:%s]: receive thread ended (task id %d)", REPLICATION_MSG, rpt->hostname, rpt->replication->client_ip, rpt->replication->client_port, gettid());
+        replication_state_destroy(rpt->replication);
+        // On a parent signal also the sender thread sending to a gparent to shutdown. Probably after the parsing. Check also the clean-up functionality in the rrdhost().
+    }
 }
 
 // Any join, start, stop, wait, etc thread function goes here.
@@ -762,11 +795,11 @@ void replication_sender_thread_stop(RRDHOST *host) {
     netdata_thread_t thr = 0;
 
     if(host->sender->replication->spawned) {
-        info("%s %s [send]: signaling sending thread to stop...", REPLICATION_MSG, host->hostname);
+        info("%s %s [send]: signaling replication sending thread to stop...", REPLICATION_MSG, host->hostname);
 
         // Check if this is necessary for replication thread?
         //signal the thread that we want to join it
-        //host->rrdpush_sender_join = 1;
+        host->sender->replication->sender_thread_join = 1;
 
         // copy the thread id, so that we will be waiting for the right one
         // even if a new one has been spawn
@@ -779,11 +812,13 @@ void replication_sender_thread_stop(RRDHOST *host) {
     netdata_mutex_unlock(&host->sender->replication->mutex);
 
     if(thr != 0) {
-        info("%s %s [send]: waiting for the sending thread to stop...", REPLICATION_MSG, host->hostname);
+        info("%s %s [send]: waiting for the replication sending thread to stop...", REPLICATION_MSG, host->hostname);
         void *result;
         netdata_thread_join(thr, &result);
-        info("%s %s [send]: sending thread has exited.", REPLICATION_MSG, host->hostname);
+        info("%s %s [send]: replication sending thread has exited.", REPLICATION_MSG, host->hostname);
     }
+    // Clean-up the replication Tx thread structure.
+    replication_state_destroy(host->sender->replication);
 }
 
 // static inline int parse_replication_ack(char *http)

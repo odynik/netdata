@@ -28,6 +28,7 @@ typedef struct replication_state {
     netdata_mutex_t mutex;
     unsigned int enabled; // result of configuration and negotiation. Runtime flag
     unsigned int spawned;// if the replication thread has been spawned    
+    volatile unsigned int sender_thread_join; // Following the normal shutdown seq need to verify the replication sender thread shutdown.
     // connection variables
     int socket;
     unsigned int connected;
@@ -51,10 +52,12 @@ typedef struct replication_state {
     char *client_ip;
     char *client_port;
 #ifdef ENABLE_HTTPS
-    struct netdata_ssl ssl;
+    struct netdata_ssl *ssl;
 #endif
     char *program_name;
     char *program_version;
+    unsigned int shutdown:1;    // Tell the thread to exit
+    unsigned int exited;      // Indicates that the thread has exited  (NOT A BITFIELD!)
     // GAPS
     GAPS *gaps_timeline;
 } REPLICATION_STATE;
