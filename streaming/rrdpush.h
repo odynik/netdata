@@ -106,8 +106,6 @@ struct sender_state {
 #endif
     // Replication status
     REPLICATION_STATE *replication;
-    // GAPS
-    GAPS *gaps_timeline;    
 };
 
 struct receiver_state {
@@ -146,8 +144,6 @@ struct receiver_state {
     unsigned int exited;      // Indicates that the thread has exited  (NOT A BITFIELD!)
     // Replication status
     REPLICATION_STATE *replication;
-    // GAPS
-    GAPS *gaps_timeline;    
 };
 
 

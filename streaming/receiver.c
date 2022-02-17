@@ -459,10 +459,10 @@ static int rrdpush_receive(struct receiver_state *rpt)
     //To be removed.
     // Read configuration - Initialize any gap awareness struct
     // gaps initialization - Apply configuration
-    rpt->gaps_timeline = gaps_init();
-    if(!rpt->gaps_timeline){
-        error("%s: Failed to create GAP timeline - GAP Awarness is not supported", REPLICATION_MSG);
-    }
+    // rpt->gaps_timeline = gaps_init();
+    // if(!rpt->gaps_timeline){
+    //     error("%s: Failed to create GAP timeline - GAP Awarness is not supported", REPLICATION_MSG);
+    // }
    
     if (strcmp(rpt->machine_guid, localhost->machine_guid) == 0) {
         log_stream_connection(rpt->client_ip, rpt->client_port, rpt->key, rpt->machine_guid, rpt->hostname, "DENIED - ATTEMPT TO RECEIVE METRICS FROM MACHINE_GUID IDENTICAL TO PARENT");

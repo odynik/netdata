@@ -195,6 +195,14 @@ RRDHOST *rrdhost_create(const char *hostname,
     host->stream_ssl.flags = NETDATA_SSL_START;
 #endif
 
+    //GAPs struct initialization
+    host->gaps_timeline = gaps_init();
+    if (!host->gaps_timeline) {
+        error(
+            "%s: Failed to create GAP timeline - GAP Awarness is not supported for host %s",
+            REPLICATION_MSG,
+            host->hostname);
+    }
     //Initialization of the Replication Tx thread.
     replication_sender_init(host->sender);
 
