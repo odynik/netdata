@@ -13,17 +13,21 @@ FetchContent_Declare(
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(googletest)
 
+#include_directories(../../database)
+#include_directories(../../libnetdata)
 #include_directories(../../streaming)
+
+#include_directories(../../*)
 
 enable_testing()
 
 add_executable(
   streaming_test_run
-  tests.c
-  ../../streaming/receiver.c
-  ../../streaming/sender.c
-  ../../streaming/rrdpush.c
-  ../../streaming/replication.c      
+  tests.cc
+  ../receiver.c
+  ../sender.c
+  ../rrdpush.c
+  ../replication.c      
 )
 
 target_link_libraries(

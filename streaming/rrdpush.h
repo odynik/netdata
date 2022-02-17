@@ -64,6 +64,8 @@ struct sender_state {
     int32_t version;
     // Replication status
     REPLICATION_STATE *replication;
+    // GAPS
+    GAPS *gaps_timeline;    
 };
 
 struct receiver_state {
@@ -96,6 +98,8 @@ struct receiver_state {
     unsigned int exited;      // Indicates that the thread has exited  (NOT A BITFIELD!)
     // Replication status
     REPLICATION_STATE *replication;
+    // GAPS
+    GAPS *gaps_timeline;    
 };
 
 
@@ -134,5 +138,6 @@ extern void replication_sender_thread_stop(RRDHOST *host);
 extern void *replication_sender_thread(void *ptr);
 extern void evaluate_gap_onconnection(struct receiver_state *stream_recv);
 extern void evaluate_gap_ondisconnection(struct receiver_state *stream_recv);
+extern GAPS *gaps_init();
 
 #endif //NETDATA_RRDPUSH_H

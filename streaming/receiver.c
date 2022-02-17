@@ -298,9 +298,13 @@ static int rrdpush_receive(struct receiver_state *rpt)
 
     (void)appconfig_set_default(&stream_config, rpt->machine_guid, "host tags", (rpt->tags)?rpt->tags:"");
     
-    //To be removed. This can go into the spawn function in webclient
-    // Read configuration - Initialize any replication receiver thread - Child-wise stream replication control.
-    // replication_receiver_init(rpt, &stream_config);
+    //To be removed.
+    // Read configuration - Initialize any gap awareness struct
+    // gaps initialization - Apply configuration
+    rpt->gaps_timeline = gaps_init();
+    if(!rpt->gaps_timeline){
+        error("%s: Failed to create GAP timeline - GAP Awarness is not supported", REPLICATION_MSG);
+    }
    
     if (strcmp(rpt->machine_guid, localhost->machine_guid) == 0) {
         log_stream_connection(rpt->client_ip, rpt->client_port, rpt->key, rpt->machine_guid, rpt->hostname, "DENIED - ATTEMPT TO RECEIVE METRICS FROM MACHINE_GUID IDENTICAL TO PARENT");
