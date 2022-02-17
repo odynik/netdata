@@ -18,6 +18,11 @@ typedef struct context_param CONTEXT_PARAM;
 typedef void *ml_host_t;
 typedef void *ml_dimension_t;
 
+// GAP structs
+typedef struct time_window TIME_WINDOW;
+typedef struct gap GAP;
+typedef struct gaps_queue GAPS;
+
 // forward declarations
 struct rrddim_volatile;
 struct rrdset_volatile;
@@ -835,6 +840,8 @@ struct rrdhost {
 
     struct receiver_state *receiver;
     netdata_mutex_t receiver_lock;
+    
+    GAPS *gaps_timeline;                             // disconnection gaps of a host
 
     // ------------------------------------------------------------------------
     // health monitoring options
