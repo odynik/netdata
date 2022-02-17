@@ -16,11 +16,11 @@ enum REP_ARG {
 #define RDATA_CMD "RDATA"
 // GAP command with arguments TBD?? probably a timewindow struct
 #define GAP_CMD "GAP"
-#define REPLICATION_RX_CMD_Q_MAX_SIZE (512)
+#define REPLICATION_RX_CMD_Q_MAX_SIZE (64)
 
-typedef struct gaps_queue GAPS;
 typedef struct gap GAP;
 typedef struct time_window TIME_WINDOW;
+typedef struct gaps_queue GAPS;
 
 // Replication structs
 typedef struct replication_state {
@@ -59,8 +59,6 @@ typedef struct replication_state {
     char *program_version;
     unsigned int shutdown:1;    // Tell the thread to exit
     unsigned int exited;      // Indicates that the thread has exited  (NOT A BITFIELD!)
-    // GAPS
-    GAPS *gaps_timeline;
 } REPLICATION_STATE;
 
 // GAP structs
@@ -78,17 +76,8 @@ typedef struct gap {
     TIME_WINDOW t_window; // This is the time window variables of a gap
 } GAP;
 
-// typedef struct gaps_queue {
-//     unsigned head, tail;
-//     struct gap gaps_timeline[RECEIVER_CMD_Q_MAX_SIZE];
-//     uv_mutex_t gaps_mutex;
-//     uv_cond_t gaps_cond;
-//     unsigned queue_size;
-//     uint8_t stop_thread; // if set to 1 the thread should shut down
-//     time_t beginoftime;
-// } GAPS;
-
 typedef struct gaps_queue {
-    queue_t gaps;
-    time_t beginoftime;
+    queue_t gaps;   // handles the gap pointers in a queue struct
+    GAP *gap_data; // hosting the gap data
+    time_t beginoftime; // this should be the timestamp of the first sample in db OR the agents last_timestamp - uptime?
 } GAPS;

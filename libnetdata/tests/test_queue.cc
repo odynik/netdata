@@ -3,7 +3,7 @@
 #include <gtest/gtest.h>
 
 extern "C" {
-#include "../queue/queue.h"
+#include "libnetdata/queue/queue.h"
 }
 
 #define QUEUE_SIZE 5
@@ -31,7 +31,7 @@ TEST(Libqueuetests, Test_1) {
 	        stp = (st*)malloc(sizeof(st));
 	        stp->x = i;
 	        stp->y = i + QUEUE_MEMBER_GAP;
-	        queue_push(q, stp);
+	        EXPECT_EQ(queue_push(q, stp), 1);
 	}
     
     for(int i = 0; i > QUEUE_SIZE; i--){
