@@ -99,6 +99,7 @@ void replication_sender_init(struct sender_state *sender){
 
 static unsigned int replication_rd_config(struct receiver_state *rpt, struct config *stream_config)
 {
+    info("%s: Reading config Rx for host %s ", REPLICATION_MSG, rpt->host->hostname);
     if(!default_rrdpush_replication_enabled)
         return default_rrdpush_replication_enabled;
     unsigned int rrdpush_replication_enable = default_rrdpush_replication_enabled;
@@ -106,7 +107,8 @@ static unsigned int replication_rd_config(struct receiver_state *rpt, struct con
     rrdpush_replication_enable = appconfig_get_boolean(stream_config, rpt->machine_guid, "enable replication", rrdpush_replication_enable);
     // Runtime replication enable status
     rrdpush_replication_enable = (default_rrdpush_replication_enabled && rrdpush_replication_enable && (rpt->stream_version >= VERSION_GAP_FILLING));
-
+    
+    info("%s: Configuration applied %lu ", REPLICATION_MSG, rrdpush_replication_enable);
     return rrdpush_replication_enable;
 }
 
@@ -120,8 +122,9 @@ void replication_receiver_init(struct receiver_state *receiver, struct config *s
     }
     receiver->replication = (REPLICATION_STATE *)callocz(1, sizeof(REPLICATION_STATE));
     replication_state_init(receiver->replication);
+    info("%s: REP Rx state initialized", REPLICATION_MSG);    
     receiver->replication->enabled = rrdpush_replication_enable;
-    receiver->replication->gaps_timeline->beginoftime = rrdhost_first_entry_t(receiver->host);
+    // receiver->replication->gaps_timeline->beginoftime = rrdhost_first_entry_t(receiver->host);
     info("%s: Initialize Rx for host %s ", REPLICATION_MSG, receiver->host->hostname);
     print_replication_state(receiver->replication);
 }
@@ -984,6 +987,8 @@ static void timewindow_init(TIME_WINDOW *new_tw) {
 static void gap_init(GAP *new_gap) {
     new_gap = (GAP *)callocz(1, sizeof(GAP));
     timewindow_init(&new_gap->t_window);
+    new_gap->status = "oninit";
+    print_replication_gap(new_gap);
 }
 
 static int gaps_init(GAPS *new_gaps) {
@@ -999,13 +1004,13 @@ static int gaps_init(GAPS *new_gaps) {
 }
 
 GAP generate_new_gap(struct receiver_state *stream_recv) {
-    GAP newgap;
-    gap_init(&newgap);
+    GAP *newgap;
+    gap_init(newgap);
     // newgap.uid = uuidgen(); // find a way to create unique identifiers for gaps or take it from the database
-    newgap.uuid = stream_recv->machine_guid;
-    newgap.t_window.t_first = now_realtime_sec();
-    newgap.status = "oncreate";
-    return newgap;
+    newgap->uuid = stream_recv->machine_guid;
+    newgap->t_window.t_first = now_realtime_sec();
+    newgap->status = "oncreate";
+    return *newgap;
 }
 
 int complete_new_gap(GAP *potential_gap){
@@ -1030,6 +1035,10 @@ int verify_new_gap(GAP *new_gap){
 
 void evaluate_gap_onconnection(struct receiver_state *stream_recv){
     info("%s: Evaluate GAPs on connection", REPLICATION_MSG);
+    if(!stream_recv->replication){
+        infoerr("%s: Replication not ready - Continue...", REPLICATION_MSG);        
+        return;        
+    }
     GAPS *the_gaps = stream_recv->replication->gaps_timeline;
     GAP *front = (GAP *)the_gaps->gaps->front->item;
     // First connection
@@ -1049,6 +1058,10 @@ void evaluate_gap_onconnection(struct receiver_state *stream_recv){
 
 void evaluate_gap_ondisconnection(struct receiver_state *stream_recv){
     info("%s: Evaluate GAPs on dis-connection", REPLICATION_MSG);
+    if(!stream_recv->replication){
+        infoerr("%s: Replication not ready - Continue...", REPLICATION_MSG);        
+        return;        
+    }    
     GAPS *the_gaps = stream_recv->replication->gaps_timeline;
     // The queue seems to hold only the pointer...so where should I keep the 
     // values of the GAP? 

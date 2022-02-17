@@ -201,6 +201,8 @@ test-driver
 **/tests/*_testdriver
 **/tests/*_testdriver.trs
 python.d/python-modules-installer.sh
+**/tests/build
+**/tests/tmp
 
 # documentation generated files
 docs/generator/src
