@@ -1,5 +1,5 @@
 
-#include "./tests.h"
+#include "tests.h"
 
 // Add unit tests here
 TEST(Libqueuetests, Test_1) {

@@ -3,8 +3,8 @@
 
 extern "C" {
 #include "../../libnetdata/libnetdata.h"
-#include "../streaming/rrdpush.h"
-#include "../streaming/replication.h"
+#include "../rrdpush.h"
+#include "../replication.h"
 }
 
 #define QUEUE_SIZE 5
