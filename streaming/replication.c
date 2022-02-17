@@ -19,9 +19,9 @@ static void replication_state_init(REPLICATION_STATE *state)
     state->buffer = cbuffer_new(1024, 1024*1024);
     state->build = buffer_create(1);
     state->socket = -1;
-#ifdef ENABLE_HTTPS
-    state->ssl = (struct netdata_ssl *)callocz(1, sizeof(struct netdata_ssl));
-#endif
+// #ifdef ENABLE_HTTPS
+//     state->ssl = (struct netdata_ssl *)callocz(1, sizeof(struct netdata_ssl));
+// #endif
     netdata_mutex_init(&state->mutex);
 }
 
@@ -52,9 +52,6 @@ void replication_sender_init(struct sender_state *sender){
     sender->replication = (REPLICATION_STATE *)callocz(1, sizeof(REPLICATION_STATE));
     replication_state_init(sender->replication);
     sender->replication->enabled = default_rrdpush_replication_enabled;
-    // info("%s Begin of time is the problem", REPLICATION_MSG);
-    sender->gaps_timeline->beginoftime = rrdhost_first_entry_t(sender->host);   
-    info("%s Begin of time is not a problem", REPLICATION_MSG);
 #ifdef ENABLE_HTTPS
     sender->replication->ssl = &sender->host->stream_ssl;
 #endif
@@ -89,7 +86,6 @@ void replication_receiver_init(struct receiver_state *receiver, struct config *s
     replication_state_init(receiver->replication);
     info("%s: REP Rx state initialized", REPLICATION_MSG);    
     receiver->replication->enabled = rrdpush_replication_enable;
-    receiver->gaps_timeline->beginoftime = rrdhost_first_entry_t(receiver->host);
     info("%s: Initialize Rx for host %s ", REPLICATION_MSG, receiver->host->hostname);
     print_replication_state(receiver->replication);
 }
@@ -986,7 +982,7 @@ void generate_new_gap(struct receiver_state *stream_recv) {
     GAP *newgap = stream_recv->gaps_timeline->gap_data;
     // newgap.uid = uuidgen(); // find a way to create unique identifiers for gaps or take it from the database
     newgap->uuid = stream_recv->machine_guid;
-    newgap->t_window.t_first = now_realtime_sec();
+    newgap->t_window.t_start = now_realtime_sec();
     newgap->status = "oncreate";
     return;
 }
@@ -1002,6 +998,7 @@ int complete_new_gap(GAP *potential_gap){
 }
 
 int verify_new_gap(GAP *new_gap){
+    // stream_recv->gaps_timeline->beginoftime = rrdhost_first_entry_t(sender->host);
     // Access memory to first time_t for all charts?
     // Access memory to verify last time_t for all charts?
     // update the gap time_first
