@@ -19,9 +19,9 @@ static void replication_state_init(REPLICATION_STATE *state)
     state->buffer = cbuffer_new(1024, 1024*1024);
     state->build = buffer_create(1);
     state->socket = -1;
-// #ifdef ENABLE_HTTPS
-//     state->ssl = (struct netdata_ssl *)callocz(1, sizeof(struct netdata_ssl));
-// #endif
+#ifdef ENABLE_HTTPS
+    state->ssl = (struct netdata_ssl *)callocz(1, sizeof(struct netdata_ssl));
+#endif
     netdata_mutex_init(&state->mutex);
 }
 
@@ -694,6 +694,7 @@ int replication_receiver_thread_spawn(struct web_client *w, char *url) {
     }
 
     debug(D_SYSTEM, "starting REPLICATE receive thread.");
+    info("%s: Starting REPLICATE receive thread.", REPLICATION_MSG);
 
     char tag[FILENAME_MAX + 1];
     snprintfz(tag, FILENAME_MAX, "REPLICATION_RECEIVER[%s,[%s]:%s]", host->hostname, w->client_ip, w->client_port);
@@ -966,7 +967,7 @@ static GAP gap_init() {
 
 GAPS *gaps_init() {
     GAPS *new_gaps = (GAPS *)callocz(1, sizeof(GAPS));
-    info("LIBQUEUE Initialization");    
+    info("%s: LIBQUEUE Initialization", REPLICATION_MSG);    
     new_gaps->gaps = queue_new(REPLICATION_RX_CMD_Q_MAX_SIZE);
     if(!new_gaps->gaps){
         error("%s Gaps timeline queue could not be created", REPLICATION_MSG);
@@ -979,7 +980,7 @@ GAPS *gaps_init() {
 }
 
 void generate_new_gap(struct receiver_state *stream_recv) {
-    GAP *newgap = stream_recv->gaps_timeline->gap_data;
+    GAP *newgap = stream_recv->host->gaps_timeline->gap_data;
     // newgap.uid = uuidgen(); // find a way to create unique identifiers for gaps or take it from the database
     newgap->uuid = stream_recv->machine_guid;
     newgap->t_window.t_start = now_realtime_sec();
@@ -988,7 +989,7 @@ void generate_new_gap(struct receiver_state *stream_recv) {
 }
 
 int complete_new_gap(GAP *potential_gap){
-    if(!strcmp("oncreate", potential_gap->status)) {
+    if(strcmp("oncreate", potential_gap->status)) {
         error("%s: This GAP cannot be completed. Need to create it first.", REPLICATION_MSG);
         return 1;
     }
@@ -998,7 +999,7 @@ int complete_new_gap(GAP *potential_gap){
 }
 
 int verify_new_gap(GAP *new_gap){
-    // stream_recv->gaps_timeline->beginoftime = rrdhost_first_entry_t(sender->host);
+    // stream_recv->host->gaps_timeline->beginoftime = rrdhost_first_entry_t(sender->host);
     // Access memory to first time_t for all charts?
     // Access memory to verify last time_t for all charts?
     // update the gap time_first
@@ -1011,21 +1012,21 @@ int verify_new_gap(GAP *new_gap){
 void evaluate_gap_onconnection(struct receiver_state *stream_recv)
 {
     info("%s: Evaluate GAPs on connection", REPLICATION_MSG);
-    if (!stream_recv->gaps_timeline) {
+    if (!stream_recv->host->gaps_timeline) {
         infoerr("%s: GAP Awareness mechanism is not ready - Continue...", REPLICATION_MSG);
         return;
     }
-    int count = stream_recv->gaps_timeline->gaps->count;
+    int count = stream_recv->host->gaps_timeline->gaps->count;
     if (count != 0) {
-        GAP *front = (GAP *)stream_recv->gaps_timeline->gaps->front->item;
+        GAP *front = (GAP *)stream_recv->host->gaps_timeline->gaps->front->item;
         // Re-connection
         if (complete_new_gap(front)) {
             error("%s: Broken GAP sequence. GAP status is %s", REPLICATION_MSG, front->status);
             // Need to take some action here? Maybe added in the back of the Q? OR Get remove it?
-            GAP *gap_recycled = (GAP *)queue_pop(stream_recv->gaps_timeline->gaps);
-            if (queue_push(stream_recv->gaps_timeline->gaps, (void *)gap_recycled))
-                ;
-            infoerr("%s: Broken GAP was recycled. GAP status was %s", REPLICATION_MSG, front->status);
+            GAP *gap_recycled = (GAP *)queue_pop(stream_recv->host->gaps_timeline->gaps);
+            if (queue_push(stream_recv->host->gaps_timeline->gaps, (void *)gap_recycled));
+                infoerr("%s: Broken GAP was recycled. GAP status was %s", REPLICATION_MSG, front->status);
+            print_replication_gap(front);
             return;
         }
         info("%s: A new GAP was detected", REPLICATION_MSG);
@@ -1041,11 +1042,11 @@ void evaluate_gap_onconnection(struct receiver_state *stream_recv)
 
 void evaluate_gap_ondisconnection(struct receiver_state *stream_recv){
     info("%s: Evaluate GAPs on dis-connection", REPLICATION_MSG);
-    if (!stream_recv->gaps_timeline) {
+    if (!stream_recv->host->gaps_timeline) {
         infoerr("%s: GAP Awareness mechanism is not ready - Continue...", REPLICATION_MSG);
         return;
     }
-    GAPS *the_gaps = stream_recv->gaps_timeline;
+    GAPS *the_gaps = stream_recv->host->gaps_timeline;
     generate_new_gap(stream_recv);
     if(!queue_push(the_gaps->gaps, (void *)the_gaps->gap_data)){
         error("%s: Cannot insert the new GAP in the queue!", REPLICATION_MSG);
