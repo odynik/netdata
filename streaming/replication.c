@@ -999,6 +999,8 @@ void generate_new_gap(struct receiver_state *stream_recv) {
     // newgap->uuid = stream_recv->machine_guid;
     newgap->uuid = strdupz(stream_recv->machine_guid);
     newgap->t_window.t_start = now_realtime_sec();
+    newgap->t_window.t_end = 0;
+    newgap->t_window.t_first = 0;
     newgap->status = "oncreate";
     return;
 }
