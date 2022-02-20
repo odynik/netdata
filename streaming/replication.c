@@ -29,15 +29,15 @@ static void replication_state_destroy(REPLICATION_STATE *state)
 {
     info("%s: Destroying replication state.", REPLICATION_MSG);
     pthread_mutex_destroy(&state->mutex);
-    freez(state->buffer);
-    freez(state->build);
+    cbuffer_free(state->buffer);
+    buffer_free(state->build);
     // freez(state->read_buffer);
 #ifdef ENABLE_HTTPS
     if(state->ssl->conn){
         SSL_free(state->ssl->conn);
     }
     freez(state->ssl);
-#endif    
+#endif
     freez(state);
 }
 
@@ -762,14 +762,14 @@ void replication_receiver_thread_cleanup_callback(void *ptr)
         // Make sure that we detach this thread and don't kill a freshly arriving receiver
         if (!netdata_exit && rpt->host) {
             netdata_mutex_lock(&rpt->replication->mutex);
-            if (rpt->host->receiver == rpt)
+            if (rpt->host->receiver == rpt){
                 rpt->host->receiver = NULL;
+                }
             netdata_mutex_unlock(&rpt->replication->mutex);
         }
-
         info("%s %s [receive from [%s]:%s]: receive thread ended (task id %d)", REPLICATION_MSG, rpt->hostname, rpt->replication->client_ip, rpt->replication->client_port, gettid());
         replication_state_destroy(rpt->replication);
-        // On a parent signal also the sender thread sending to a gparent to shutdown. Probably after the parsing. Check also the clean-up functionality in the rrdhost().
+        // // On a parent signal also the sender thread sending to a gparent to shutdown. Probably after the parsing. Check also the clean-up functionality in the rrdhost().        
     }
 }
 
@@ -951,6 +951,14 @@ static GAP gap_init() {
     return new_gap;
 }
 
+void gap_destroy(GAP *agap) {
+    freez(agap->uuid);
+    freez(&agap->t_window);
+    freez(agap);
+}
+
+
+
 // static int gaps_init(GAPS *new_gaps) {
 //     new_gaps = (GAPS *)callocz()
 //     info("LIBQUEUE Initialization");    
@@ -979,10 +987,17 @@ GAPS *gaps_init() {
     return new_gaps;
 }
 
+void gaps_destroy(RRDHOST *host) {
+    queue_free(host->gaps_timeline->gaps);
+    gap_destroy(host->gaps_timeline->gap_data);
+    freez(host->gaps_timeline);
+}
+
 void generate_new_gap(struct receiver_state *stream_recv) {
     GAP *newgap = stream_recv->host->gaps_timeline->gap_data;
     // newgap.uid = uuidgen(); // find a way to create unique identifiers for gaps or take it from the database
-    newgap->uuid = stream_recv->machine_guid;
+    // newgap->uuid = stream_recv->machine_guid;
+    newgap->uuid = strdupz(stream_recv->machine_guid);
     newgap->t_window.t_start = now_realtime_sec();
     newgap->status = "oncreate";
     return;
