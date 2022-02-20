@@ -883,9 +883,8 @@ void rrdhost_free(RRDHOST *host) {
         else
             netdata_mutex_unlock(&host->receiver_lock);
     }
-
-
-
+    gaps_destroy(host->gaps_timeline);
+    
     rrdhost_wrlock(host);   // lock this RRDHOST
 #if defined(ENABLE_ACLK) && defined(ENABLE_NEW_CLOUD_PROTOCOL)
     struct aclk_database_worker_config *wc =  host->dbsync_worker;
