@@ -323,6 +323,21 @@ static int init_database_batch(int rebuild, int init_type, const char *batch[])
     return 0;
 }
 
+static void _last_updated(sqlite3_context *context, int argc, sqlite3_value **argv)
+{
+    time_t  first_entry_t;
+    time_t  last_entry_t = 0;
+
+    if (argc != 1) {
+        sqlite3_result_null(context);
+        return;
+    }
+
+    (void) rrdeng_metric_latest_time_by_uuid((uuid_t *)sqlite3_value_blob(argv[0]), &first_entry_t, &last_entry_t);
+
+    sqlite3_result_int64(context, (time_t) last_entry_t);
+}
+
 /*
  * Initialize the SQLite database
  * Return 0 on success
@@ -389,6 +404,11 @@ int sql_init_database(db_check_action_type_t rebuild)
 
     if (init_database_batch(rebuild, 0, &database_cleanup[0]))
         return 1;
+
+    rc = sqlite3_create_function(db_meta, "last_updated", 1, SQLITE_ANY | SQLITE_DETERMINISTIC , 0, _last_updated, 0, 0);
+
+    if (rc != SQLITE_OK)
+        error_report("Failed to initialize the last_updated sqlite function");
 
     fatal_assert(0 == uv_mutex_init(&sqlite_transaction_lock));
     info("SQLite database initialization completed");
