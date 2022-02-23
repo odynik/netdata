@@ -880,7 +880,7 @@ void rrdhost_free(RRDHOST *host) {
         else
             netdata_mutex_unlock(&host->receiver_lock);
     }
-    gaps_destroy(host->gaps_timeline);
+    gaps_destroy(host);
     
     rrdhost_wrlock(host);   // lock this RRDHOST
 

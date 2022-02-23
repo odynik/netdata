@@ -9,6 +9,9 @@ static void replication_receiver_thread_cleanup_callback(void *host);
 static void replication_sender_thread_cleanup_callback(void *ptr);
 static void print_replication_state(REPLICATION_STATE *state);
 static void print_replication_gap(GAP *a_gap);
+int save_gap(GAP *a_gap);
+int remove_gap(GAP *a_gap);
+int load_gap(RRDHOST *host);
 GAPS *gaps_init();
 
 // Thread Initialization
@@ -70,7 +73,7 @@ static unsigned int replication_rd_config(struct receiver_state *rpt, struct con
     // Runtime replication enable status
     rrdpush_replication_enable = (default_rrdpush_replication_enabled && rrdpush_replication_enable && (rpt->stream_version >= VERSION_GAP_FILLING));
     
-    info("%s: Configuration applied %lu ", REPLICATION_MSG, rrdpush_replication_enable);
+    info("%s: Configuration applied %u ", REPLICATION_MSG, rrdpush_replication_enable);
     return rrdpush_replication_enable;
 }
 
@@ -824,6 +827,49 @@ void update_memory_index(){
     //other memory modes?
 }
 
+// Store gap in agent metdata DB(sqlite)
+int save_gap(GAP *a_gap)
+{
+    int rc;
+
+    if (unlikely(!db_meta) && default_rrd_memory_mode != RRD_MEMORY_MODE_DBENGINE)
+        return 0;
+
+    rc = sql_store_gap(
+        a_gap->gap_uuid,
+        a_gap->host_mguid,
+        a_gap->t_window.t_start,
+        a_gap->t_window.t_first,
+        a_gap->t_window.t_end,
+        a_gap->status);
+
+    return rc;
+}
+
+// load gaps from agent metdata db
+int load_gap(RRDHOST *host) {
+// Load on start up evaluate a crash
+// Load on start up after a shutdown
+// Update the queue values and let it consume the gaps on runtime
+return 0;
+}
+
+int set_host_gap(RRDHOST *host) {
+    
+    return 0;
+}
+
+//delete gap from agent metdata db
+int remove_gap(GAP *a_gap)
+{
+    int rc;
+    if (unlikely(!db_meta) && default_rrd_memory_mode != RRD_MEMORY_MODE_DBENGINE)
+        return 0;
+    rc = sql_delete_gap(a_gap->gap_uuid);
+
+    return rc;
+}
+
 /* Produce a full line if one exists, statefully return where we start next time.
  * When we hit the end of the buffer with a partial line move it to the beginning for the next fill.
  */
@@ -951,10 +997,11 @@ static GAP gap_init() {
     return new_gap;
 }
 
-void gap_destroy(GAP *agap) {
-    freez(agap->uuid);
-    freez(&agap->t_window);
-    freez(agap);
+void gap_destroy(GAP *a_gap) {
+    freez(a_gap->gap_uuid);
+    freez(a_gap->host_mguid);
+    freez(&a_gap->t_window);
+    freez(a_gap);
 }
 
 
@@ -983,11 +1030,15 @@ GAPS *gaps_init() {
         //Handle this case. Probably shutdown deactivate replication.
     }
     new_gaps->gap_data = (GAP *)callocz(1, sizeof(GAP));
+    // load from agent metdata
     info("%s: GAPs STRUCT Initialization", REPLICATION_MSG);
     return new_gaps;
 }
 
 void gaps_destroy(RRDHOST *host) {
+    // Save gaps before destroy
+    save_gap(host->gaps_timeline->gap_data);
+
     queue_free(host->gaps_timeline->gaps);
     gap_destroy(host->gaps_timeline->gap_data);
     freez(host->gaps_timeline);
@@ -995,12 +1046,11 @@ void gaps_destroy(RRDHOST *host) {
 
 void generate_new_gap(struct receiver_state *stream_recv) {
     GAP *newgap = stream_recv->host->gaps_timeline->gap_data;
-    // newgap.uid = uuidgen(); // find a way to create unique identifiers for gaps or take it from the database
-    // newgap->uuid = stream_recv->machine_guid;
-    newgap->uuid = strdupz(stream_recv->machine_guid);
-    newgap->t_window.t_start = now_realtime_sec();
+    uuid_generate(newgap->gap_uuid);
+    newgap->host_mguid = strdupz(stream_recv->machine_guid);
+    newgap->t_window.t_start = stream_recv->last_msg_t;
+    newgap->t_window.t_first = rrdhost_last_entry_t(stream_recv->host);
     newgap->t_window.t_end = 0;
-    newgap->t_window.t_first = 0;
     newgap->status = "oncreate";
     return;
 }
@@ -1050,6 +1100,7 @@ void evaluate_gap_onconnection(struct receiver_state *stream_recv)
         print_replication_gap(front);
         //verify it in memory
         //push it in the queue
+        save_gap(front);
         return;
     }
     // First connection or no GAPS
@@ -1071,6 +1122,7 @@ void evaluate_gap_ondisconnection(struct receiver_state *stream_recv){
         return;
     }
     info("%s: New GAP seed was queued!", REPLICATION_MSG);
+    save_gap(the_gaps->gap_data);
     print_replication_gap(the_gaps->gap_data);
 }
 
@@ -1107,12 +1159,14 @@ static void print_replication_state(REPLICATION_STATE *state)
 
 static void print_replication_gap(GAP *a_gap)
 {
-    info(
-        "%s: GAP details are: \nstatus: %s\n, t_s: %ld t_f: %ld t_e: %ld\n, mguid: %s\n",
+    char gap_uuid_str[36 + 1];
+    uuid_unparse(a_gap->gap_uuid, gap_uuid_str);
+    info("%s: GAP details are: \nstatus: %s\n, t_s: %ld t_f: %ld t_e: %ld\n, host_mguid: %s\n, gap_uuid_str: %s\n",
         REPLICATION_MSG,
         a_gap->status,
         a_gap->t_window.t_start,
         a_gap->t_window.t_first,
         a_gap->t_window.t_end,
-        a_gap->uuid);
+        a_gap->host_mguid,
+        gap_uuid_str);
 }

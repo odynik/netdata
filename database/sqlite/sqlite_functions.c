@@ -49,6 +49,9 @@ const char *database_config[] = {
     "INSERT INTO chart_hash_map (chart_id, hash_id) values (new.chart_id, new.hash_id) "
     "on conflict (chart_id, hash_id) do nothing; END; ",
 
+    "CREATE TABLE IF NOT EXISTS gaps(gap_id blob PRIMARY KEY, host_mguid text, "
+    "t_delta_start int, t_delta_first int, t_delta_end int, status text);",
+    
     NULL
 };
 
@@ -2037,3 +2040,163 @@ failed:
 
     return;
 };
+
+/*
+ * Store a gap in the database
+ */
+
+int sql_store_gap(
+    uuid_t *gap_uuid,
+    char *host_mguid,
+    int t_delta_start,
+    int t_delta_first,
+    int t_delta_end,
+    const char *status)
+{
+    static __thread sqlite3_stmt *res = NULL;
+    int rc, param = 0;
+
+    if (unlikely(!db_meta)) {
+        if (default_rrd_memory_mode != RRD_MEMORY_MODE_DBENGINE)
+            return 0;
+        error_report("Database has not been initialized");
+        return 1;
+    }
+
+    if (unlikely(!res)) {
+        rc = prepare_statement(db_meta, SQL_STORE_GAP, &res);
+        if (unlikely(rc != SQLITE_OK)) {
+            error_report("Failed to prepare statement to store gap, rc = %d", rc);
+            return 1;
+        }
+    }
+
+    param++;
+    rc = sqlite3_bind_blob(res, 1, gap_uuid, sizeof(*gap_uuid), SQLITE_STATIC);
+    if (unlikely(rc != SQLITE_OK))
+        goto bind_fail;
+    
+    param++;
+    rc = sqlite3_bind_text(res, 2, host_mguid, -1, SQLITE_STATIC);
+    if (unlikely(rc != SQLITE_OK))
+        goto bind_fail;
+
+    param++;
+    rc = sqlite3_bind_int(res, 3, t_delta_start);
+    if (unlikely(rc != SQLITE_OK))
+        goto bind_fail;
+    
+    param++;
+    rc = sqlite3_bind_int(res, 4, t_delta_first);
+    if (unlikely(rc != SQLITE_OK))
+        goto bind_fail;
+    
+    param++;
+    rc = sqlite3_bind_int(res, 5, t_delta_end);
+    if (unlikely(rc != SQLITE_OK))
+        goto bind_fail;
+    
+    param++;
+    rc = sqlite3_bind_text(res, 6, status, -1, SQLITE_STATIC);
+    if (unlikely(rc != SQLITE_OK))
+        goto bind_fail;
+
+    rc = execute_insert(res);
+    if (unlikely(rc != SQLITE_DONE))
+        error_report("Failed to store gap, rc = %d", rc);
+
+    rc = sqlite3_reset(res);
+    if (unlikely(rc != SQLITE_OK))
+        error_report("Failed to reset statement in gap store function, rc = %d", rc);
+
+    return 0;
+
+bind_fail:
+    error_report("Failed to bind parameter %d to store gap, rc = %d", param, rc);
+    rc = sqlite3_reset(res);
+    if (unlikely(rc != SQLITE_OK))
+        error_report("Failed to reset statement in gap store function, rc = %d", rc);
+    return 1;
+}
+
+/*
+ * Store a gap in the database
+ */
+
+void sql_load_host_gap(RRDHOST *host)
+{
+    sqlite3_stmt *res = NULL;
+    int rc;
+
+    if (unlikely(!db_meta)) {
+        if (default_rrd_memory_mode == RRD_MEMORY_MODE_DBENGINE)
+            error_report("Database has not been initialized");
+        return;
+    }
+
+    rc = sqlite3_prepare_v2(db_meta, SQL_GET_HOST_GAPS, -1, &res, 0);
+    if (unlikely(rc != SQLITE_OK)) {
+        error_report("Failed to prepare statement to fetch gaps");
+        return;
+    };
+
+    uuid_t host_mguid_blob;
+    uuid_parse(host->gaps_timeline->gap_data->host_mguid, host_mguid_blob);
+    rc = sqlite3_bind_blob(res, 1, &host_mguid_blob, sizeof(host_mguid_blob), SQLITE_STATIC);
+    if (unlikely(rc != SQLITE_OK)) {
+        error_report("Failed to bind host_id parameter to load gap information");
+        goto failed;
+    }    
+
+    // Load here the gaps to the host->gaps_timeline
+    rc = sqlite3_step(res);
+    if (likely(rc == SQLITE_ROW)) {
+        if (likely(sqlite3_column_bytes(res, 0) == sizeof(uuid_t)))
+            set_host_node_id(host, (uuid_t *)sqlite3_column_blob(res, 0));
+        else
+            set_host_node_id(host, NULL);
+    }
+
+failed:
+    if (unlikely(sqlite3_finalize(res) != SQLITE_OK))
+        error_report("Failed to finalize the prepared statement when loading all gaps information");
+
+    return;
+};
+
+/*
+ * Delete a gap from the database
+ */
+int sql_delete_gap(uuid_t *gap_uuid)
+{
+    static __thread sqlite3_stmt *res = NULL;
+    int rc;
+
+#ifdef NETDATA_INTERNAL_CHECKS
+    char uuid_str[GUID_LEN + 1];
+    uuid_unparse_lower(*gap_uuid, uuid_str);
+    debug(D_METADATALOG,"Deleting gap uuid %s", uuid_str);
+#endif
+
+    if (unlikely(!res)) {
+        rc = prepare_statement(db_meta, DELETE_GAP_BY_UUID, &res);
+        if (rc != SQLITE_OK) {
+            error_report("Failed to prepare statement to delete the gap with the specific uuid");
+            return rc;
+        }
+    }
+
+    rc = sqlite3_bind_blob(res, 1, gap_uuid,  sizeof(*gap_uuid), SQLITE_STATIC);
+    if (unlikely(rc != SQLITE_OK))
+        goto bind_fail;
+
+    rc = sqlite3_step(res);
+    if (unlikely(rc != SQLITE_DONE))
+        error_report("Failed to delete gap uuid, rc = %d", rc);
+
+bind_fail:
+    rc = sqlite3_reset(res);
+    if (unlikely(rc != SQLITE_OK))
+        error_report("Failed to reset statement when deleting dimension UUID, rc = %d", rc);
+    return rc;
+}
