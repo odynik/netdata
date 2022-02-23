@@ -70,8 +70,8 @@ typedef struct time_window {
 } TIME_WINDOW;
 
 typedef struct gap {
-    char *uid; // unique number for the GAP
-    char *uuid; // unique number for the host id
+    uuid_t gap_uuid; // unique number for the GAP
+    char *host_mguid; // unique number for the host id
     char *status; // a gap can be oncreation, ontransmission, filled
     TIME_WINDOW t_window; // This is the time window variables of a gap
 } GAP;
