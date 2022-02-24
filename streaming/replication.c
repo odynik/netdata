@@ -12,7 +12,7 @@ static void print_replication_gap(GAP *a_gap);
 int save_gap(GAP *a_gap);
 int remove_gap(GAP *a_gap);
 int load_gap(RRDHOST *host);
-GAPS *gaps_init();
+void gaps_init(RRDHOST *host);
 
 // Thread Initialization
 static void replication_state_init(REPLICATION_STATE *state)
@@ -85,7 +85,7 @@ void replication_receiver_init(struct receiver_state *receiver, struct config *s
         info("%s:  Could not initialize Rx replication thread. Replication is disabled or not supported!", REPLICATION_MSG);
         return;
     }
-    receiver->replication = (REPLICATION_STATE *)callocz(1, sizeof(REPLICATION_STATE));
+    // receiver->replication = (REPLICATION_STATE *)callocz(1, sizeof(REPLICATION_STATE));
     replication_state_init(receiver->replication);
     info("%s: REP Rx state initialized", REPLICATION_MSG);    
     receiver->replication->enabled = rrdpush_replication_enable;
@@ -425,7 +425,7 @@ void *replication_receiver_thread(void *ptr){
     #ifdef ENABLE_HTTPS
     rpt->host->stream_ssl.conn = rpt->replication->ssl->conn;
     rpt->host->stream_ssl.flags = rpt->replication->ssl->flags;
-    if(send_timeout(&rpt->replication->ssl, rpt->replication->socket, initial_response, strlen(initial_response), 0, 60) != (ssize_t)strlen(initial_response)) {
+    if(send_timeout(rpt->replication->ssl, rpt->replication->socket, initial_response, strlen(initial_response), 0, 60) != (ssize_t)strlen(initial_response)) {
 #else
     if(send_timeout(rpt->replication->socket, initial_response, strlen(initial_response), 0, 60) != strlen(initial_response)) {
 #endif
@@ -454,6 +454,8 @@ void *replication_receiver_thread(void *ptr){
     log_stream_connection(rpt->replication->client_ip, rpt->replication->client_port, rpt->key, rpt->host->machine_guid, rpt->host->hostname, "CONNECTED");
 
     cd.version = rpt->stream_version;
+    UNUSED(rrdpush_replication_enabled);
+
     // Add here the receiver thread logic
     // Need a host
     // Need a PARSER_USER_OBJECT
@@ -616,6 +618,13 @@ int replication_receiver_thread_spawn(struct web_client *w, char *url) {
             simple_pattern_free(machine_allow_from);
         }
     }
+    UNUSED(update_every);
+    UNUSED(abbrev_timezone);
+    UNUSED(tags);
+    UNUSED(timezone);
+    UNUSED(os);                
+    UNUSED(utc_offset);
+    UNUSED(registry_hostname);                 
 
     // Replication request rate limit control
     if(unlikely(web_client_replication_rate_t > 0)) {
@@ -673,6 +682,7 @@ int replication_receiver_thread_spawn(struct web_client *w, char *url) {
 
     // Host exists and replication is not active
     // Initialize replication receiver structure.
+    host->receiver->replication = (REPLICATION_STATE *)callocz(1, sizeof(REPLICATION_STATE));    
     replication_receiver_init(host->receiver, &stream_config);
     host->receiver->replication->last_msg_t = now_realtime_sec();
     host->receiver->replication->socket = w->ifd;
@@ -831,41 +841,61 @@ void update_memory_index(){
 int save_gap(GAP *a_gap)
 {
     int rc;
+    
+    // TBR
+    info("%s: SAVE in SQLITE this GAP:", REPLICATION_MSG);
+    print_replication_gap(a_gap);
 
     if (unlikely(!db_meta) && default_rrd_memory_mode != RRD_MEMORY_MODE_DBENGINE)
         return 0;
-
     rc = sql_store_gap(
-        a_gap->gap_uuid,
+        &a_gap->gap_uuid,
         a_gap->host_mguid,
         a_gap->t_window.t_start,
         a_gap->t_window.t_first,
         a_gap->t_window.t_end,
         a_gap->status);
+    if(!rc)
+        info("%s: GAP saved in Netdata agent metadata DB", REPLICATION_MSG);
 
     return rc;
 }
 
 // load gaps from agent metdata db
-int load_gap(RRDHOST *host) {
-// Load on start up evaluate a crash
-// Load on start up after a shutdown
-// Update the queue values and let it consume the gaps on runtime
-return 0;
-}
-
-int set_host_gap(RRDHOST *host) {
+int load_gap(RRDHOST *host)
+{
+    // Load on start up after a shutdown
+    int rc;
     
-    return 0;
+    // TBR
+    info("%s: LOAD from SQLITE this GAP:", REPLICATION_MSG);
+    print_replication_gap(host->gaps_timeline->gap_data);
+
+    if (unlikely(!db_meta) && default_rrd_memory_mode != RRD_MEMORY_MODE_DBENGINE)
+        return SQLITE_ERROR;
+    rc = sql_load_host_gap(host);
+    if(!rc)
+        info("%s: Load GAPS from metadata DB in host %s", REPLICATION_MSG, host->hostname);
+    // Load on start up evaluate a crash
+    // Update the queue values and let it consume the gaps on runtime
+
+    return rc;
 }
 
 //delete gap from agent metdata db
 int remove_gap(GAP *a_gap)
 {
     int rc;
+    
+    // TBR
+    info("%s: REMOVE in SQLITE this GAP: ", REPLICATION_MSG);
+    print_replication_gap(a_gap);
+    
     if (unlikely(!db_meta) && default_rrd_memory_mode != RRD_MEMORY_MODE_DBENGINE)
         return 0;
-    rc = sql_delete_gap(a_gap->gap_uuid);
+    rc = sql_delete_gap(&a_gap->gap_uuid);
+    if(!rc)
+        info("%s: Delete GAP from metadata DB", REPLICATION_MSG);
 
     return rc;
 }
@@ -987,20 +1017,19 @@ done:
     return result;
 }
 
-// GAP creation and processing
-static GAP gap_init() {
-    GAP new_gap;
-    TIME_WINDOW new_tw;
-    new_gap.t_window = new_tw;
-    new_gap.status = "oninit";
-    print_replication_gap(&new_gap);
-    return new_gap;
-}
+// // GAP creation and processing
+// static GAP gap_init() {
+//     GAP new_gap;
+//     TIME_WINDOW new_tw;
+//     new_gap.t_window = new_tw;
+//     new_gap.status = "oninit";
+//     print_replication_gap(&new_gap);
+//     return new_gap;
+// }
 
 void gap_destroy(GAP *a_gap) {
-    freez(a_gap->gap_uuid);
+    uuid_clear(a_gap->gap_uuid);
     freez(a_gap->host_mguid);
-    freez(&a_gap->t_window);
     freez(a_gap);
 }
 
@@ -1020,28 +1049,36 @@ void gap_destroy(GAP *a_gap) {
 //     return 0;
 // }
 
-GAPS *gaps_init() {
-    GAPS *new_gaps = (GAPS *)callocz(1, sizeof(GAPS));
-    info("%s: LIBQUEUE Initialization", REPLICATION_MSG);    
-    new_gaps->gaps = queue_new(REPLICATION_RX_CMD_Q_MAX_SIZE);
-    if(!new_gaps->gaps){
+void gaps_init(RRDHOST *host) {
+    info("%s: LibQueue Initialization", REPLICATION_MSG);
+    host->gaps_timeline->gaps = queue_new(REPLICATION_RX_CMD_Q_MAX_SIZE);
+    if(!host->gaps_timeline->gaps){
         error("%s Gaps timeline queue could not be created", REPLICATION_MSG);
-        return NULL;
+        return;
         //Handle this case. Probably shutdown deactivate replication.
     }
-    new_gaps->gap_data = (GAP *)callocz(1, sizeof(GAP));
+    host->gaps_timeline->gap_data = (GAP *)callocz(1, sizeof(GAP));
     // load from agent metdata
-    info("%s: GAPs STRUCT Initialization", REPLICATION_MSG);
-    return new_gaps;
+    if(load_gap(host)){
+        infoerr("%s: GAPs struct in SQLITE is either empty or failed", REPLICATION_MSG);
+        return;
+    }
+    if(!queue_push(host->gaps_timeline->gaps, (void *)host->gaps_timeline->gap_data)){
+        error("%s: Cannot insert the loaded GAP in the queue!", REPLICATION_MSG);
+        print_replication_gap(host->gaps_timeline->gap_data);
+        return;
+    }
+    info("%s: GAPs STRUCT Initialization/Loading", REPLICATION_MSG);
+    return;
 }
 
 void gaps_destroy(RRDHOST *host) {
     // Save gaps before destroy
-    save_gap(host->gaps_timeline->gap_data);
-
+    info("%s: DESTROYING GAP for HOST %s", REPLICATION_MSG, host->hostname);
+    if(save_gap(host->gaps_timeline->gap_data))
+        error("%s: Cannot save GAP struct in metadata DB.", REPLICATION_MSG);
     queue_free(host->gaps_timeline->gaps);
     gap_destroy(host->gaps_timeline->gap_data);
-    freez(host->gaps_timeline);
 }
 
 void generate_new_gap(struct receiver_state *stream_recv) {
@@ -1066,6 +1103,7 @@ int complete_new_gap(GAP *potential_gap){
 }
 
 int verify_new_gap(GAP *new_gap){
+    UNUSED(new_gap);
     // stream_recv->host->gaps_timeline->beginoftime = rrdhost_first_entry_t(sender->host);
     // Access memory to first time_t for all charts?
     // Access memory to verify last time_t for all charts?
@@ -1084,14 +1122,16 @@ void evaluate_gap_onconnection(struct receiver_state *stream_recv)
         return;
     }
     int count = stream_recv->host->gaps_timeline->gaps->count;
-    if (count != 0) {
+    // load_gap(stream_recv->host);
+    print_replication_gap(stream_recv->host->gaps_timeline->gap_data);
+    if(count != 0) {
         GAP *front = (GAP *)stream_recv->host->gaps_timeline->gaps->front->item;
         // Re-connection
         if (complete_new_gap(front)) {
             error("%s: Broken GAP sequence. GAP status is %s", REPLICATION_MSG, front->status);
             // Need to take some action here? Maybe added in the back of the Q? OR Get remove it?
             GAP *gap_recycled = (GAP *)queue_pop(stream_recv->host->gaps_timeline->gaps);
-            if (queue_push(stream_recv->host->gaps_timeline->gaps, (void *)gap_recycled));
+            if (queue_push(stream_recv->host->gaps_timeline->gaps, (void *)gap_recycled))
                 infoerr("%s: Broken GAP was recycled. GAP status was %s", REPLICATION_MSG, front->status);
             print_replication_gap(front);
             return;
@@ -1100,7 +1140,7 @@ void evaluate_gap_onconnection(struct receiver_state *stream_recv)
         print_replication_gap(front);
         //verify it in memory
         //push it in the queue
-        save_gap(front);
+        // save_gap(front);
         return;
     }
     // First connection or no GAPS
@@ -1122,7 +1162,7 @@ void evaluate_gap_ondisconnection(struct receiver_state *stream_recv){
         return;
     }
     info("%s: New GAP seed was queued!", REPLICATION_MSG);
-    save_gap(the_gaps->gap_data);
+    // save_gap(the_gaps->gap_data);
     print_replication_gap(the_gaps->gap_data);
 }
 
@@ -1159,7 +1199,7 @@ static void print_replication_state(REPLICATION_STATE *state)
 
 static void print_replication_gap(GAP *a_gap)
 {
-    char gap_uuid_str[36 + 1];
+    char gap_uuid_str[UUID_STR_LEN];
     uuid_unparse(a_gap->gap_uuid, gap_uuid_str);
     info("%s: GAP details are: \nstatus: %s\n, t_s: %ld t_f: %ld t_e: %ld\n, host_mguid: %s\n, gap_uuid_str: %s\n",
         REPLICATION_MSG,
