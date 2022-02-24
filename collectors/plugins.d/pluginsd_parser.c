@@ -759,22 +759,20 @@ PARSER_RC pluginsd_rep(char **words, void *user, PLUGINSD_ACTION  *pluginr_actio
 
     if(strcmp(PLUGINSD_KEYWORD_REP_ON, command) == 0){
         info("REP ON command is received!\n"); 
-        send_message((REPLICATION_STATE *)usr->opaque, "REP ACK\n");
-        sleep(1);
-        //Call REP ON function
+        //Check if there is GAP and send GAP command, otherwise send REP OFF command 
+        send_message((REPLICATION_STATE *)usr->opaque, "GAP GAPDUMMY1 GAPDUMMY2 GAPDUMMY3\n");
         return PARSER_RC_OK;
     }
 
     if(strcmp(PLUGINSD_KEYWORD_REP_OFF, command) == 0){
         info("REP OFF command is received!\n");
-        //Call REP OFF function
+        //Do nothing
         return PARSER_RC_OK;
     }
 
     if(strcmp(PLUGINSD_KEYWORD_REP_ACK, command) == 0){
         info("REP ACK command is received!\n");
-        send_message((REPLICATION_STATE *)usr->opaque, "REP ON\n");
-        sleep(1);
+        //send_message((REPLICATION_STATE *)usr->opaque, "REP ON\n");
         //Call REP ACK function
         return PARSER_RC_OK;
     }
@@ -792,6 +790,7 @@ disable:
 
 PARSER_RC pluginsd_gap(char **words, void *user, PLUGINSD_ACTION  *pluginr_action){
     UNUSED(pluginr_action);
+    PARSER_USER_OBJECT *usr = (PARSER_USER_OBJECT *) user;
 
     char *uuid = words[1];
     char *ts = words[2];
@@ -803,7 +802,13 @@ PARSER_RC pluginsd_gap(char **words, void *user, PLUGINSD_ACTION  *pluginr_actio
         goto disable;
     }
 
-    //Call GAP function with parameters
+    //Check if there is GAP and send GAP command, otherwise send REP OFF command
+    char rdata[150];
+    for(int i = 0; i < 10; i++){
+        sprintf (rdata, "RDATA RDATADUMMY1 RDATADUMMY2 %d\n", i);
+        send_message((REPLICATION_STATE *)usr->opaque, rdata);
+        sleep(1);
+    }
     return PARSER_RC_OK;
 
 disable:
@@ -813,6 +818,7 @@ disable:
 
 PARSER_RC pluginsd_rdata(char **words, void *user, PLUGINSD_ACTION  *pluginr_action){
     UNUSED(pluginr_action);
+    PARSER_USER_OBJECT *usr = (PARSER_USER_OBJECT *) user;
 
     char *chartid = words[1];
     char *dimid = words[2];
@@ -822,6 +828,11 @@ PARSER_RC pluginsd_rdata(char **words, void *user, PLUGINSD_ACTION  *pluginr_act
     if (unlikely(!chartid || !dimid || !ts)) {
         error("requested a RDATA without parameters for host '%s'. Disabling it.", host->hostname);
         goto disable;
+    }
+
+    if(strcmp(ts, "9") == 0){
+        send_message((REPLICATION_STATE *)usr->opaque, "REP ACK\n");
+        info("REP ACK command is sent!\n");
     }
 
     //Call RDATA function with parameters

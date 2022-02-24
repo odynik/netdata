@@ -635,7 +635,6 @@ void *replication_receiver_thread(void *ptr){
     {
         // check for outstanding cancellation requests
         netdata_thread_testcancel();
-        info("Parsing...");
         replication_parser(rpt->replication, &cd, fp);
     }
     // Closing thread - clean up any resources allocated here
