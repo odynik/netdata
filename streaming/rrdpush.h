@@ -188,7 +188,7 @@ extern void replication_sender_thread_stop(RRDHOST *host);
 extern void *replication_sender_thread(void *ptr);
 extern void evaluate_gap_onconnection(struct receiver_state *stream_recv);
 extern void evaluate_gap_ondisconnection(struct receiver_state *stream_recv);
-extern GAPS *gaps_init();
+extern void gaps_init(RRDHOST *host);
 extern void gaps_destroy(RRDHOST *host);
 
 #endif //NETDATA_RRDPUSH_H

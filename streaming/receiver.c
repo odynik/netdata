@@ -690,9 +690,7 @@ static int rrdpush_receive(struct receiver_state *rpt)
         rrd_rdlock();
         rrdhost_wrlock(rpt->host);
         netdata_mutex_lock(&rpt->host->receiver_lock);
-        if (rpt->host->receiver == rpt) {
-            // Here is the first proof of connection with the sender thread.
-            // rpt->last_msg_t = now_realtime_sec();            
+        if (rpt->host->receiver == rpt) {            
             rpt->host->senders_disconnected_time = now_realtime_sec();
             rrdhost_flag_set(rpt->host, RRDHOST_FLAG_ORPHAN);
             if(health_enabled == CONFIG_BOOLEAN_AUTO)
@@ -700,12 +698,14 @@ static int rrdpush_receive(struct receiver_state *rpt)
         }
         rrdhost_unlock(rpt->host);
         if (rpt->host->receiver == rpt) {
+            replication_sender_thread_stop(rpt->host);
             rrdpush_sender_thread_stop(rpt->host);
         }
         netdata_mutex_unlock(&rpt->host->receiver_lock);
         rrd_unlock();
     }
 
+    info("%s: Cleaning up the receiver thread after disconnection!", REPLICATION_MSG);
     // cleanup
     fclose(fp);
     return (int)count;

@@ -195,17 +195,6 @@ RRDHOST *rrdhost_create(const char *hostname,
     host->stream_ssl.flags = NETDATA_SSL_START;
 #endif
 
-    //GAPs struct initialization
-    host->gaps_timeline = gaps_init();
-    if (!host->gaps_timeline) {
-        error(
-            "%s: Failed to create GAP timeline - GAP Awarness is not supported for host %s",
-            REPLICATION_MSG,
-            host->hostname);
-    }
-    //Initialization of the Replication Tx thread.
-    replication_sender_init(host->sender);
-
     netdata_rwlock_init(&host->rrdhost_rwlock);
     netdata_rwlock_init(&host->labels.labels_rwlock);
 
@@ -442,6 +431,19 @@ RRDHOST *rrdhost_create(const char *hostname,
          , host->health_default_exec
          , host->health_default_recipient
     );
+    
+    // ------------------------------------------------------------------------
+    //GAPs struct initialization
+    host->gaps_timeline = (GAPS *)callocz(1, sizeof(GAPS));
+    gaps_init(host);
+    if (!host->gaps_timeline) {
+        error(
+            "%s: Failed to create GAP timeline - GAP Awarness is not supported for host %s",
+            REPLICATION_MSG,
+            host->hostname);
+    }
+    //Initialization of the Replication Tx thread.
+    replication_sender_init(host->sender);
 
     rrd_hosts_available++;
 
@@ -884,6 +886,7 @@ void rrdhost_free(RRDHOST *host) {
             netdata_mutex_unlock(&host->receiver_lock);
     }
     gaps_destroy(host);
+    freez(host->gaps_timeline);
     
     rrdhost_wrlock(host);   // lock this RRDHOST
 #if defined(ENABLE_ACLK) && defined(ENABLE_NEW_CLOUD_PROTOCOL)
