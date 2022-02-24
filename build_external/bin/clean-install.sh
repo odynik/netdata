@@ -32,18 +32,18 @@ if cat <<HAPPY_CASE | grep "$DISTRO-$VERSION"
     debian-buster
 HAPPY_CASE
 then
-    docker build -f "$BuildBase/clean-install.Dockerfile" -t "${DISTRO}_${VERSION}_master" "$BuildBase/.." \
+    docker build -f "$BuildBase/clean-install.Dockerfile" -t "${DISTRO}_${VERSION}_dev" "$BuildBase/.." \
             --build-arg "DISTRO=$DISTRO" --build-arg "VERSION=$VERSION" \
             --build-arg EXTRA_CFLAGS="-DACLK_SSL_ALLOW_SELF_SIGNED"
 else
     case "$DISTRO-$VERSION" in
         arch-current)
-            docker build -f "$BuildBase/clean-install-arch.Dockerfile" -t "${DISTRO}_${VERSION}_master" "$BuildBase/.." \
+            docker build -f "$BuildBase/clean-install-arch.Dockerfile" -t "${DISTRO}_${VERSION}_dev" "$BuildBase/.." \
             --build-arg "DISTRO=$DISTRO" --build-arg "VERSION=$VERSION" \
             --build-arg EXTRA_CFLAGS="-DACLK_SSL_ALLOW_SELF_SIGNED" # --no-cache
         ;;
         arch-extras)   # Add valgrind to the container
-            docker build -f "$BuildBase/clean-install-arch-extras.Dockerfile" -t "${DISTRO}_${VERSION}_master" "$BuildBase/.." \
+            docker build -f "$BuildBase/clean-install-arch-extras.Dockerfile" -t "${DISTRO}_${VERSION}_dev" "$BuildBase/.." \
             --build-arg "DISTRO=$DISTRO" --build-arg "VERSION=$VERSION" \
             --build-arg EXTRA_CFLAGS="-DACLK_SSL_ALLOW_SELF_SIGNED" # --no-cache
         ;;
