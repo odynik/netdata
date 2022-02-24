@@ -52,8 +52,8 @@ typedef enum db_check_action_type {
     "(?1,?2,?3,?4,?5,?6);"
 
 #define SQL_GET_GAPS "select * from gaps;"
-#define SQL_GET_HOST_GAPS "select * from gaps where host_mguid = @host_mguid and status='oncreate');"
-#define DELETE_GAP_BY_UUID   "delete from gaps where gap_id = @uuid;"
+#define SQL_GET_HOST_GAPS "select * from gaps where host_mguid = @host_mguid and status='oncreate';"
+#define DELETE_GAP_BY_UUID "delete from gaps where gap_id = @uuid;"
 
 #define CHECK_SQLITE_CONNECTION(db_meta)                                                                               \
     if (unlikely(!db_meta)) {                                                                                          \
@@ -112,7 +112,8 @@ extern int sql_store_gap(
     int t_delta_start,
     int t_delta_first,
     int t_delta_end,
-    const char *status);
-extern void sql_load_host_gap(RRDHOST *host);
+    char *status);
+extern int sql_load_host_gap(RRDHOST *host);
 extern int sql_delete_gap(uuid_t *gap_uuid);
+extern void set_host_gap(RRDHOST *host, sqlite3_stmt *res);
 #endif //NETDATA_SQLITE_FUNCTIONS_H
