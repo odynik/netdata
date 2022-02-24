@@ -155,8 +155,8 @@ class State(object):
                                            "gap detect"   : "Gap detect",
                                            "data rx"      : "RECEIVER",
                                            "data tx"      : "STREAM: Sending data. Buffer",
-                                           "Finished replication on"  : "REPLICATE",
-                                           "Fill replication with" : "REPLICATE",
+                                           "Finished replication on"  : "REPLICATION_STREAM",
+                                           "Fill replication with" : "REPLICATION_STREAM",
                                            "GDB Signal Interrupt" : "received signal",
                                            "TLS/SSL error": "SSL Handshake error"})
         # Suppress DNS failures in two node scenario on the top level
@@ -167,8 +167,8 @@ class State(object):
                                            "gap detect"   : "Gap detect",
                                            "data rx"      : "RECEIVER",
                                            "data tx"      : "STREAM: Sending data. Buffer",
-                                           "Finished replication on"  : "REPLICATE",
-                                           "Fill replication with"  : "REPLICATE",
+                                           "Finished replication on"  : "REPLICATION_STREAM",
+                                           "Fill replication with"  : "REPLICATION_STREAM",
                                            "GDB Signal Interrupt" : "received signal",
                                            "TLS/SSL error": "SSL Handshake error"})
 
@@ -180,7 +180,7 @@ class State(object):
         return result
 
     def add_node(self, name):
-        n = Node(name, f"{self.prefix}_{name}_1", self.parser)
+        n = Node(name, f"{self.prefix}-{name}-1", self.parser)
         self.nodes[name] = n
         return n
 
@@ -353,7 +353,7 @@ class State(object):
         '''Check that replication did occur during the test by scanning the logs for debug.'''
         nodes_involved_replication = 0
         for n in self.nodes.values():
-            # print(f"  MATCHERS {n.parser.matchers} in replication", file=self.output)
+            print(f"  MATCHERS {n.parser.matchers} in replication", file=self.output)
             if n.started and len(sh(f"grep -i '{n.parser.matchers['Finished replication on'].pattern}\|{n.parser.matchers['Fill replication with'].pattern}' {n.log}",self.output))>0:
                 print(f"  Node {n.name} was involved in replication", file=self.output)
                 nodes_involved_replication+=1
