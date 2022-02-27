@@ -333,7 +333,7 @@ static void replication_attempt_to_connect(struct sender_state *state)
             error("%s %s [receive from [%s]:%s]: failed to get a FILE for FD %d.", REPLICATION_MSG, state->host->hostname, state->replication->client_ip, state->replication->client_port, state->replication->socket);
             close(state->replication->socket);
             fclose(state->replication->fp);
-            return 0;
+            // return 0;
         } 
     }
     else {
@@ -366,15 +366,15 @@ void replication_commit(struct replication_state *replication) {
 void replication_attempt_read(struct replication_state *replication) {
 int ret;
 #ifdef ENABLE_HTTPS
-    if (replication->ssl.conn && !replication->ssl.flags) {
+    if (replication->ssl->conn && !replication->ssl->flags) {
         ERR_clear_error();
         int desired = sizeof(replication->read_buffer) - replication->read_len - 1;
-        ret = SSL_read(replication->ssl.conn, replication->read_buffer, desired);
+        ret = SSL_read(replication->ssl->conn, replication->read_buffer, desired);
         if (ret > 0 ) {
             replication->read_len += ret;
             return;
         }
-        int sslerrno = SSL_get_error(replication->ssl.conn, desired);
+        int sslerrno = SSL_get_error(replication->ssl->conn, desired);
         if (sslerrno == SSL_ERROR_WANT_READ || sslerrno == SSL_ERROR_WANT_WRITE)
             return;
         u_long err;
@@ -421,8 +421,8 @@ void replication_attempt_to_send(struct replication_state *replication) {
     debug(D_REPLICATION, "REPLICATION: Sending data. Buffer r=%zu w=%zu s=%zu, next chunk=%zu", cb->read, cb->write, cb->size, outstanding);
     ssize_t ret;
 #ifdef ENABLE_HTTPS
-    SSL *conn = replication->ssl.conn ;
-    if(conn && !replication->ssl.flags) {
+    SSL *conn = replication->ssl->conn ;
+    if(conn && !replication->ssl->flags) {
         ret = SSL_write(conn, chunk, outstanding);
     } else {
         ret = send(replication->socket, chunk, outstanding, MSG_DONTWAIT);
@@ -1087,10 +1087,10 @@ static char *receiver_next_line(struct replication_state *r, int *pos) {
  */
 static int receiver_read(struct replication_state *r, FILE *fp) {
 #ifdef ENABLE_HTTPS
-    if (r->ssl.conn && !r->ssl.flags) {
+    if (r->ssl->conn && !r->ssl->flags) {
         ERR_clear_error();
         int desired = sizeof(r->read_buffer) - r->read_len - 1;
-        int ret = SSL_read(r->ssl.conn, r->read_buffer + r->read_len, desired);
+        int ret = SSL_read(r->ssl->conn, r->read_buffer + r->read_len, desired);
         if (ret > 0 ) {
             r->read_len += ret;
             return 0;
