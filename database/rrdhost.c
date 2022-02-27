@@ -188,7 +188,6 @@ RRDHOST *rrdhost_create(const char *hostname,
     host->rrdpush_sender_pipe[1] = -1;
     host->rrdpush_sender_socket  = -1;
 
-    //host->stream_version = STREAMING_PROTOCOL_CURRENT_VERSION;        Unused?
 #ifdef ENABLE_HTTPS
     host->ssl.conn = NULL;
     host->ssl.flags = NETDATA_SSL_START;
@@ -434,6 +433,19 @@ RRDHOST *rrdhost_create(const char *hostname,
          , host->health_default_exec
          , host->health_default_recipient
     );
+    
+    // ------------------------------------------------------------------------
+    //GAPs struct initialization
+    host->gaps_timeline = (GAPS *)callocz(1, sizeof(GAPS));
+    gaps_init(host);
+    if (!host->gaps_timeline) {
+        error(
+            "%s: Failed to create GAP timeline - GAP Awarness is not supported for host %s",
+            REPLICATION_MSG,
+            host->hostname);
+    }
+    //Initialization of the Replication Tx thread.
+    replication_sender_init(host->sender);
 
     rrd_hosts_available++;
 
@@ -850,7 +862,8 @@ void rrdhost_free(RRDHOST *host) {
     rrd_check_wrlock();     // make sure the RRDs are write locked
 
     // ------------------------------------------------------------------------
-    // clean up streaming
+    // clean up streaming & replication
+    replication_sender_thread_stop(host); // stop a possibly running Tx replication thread and clean-up the state of the REP Tx thread.
     rrdpush_sender_thread_stop(host); // stop a possibly running thread
     cbuffer_free(host->sender->buffer);
     buffer_free(host->sender->build);
@@ -876,9 +889,9 @@ void rrdhost_free(RRDHOST *host) {
         else
             netdata_mutex_unlock(&host->receiver_lock);
     }
-
-
-
+    gaps_destroy(host);
+    freez(host->gaps_timeline);
+    
     rrdhost_wrlock(host);   // lock this RRDHOST
 
     // ------------------------------------------------------------------------
@@ -1736,4 +1749,17 @@ time_t rrdhost_last_entry_t(RRDHOST *h) {
     }
     rrdhost_unlock(h);
     return result;
+}
+
+time_t rrdhost_first_entry_t(RRDHOST *h) {
+    rrdhost_rdlock(h);
+    RRDSET *st;
+    time_t result = 0;
+    rrdset_foreach_read(st, h) {
+        time_t st_first = rrdset_first_entry_t(st);
+        if (st_first < result)
+            result = st_first;
+    }
+    rrdhost_unlock(h);
+    return result;    
 }

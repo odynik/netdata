@@ -18,6 +18,11 @@ typedef struct context_param CONTEXT_PARAM;
 typedef void *ml_host_t;
 typedef void *ml_dimension_t;
 
+// GAP structs
+typedef struct time_window TIME_WINDOW;
+typedef struct gap GAP;
+typedef struct gaps_queue GAPS;
+
 // forward declarations
 struct rrddim_volatile;
 struct rrdset_volatile;
@@ -838,6 +843,8 @@ struct rrdhost {
 
     struct receiver_state *receiver;
     netdata_mutex_t receiver_lock;
+    
+    GAPS *gaps_timeline;                             // disconnection gaps of a host
 
     // ------------------------------------------------------------------------
     // health monitoring options
@@ -1193,6 +1200,7 @@ static inline time_t rrddim_first_entry_t(RRDDIM *rd) {
 }
 
 time_t rrdhost_last_entry_t(RRDHOST *h);
+time_t rrdhost_first_entry_t(RRDHOST *h);
 
 // get the last slot updated in the round robin database
 #define rrdset_last_slot(st) ((size_t)(((st)->current_entry == 0) ? (st)->entries - 1 : (st)->current_entry - 1))

@@ -40,6 +40,7 @@ struct config stream_config = {
 };
 
 unsigned int default_rrdpush_enabled = 0;
+unsigned int default_rrdpush_replication_enabled = 1;
 #ifdef ENABLE_COMPRESSION
 unsigned int default_compression_enabled = 0;
 #endif
@@ -76,6 +77,9 @@ int rrdpush_init() {
     default_rrdpush_api_key     = appconfig_get(&stream_config, CONFIG_SECTION_STREAM, "api key", "");
     default_rrdpush_send_charts_matching      = appconfig_get(&stream_config, CONFIG_SECTION_STREAM, "send charts matching", "*");
     rrdhost_free_orphan_time    = config_get_number(CONFIG_SECTION_GLOBAL, "cleanup orphan hosts after seconds", rrdhost_free_orphan_time);
+    // replication
+    default_rrdpush_replication_enabled = (unsigned int)appconfig_get_boolean(&stream_config, CONFIG_SECTION_STREAM, "enable replication", default_rrdpush_replication_enabled);
+
 #ifdef ENABLE_COMPRESSION
     default_compression_enabled = (unsigned int)appconfig_get_boolean(&stream_config, CONFIG_SECTION_STREAM,
         "enable compression", default_compression_enabled);
@@ -84,6 +88,14 @@ int rrdpush_init() {
     if(default_rrdpush_enabled && (!default_rrdpush_destination || !*default_rrdpush_destination || !default_rrdpush_api_key || !*default_rrdpush_api_key)) {
         error("STREAM [send]: cannot enable sending thread - information is missing.");
         default_rrdpush_enabled = 0;
+    }
+
+    // Replication
+    if (!default_rrdpush_replication_enabled
+    || (STREAMING_PROTOCOL_CURRENT_VERSION < VERSION_GAP_FILLING)
+    || !default_rrdpush_enabled) {
+        error("%s [send]: Cannot enable replication mechanism - Streaming is disabled.", REPLICATION_MSG);
+        default_rrdpush_replication_enabled = 0;
     }
 
 #ifdef ENABLE_HTTPS
@@ -721,7 +733,7 @@ int rrdpush_receiver_thread_spawn(struct web_client *w, char *url) {
     }
     rrd_unlock();
 
-    rpt->last_msg_t = now_realtime_sec();
+    rpt->last_msg_t = now_realtime_sec(); // receiver spawn creation and a timestamp close to connection.
 
     rpt->host              = host;
     rpt->fd                = w->ifd;

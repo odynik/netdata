@@ -462,6 +462,11 @@ static void attempt_to_connect(struct sender_state *state)
 
         // let the data collection threads know we are ready
         state->host->rrdpush_sender_connected = 1;
+
+        // Start replication sender thread (Tx).
+        info("%s Replication is %s", REPLICATION_MSG, (state->replication->enabled ? "enabled" : "disabled"));
+        if(state->replication->enabled)
+            replication_sender_thread_spawn(state->host);
     }
     else {
         // increase the failed connections counter
@@ -657,6 +662,7 @@ void *rrdpush_sender_thread(void *ptr) {
         &stream_config, CONFIG_SECTION_STREAM,
         "initial clock resync iterations",
         remote_clock_resync_iterations); // TODO: REMOVE FOR SLEW / GAPFILLING
+    // Read replication configuration for sender thread.
 
     // initialize rrdpush globals
     s->host->rrdpush_sender_connected = 0;
@@ -685,12 +691,13 @@ void *rrdpush_sender_thread(void *ptr) {
             s->buffer->read = 0;
             s->buffer->write = 0;
             attempt_to_connect(s);
-            if (s->version >= VERSION_GAP_FILLING) {
-                time_t now = now_realtime_sec();
-                sender_start(s);
-                buffer_sprintf(s->build, "TIMESTAMP %"PRId64"", (int64_t)now);
-                sender_commit(s);
-            }
+            // if (s->version >= VERSION_GAP_FILLING) {
+            //     time_t now = now_realtime_sec();
+            //     sender_start(s);
+            //     buffer_sprintf(s->build, "TIMESTAMP %ld", now);
+            //     sender_commit(s);
+            //     // Send here the REP on command to the parent
+            // }
             rrdpush_claimed_id(s->host);
             continue;
         }
@@ -748,9 +755,9 @@ void *rrdpush_sender_thread(void *ptr) {
         }
 
         // Read as much as possible to fill the buffer, split into full lines for execution.
-        if (fds[Socket].revents & POLLIN)
-            attempt_read(s);
-        execute_commands(s);
+        // if (fds[Socket].revents & POLLIN)
+        //     attempt_read(s);
+        // execute_commands(s);
 
         // If we have data and have seen the TCP window open then try to close it by a transmission.
         if (outstanding && fds[Socket].revents & POLLOUT)

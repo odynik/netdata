@@ -7,6 +7,7 @@
 #include "libnetdata/libnetdata.h"
 #include "web/server/web_client.h"
 #include "daemon/common.h"
+#include "streaming/replication.h"
 
 #define CONNECTED_TO_SIZE 100
 
@@ -14,9 +15,10 @@
 #define STREAM_VERSION_CLABELS 4
 #define STREAM_VERSION_COMPRESSION 5
 #define VERSION_GAP_FILLING 6
+// #define STREAMING_PROTOCOL_CURRENT_VERSION (uint32_t)(VERSION_GAP_FILLING)
 
 #ifdef  ENABLE_COMPRESSION
-#define STREAMING_PROTOCOL_CURRENT_VERSION (uint32_t)(STREAM_VERSION_COMPRESSION)
+#define STREAMING_PROTOCOL_CURRENT_VERSION (uint32_t)(VERSION_GAP_FILLING)
 #else
 #define STREAMING_PROTOCOL_CURRENT_VERSION (uint32_t)(STREAM_VERSION_CLABELS)
 #endif  //ENABLE_COMPRESSION
@@ -98,6 +100,8 @@ struct sender_state {
     char read_buffer[512];
     int read_len;
     int32_t version;
+    // Replication status
+    REPLICATION_STATE *replication;
 #ifdef ENABLE_COMPRESSION
     unsigned int rrdpush_compression;
     struct compressor_state *compressor;
@@ -132,6 +136,8 @@ struct receiver_state {
 #ifdef ENABLE_HTTPS
     struct netdata_ssl ssl;
 #endif
+    // Replication status
+    REPLICATION_STATE *replication;
 #ifdef ENABLE_COMPRESSION
     unsigned int rrdpush_compression;
     struct decompressor_state *decompressor;
@@ -140,6 +146,7 @@ struct receiver_state {
 
 
 extern unsigned int default_rrdpush_enabled;
+extern unsigned int default_rrdpush_replication_enabled;
 #ifdef ENABLE_COMPRESSION
 extern unsigned int default_compression_enabled;
 #endif
@@ -165,6 +172,19 @@ extern void rrdpush_sender_thread_stop(RRDHOST *host);
 extern void rrdpush_sender_send_this_host_variable_now(RRDHOST *host, RRDVAR *rv);
 extern void log_stream_connection(const char *client_ip, const char *client_port, const char *api_key, const char *machine_guid, const char *host, const char *msg);
 
+// Replication functions definitions
+// Initialization
+extern void replication_sender_init(struct sender_state *sender);
+extern void replication_receiver_init(struct receiver_state *receiver, struct config *stream_config);
+// Threads
+extern void replication_sender_thread_spawn(RRDHOST *host);
+extern int replication_receiver_thread_spawn(struct web_client *w, char *url);
+extern void replication_sender_thread_stop(RRDHOST *host);
+extern void *replication_sender_thread(void *ptr);
+extern void evaluate_gap_onconnection(struct receiver_state *stream_recv);
+extern void evaluate_gap_ondisconnection(struct receiver_state *stream_recv);
+extern void gaps_init(RRDHOST *host);
+extern void gaps_destroy(RRDHOST *host);
 #ifdef ENABLE_COMPRESSION
 struct compressor_state *create_compressor();
 struct decompressor_state *create_decompressor();
