@@ -5,6 +5,8 @@
 extern struct config stream_config;
 extern int netdata_use_ssl_on_stream;
 
+size_t replication_parser(struct replication_state *rpt, struct plugind *cd, FILE *fp);
+
 static void replication_receiver_thread_cleanup_callback(void *host);
 static void replication_sender_thread_cleanup_callback(void *ptr);
 static void print_replication_state(REPLICATION_STATE *state);
@@ -54,6 +56,7 @@ void replication_sender_init(struct sender_state *sender){
 
     sender->replication = (REPLICATION_STATE *)callocz(1, sizeof(REPLICATION_STATE));
     replication_state_init(sender->replication);
+    sender->replication->host = sender->host;
     sender->replication->enabled = default_rrdpush_replication_enabled;
 #ifdef ENABLE_HTTPS
     sender->replication->ssl = &sender->host->stream_ssl;
@@ -88,6 +91,7 @@ void replication_receiver_init(struct receiver_state *receiver, struct config *s
     // receiver->replication = (REPLICATION_STATE *)callocz(1, sizeof(REPLICATION_STATE));
     replication_state_init(receiver->replication);
     info("%s: REP Rx state initialized", REPLICATION_MSG);    
+    receiver->replication->host = receiver->host;
     receiver->replication->enabled = rrdpush_replication_enable;
     info("%s: Initialize Rx for host %s ", REPLICATION_MSG, receiver->host->hostname);
     print_replication_state(receiver->replication);
@@ -95,6 +99,7 @@ void replication_receiver_init(struct receiver_state *receiver, struct config *s
 
 // Connection management & socket handling functions
 //Close the socket of the replication sender thread
+//Do we need seperating as sender and receiver ??
 static void replication_sender_thread_close_socket(RRDHOST *host) {
     host->sender->replication->connected = 0;
 
@@ -104,11 +109,20 @@ static void replication_sender_thread_close_socket(RRDHOST *host) {
     }
 }
 
+static void replication_thread_close_socket(REPLICATION_STATE *replication) {
+    replication->connected = 0;
+
+    if(replication->socket != -1) {
+        close(replication->socket);
+        replication->socket = -1;
+    }
+}
+
 extern void rrdpush_encode_variable(stream_encoded_t *se, RRDHOST *host);
 extern void rrdpush_clean_encoded(stream_encoded_t *se);
 
 // Connect to parent. The REPLICATE command over HTTP req triggers the receiver thread in parent.
-//TODO: revise the logic of the communication
+// TODO: revise the logic of the communication
 static int replication_sender_thread_connect_to_parent(RRDHOST *host, int default_port, int timeout, struct sender_state *s) {
 
     struct timeval tv = {
@@ -311,6 +325,16 @@ static void replication_attempt_to_connect(struct sender_state *state)
 
         // Update the connection state flag
         state->replication->connected = 1;
+
+        // Set file pointer
+        state->replication->fp = fdopen(state->replication->socket, "r");
+        if(!state->replication->fp) {
+            log_stream_connection(state->replication->client_ip, state->replication->client_port, state->host->rrdpush_send_api_key, state->host->machine_guid, state->host->hostname, "SOCKET CONVERSION TO FD FAILED - SOCKET ERROR");
+            error("%s %s [receive from [%s]:%s]: failed to get a FILE for FD %d.", REPLICATION_MSG, state->host->hostname, state->replication->client_ip, state->replication->client_port, state->replication->socket);
+            close(state->replication->socket);
+            fclose(state->replication->fp);
+            return 0;
+        } 
     }
     else {
         // increase the failed connections counter
@@ -324,12 +348,131 @@ static void replication_attempt_to_connect(struct sender_state *state)
     }
 }
 
+// Replication thread starting a transmission
+void replication_start(struct replication_state *replication) {
+    netdata_mutex_lock(&replication->mutex);
+    buffer_flush(replication->build);
+}
+
+// Replication thread finishing a transmission
+void replication_commit(struct replication_state *replication) {
+    if(cbuffer_add_unsafe(replication->buffer, buffer_tostring(replication->build),
+       replication->build->len))
+        replication->overflow = 1;
+    buffer_flush(replication->build);
+    netdata_mutex_unlock(&replication->mutex);
+}
+
+void replication_attempt_read(struct replication_state *replication) {
+int ret;
+#ifdef ENABLE_HTTPS
+    if (replication->ssl.conn && !replication->ssl.flags) {
+        ERR_clear_error();
+        int desired = sizeof(replication->read_buffer) - replication->read_len - 1;
+        ret = SSL_read(replication->ssl.conn, replication->read_buffer, desired);
+        if (ret > 0 ) {
+            replication->read_len += ret;
+            return;
+        }
+        int sslerrno = SSL_get_error(replication->ssl.conn, desired);
+        if (sslerrno == SSL_ERROR_WANT_READ || sslerrno == SSL_ERROR_WANT_WRITE)
+            return;
+        u_long err;
+        char buf[256];
+        while ((err = ERR_get_error()) != 0) {
+            ERR_error_string_n(err, buf, sizeof(buf));
+            error("REPLICATION %s [send to %s] ssl error: %s", replication->host->hostname, replication->connected_to, buf);
+        }
+        error("Restarting connection");
+        replication_thread_close_socket(replication);
+        return;
+    }
+#endif
+    ret = recv(replication->socket, replication->read_buffer + replication->read_len, sizeof(replication->read_buffer) - replication->read_len - 1,
+               MSG_DONTWAIT);
+    
+    if (ret>0) {
+        replication->read_len += ret;
+        return;
+    }
+    debug(D_REPLICATION, "Socket was POLLIN, but req %zu bytes gave %d", sizeof(replication->read_buffer) - replication->read_len - 1, ret);
+    
+    if (ret<0 && (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR))
+        return;
+    if (ret==0)
+        error("REPLICATION %s [send to %s]: connection closed by far end. Restarting connection", "s->host->hostname???", replication->connected_to);
+    else
+        error("REPLICATION %s [send to %s]: error during read (%d). Restarting connection", "s->host->hostname???", replication->connected_to,
+              ret);
+    replication_thread_close_socket(replication);
+}
+
+// TCP window is open and we have data to transmit.
+void replication_attempt_to_send(struct replication_state *replication) {
+
+#ifdef NETDATA_INTERNAL_CHECKS
+    struct circular_buffer *cb = replication->buffer;
+#endif
+
+    netdata_thread_disable_cancelability();
+    netdata_mutex_lock(&replication->mutex);
+    char *chunk;
+    size_t outstanding = cbuffer_next_unsafe(replication->buffer, &chunk);
+    debug(D_REPLICATION, "REPLICATION: Sending data. Buffer r=%zu w=%zu s=%zu, next chunk=%zu", cb->read, cb->write, cb->size, outstanding);
+    ssize_t ret;
+#ifdef ENABLE_HTTPS
+    SSL *conn = replication->ssl.conn ;
+    if(conn && !replication->ssl.flags) {
+        ret = SSL_write(conn, chunk, outstanding);
+    } else {
+        ret = send(replication->socket, chunk, outstanding, MSG_DONTWAIT);
+    }
+#else
+    ret = send(replication->socket, chunk, outstanding, MSG_DONTWAIT);
+#endif
+    if (likely(ret > 0)) {
+        cbuffer_remove_unsafe(replication->buffer, ret);
+        replication->sent_bytes_on_this_connection += ret;
+        replication->sent_bytes += ret;
+        debug(D_REPLICATION, "REPLICATION %s [send to %s]: Sent %zd bytes", "s->host->hostname???", replication->connected_to, ret);
+        replication->last_sent_t = now_monotonic_sec();
+    }
+    else if (ret == -1 && (errno == EAGAIN || errno == EINTR || errno == EWOULDBLOCK))
+        debug(D_REPLICATION, "REPLICATION %s [send to %s]: unavailable after polling POLLOUT", replication->host->hostname,
+              replication->connected_to);
+    else if (ret == -1) {
+        debug(D_REPLICATION, "REPLICATION: Send failed - closing socket...");
+        error("REPLICATION %s [send to %s]: failed to send metrics - closing connection - we have sent %zu bytes on this connection.",  replication->host->hostname, replication->connected_to, replication->sent_bytes_on_this_connection);
+        replication_thread_close_socket(replication);
+    }
+    else {
+        debug(D_REPLICATION, "REPLICATION: send() returned 0 -> no error but no transmission");
+    }
+
+    netdata_mutex_unlock(&replication->mutex);
+    netdata_thread_enable_cancelability();
+}
+
 // Thread creation
 void *replication_sender_thread(void *ptr) {
     struct sender_state *s = (struct sender_state *) ptr;
     unsigned int rrdpush_replication_enabled = s->replication->enabled;
     info("%s Replication sender thread is starting", REPLICATION_MSG);
-    
+
+    // remove the non-blocking flag from the socket
+    if(sock_delnonblock(s->replication->socket) < 0)
+        error("%s %s [receive from [%s]:%s]: cannot remove the non-blocking flag from socket %d", REPLICATION_MSG, s->host->hostname, s->replication->client_ip, s->replication->client_port, s->replication->socket);
+
+   /*
+    // convert the socket to a FILE *
+    FILE *fp = fdopen(s->replication->socket, "r");
+    if(!fp) {
+        log_stream_connection(s->replication->client_ip, s->replication->client_port, s->host->rrdpush_send_api_key, s->host->machine_guid, s->host->hostname, "SOCKET CONVERSION TO FD FAILED - SOCKET ERROR");
+        error("%s %s [receive from [%s]:%s]: failed to get a FILE for FD %d.", REPLICATION_MSG, s->host->hostname, s->replication->client_ip, s->replication->client_port, s->replication->socket);
+        close(s->replication->socket);
+        return 0;
+    }
+  */
     // attempt to connect to parent
     // Read the config for sending in replication
     // Add here the sender initialization logic of the thread.
@@ -346,6 +489,7 @@ void *replication_sender_thread(void *ptr) {
     //     // if reponse is REP off - exit
     // }
     //Implementation...
+
     for(;rrdpush_replication_enabled && !netdata_exit;)
     {
         // check for outstanding cancellation requests
@@ -358,8 +502,12 @@ void *replication_sender_thread(void *ptr) {
             // Tmp solution to test the thread cleanup process
             s->replication->not_connected_loops++;            
         }
-        else
-            break;
+        else {
+            //send_message(s->replication, "REP ON\n");
+            replication_parser(s->replication, NULL, s->replication->fp);
+            //sleep(1);
+
+        }
     }
     // Closing thread - clean up any resources allocated here
     netdata_thread_cleanup_pop(1);
@@ -382,6 +530,13 @@ void replication_sender_thread_spawn(RRDHOST *host) {
             host->sender->replication->spawned = 1;
     }
     netdata_mutex_unlock(&host->sender->replication->mutex);
+}
+
+void send_message(struct replication_state *replication, char* message){
+    replication_start(replication);
+    buffer_sprintf(replication->build, message);
+    replication_commit(replication);
+    replication_attempt_to_send(replication);
 }
 
 void *replication_receiver_thread(void *ptr){
@@ -441,7 +596,7 @@ void *replication_receiver_thread(void *ptr){
         error("%s %s [receive from [%s]:%s]: cannot remove the non-blocking flag from socket %d", REPLICATION_MSG, rpt->host->hostname, rpt->replication->client_ip, rpt->replication->client_port, rpt->replication->socket);
 
     // convert the socket to a FILE *
-    FILE *fp = fdopen(rpt->fd, "r");
+    FILE *fp = fdopen(rpt->replication->socket, "r");
     if(!fp) {
         log_stream_connection(rpt->replication->client_ip, rpt->replication->client_port, rpt->key, rpt->host->machine_guid, rpt->host->hostname, "SOCKET CONVERSION TO FD FAILED - SOCKET ERROR");
         error("%s %s [receive from [%s]:%s]: failed to get a FILE for FD %d.", REPLICATION_MSG, rpt->host->hostname, rpt->replication->client_ip, rpt->replication->client_port, rpt->replication->socket);
@@ -476,8 +631,15 @@ void *replication_receiver_thread(void *ptr){
     //     // recv RDATA command from child agent
     // }    
     // Closing thread - clean any resources allocated in this thread function
+    for(;rrdpush_replication_enabled && !netdata_exit;)
+    {
+        // check for outstanding cancellation requests
+        netdata_thread_testcancel();
+        replication_parser(rpt->replication, &cd, fp);
+    }
+    // Closing thread - clean up any resources allocated here
     netdata_thread_cleanup_pop(1);
-    return NULL;    
+    return NULL;   
 }
 
 extern int rrdpush_receiver_too_busy_now(struct web_client *w);
@@ -903,7 +1065,7 @@ int remove_gap(GAP *a_gap)
 /* Produce a full line if one exists, statefully return where we start next time.
  * When we hit the end of the buffer with a partial line move it to the beginning for the next fill.
  */
-static char *receiver_next_line(struct receiver_state *r, int *pos) {
+static char *receiver_next_line(struct replication_state *r, int *pos) {
     int start = *pos, scan = *pos;
     if (scan >= r->read_len) {
         r->read_len = 0;
@@ -923,7 +1085,7 @@ static char *receiver_next_line(struct receiver_state *r, int *pos) {
 
 /* The receiver socket is blocking, perform a single read into a buffer so that we can reassemble lines for parsing.
  */
-static int receiver_read(struct receiver_state *r, FILE *fp) {
+static int receiver_read(struct replication_state *r, FILE *fp) {
 #ifdef ENABLE_HTTPS
     if (r->ssl.conn && !r->ssl.flags) {
         ERR_clear_error();
@@ -938,7 +1100,7 @@ static int receiver_read(struct receiver_state *r, FILE *fp) {
         char buf[256];
         while ((err = ERR_get_error()) != 0) {
             ERR_error_string_n(err, buf, sizeof(buf));
-            error("STREAM %s [receive from %s] ssl error: %s", r->hostname, r->client_ip, buf);
+            error("STREAM %s [receive from %s] ssl error: %s", r->host->hostname, r->client_ip, buf);
         }
         return 1;
     }
@@ -950,10 +1112,13 @@ static int receiver_read(struct receiver_state *r, FILE *fp) {
 }
 
 // Replication parser & commands
-size_t replication_parser(struct receiver_state *rpt, struct plugind *cd, FILE *fp) {
+size_t replication_parser(struct replication_state *rpt, struct plugind *cd, FILE *fp) {
     size_t result;
     PARSER_USER_OBJECT *user = callocz(1, sizeof(*user));
-    user->enabled = cd->enabled;
+    //TODO cd?
+    if(cd){
+        user->enabled = cd->enabled;
+    }
     user->host = rpt->host;
     user->opaque = rpt;
     user->cd = cd;
@@ -964,7 +1129,11 @@ size_t replication_parser(struct receiver_state *rpt, struct plugind *cd, FILE *
 
     if (unlikely(!parser)) {
         error("Failed to initialize parser");
-        cd->serial_failures++;
+        //TODO cd?
+        if(cd){
+            cd->serial_failures++;
+        }
+
         freez(user);
         return 0;
     }
@@ -1004,7 +1173,9 @@ size_t replication_parser(struct receiver_state *rpt, struct plugind *cd, FILE *
         int pos = 0;
         char *line;
         while ((line = receiver_next_line(rpt, &pos))) {
-            if (unlikely(netdata_exit || rpt->shutdown || parser_action(parser,  line)))
+            info("Parser received: %s \n", line);
+            //TODO shutdown?
+            if (unlikely(netdata_exit /*|| rpt->shutdown*/ || parser_action(parser,  line)))
                 goto done;
         }
         rpt->last_msg_t = now_realtime_sec();
