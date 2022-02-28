@@ -191,5 +191,6 @@ struct compressor_state *create_compressor();
 struct decompressor_state *create_decompressor();
 size_t is_compressed_data(const char *data, size_t data_size);
 #endif
+void replication_state_destroy(REPLICATION_STATE **state);
 
 #endif //NETDATA_RRDPUSH_H

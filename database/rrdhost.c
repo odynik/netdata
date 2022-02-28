@@ -865,6 +865,8 @@ void rrdhost_free(RRDHOST *host) {
     // clean up streaming & replication
     replication_sender_thread_stop(host); // stop a possibly running Tx replication thread and clean-up the state of the REP Tx thread.
     rrdpush_sender_thread_stop(host); // stop a possibly running thread
+    // Clean-up the replication Tx thread structure.
+    replication_state_destroy(&host->sender->replication);    
     cbuffer_free(host->sender->buffer);
     buffer_free(host->sender->build);
 #ifdef ENABLE_COMPRESSION
