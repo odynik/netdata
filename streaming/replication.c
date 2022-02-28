@@ -30,20 +30,19 @@ static void replication_state_init(REPLICATION_STATE *state)
     netdata_mutex_init(&state->mutex);
 }
 
-static void replication_state_destroy(REPLICATION_STATE *state)
+void replication_state_destroy(REPLICATION_STATE **state)
 {
-    info("%s: Destroying replication state.", REPLICATION_MSG);
-    pthread_mutex_destroy(&state->mutex);
-    cbuffer_free(state->buffer);
-    buffer_free(state->build);
-    // freez(state->read_buffer);
+    REPLICATION_STATE *r = *state;
+    pthread_mutex_destroy(&r->mutex);
+    cbuffer_free(r->buffer);
+    buffer_free(r->build);
 #ifdef ENABLE_HTTPS
-    if(state->ssl->conn){
-        SSL_free(state->ssl->conn);
+    if(r->ssl->conn){
+        SSL_free(r->ssl->conn);
     }
-    freez(state->ssl);
 #endif
-    freez(state);
+    freez(*state);
+    info("%s: Replication state destroyed.", REPLICATION_MSG);
 }
 
 void replication_sender_init(struct sender_state *sender){
@@ -943,7 +942,7 @@ void replication_receiver_thread_cleanup_callback(void *ptr)
             netdata_mutex_unlock(&rpt->replication->mutex);
         }
         info("%s %s [receive from [%s]:%s]: receive thread ended (task id %d)", REPLICATION_MSG, rpt->hostname, rpt->replication->client_ip, rpt->replication->client_port, gettid());
-        replication_state_destroy(rpt->replication);
+        replication_state_destroy(&rpt->replication);
         // // On a parent signal also the sender thread sending to a gparent to shutdown. Probably after the parsing. Check also the clean-up functionality in the rrdhost().        
     }
 }
@@ -978,8 +977,6 @@ void replication_sender_thread_stop(RRDHOST *host) {
         netdata_thread_join(thr, &result);
         info("%s %s [send]: replication sending thread has exited.", REPLICATION_MSG, host->hostname);
     }
-    // Clean-up the replication Tx thread structure.
-    replication_state_destroy(host->sender->replication);
 }
 
 // static inline int parse_replication_ack(char *http)
