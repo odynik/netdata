@@ -5,6 +5,8 @@
 #include "libnetdata/libnetdata.h"
 #include "mqtt_wss_client.h"
 
+#define ACLK_LOG_CONVERSATION_DIR "/var/log/netdata/aclk_logs_dump"
+
 // Helper stuff which should not have any further inside ACLK dependency
 // and are supposed not to be needed outside of ACLK
 extern int aclk_use_new_cloud_arch;

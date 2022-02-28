@@ -771,7 +771,7 @@ failed:
     return memory_mode;
 }
 
-#define SELECT_HOST_DIMENSION_LIST  "SELECT d.dim_id, c.update_every, c.type||'.'||c.id, d.id, d.name FROM chart c, dimension d " \
+#define SELECT_HOST_DIMENSION_LIST  "SELECT d.dim_id, c.update_every, c.type||'.'||c.id, d.id, d.name, last_updated(d.dim_id) FROM chart c, dimension d " \
         "WHERE d.chart_id = c.chart_id AND c.host_id = @host_id ORDER BY c.update_every ASC;"
 
 #define SELECT_HOST_CHART_LIST  "SELECT distinct h.host_id, c.update_every, c.type||'.'||c.id FROM chart c, host h " \
@@ -857,8 +857,13 @@ void aclk_update_retention(struct aclk_database_worker_config *wc, struct aclk_d
             start_time = LONG_MAX;
         }
 #ifdef ENABLE_DBENGINE
-        if (memory_mode == RRD_MEMORY_MODE_DBENGINE)
+        if (memory_mode == RRD_MEMORY_MODE_DBENGINE) {
             rc = rrdeng_metric_latest_time_by_uuid((uuid_t *)sqlite3_column_blob(res, 0), &first_entry_t, &last_entry_t);
+            time_t dim_last_updated = (time_t) sqlite3_column_int64(res, 5);
+            char dim_uuid_str[UUID_STR_LEN];
+            uuid_unparse(*((uuid_t *)sqlite3_column_blob(res, 0)), dim_uuid_str);
+            info("STALE CHARTS: dbengine_last_entry_t: %ld, sqlite_func_t: %ld, uuid_t: %s", last_entry_t, dim_last_updated, dim_uuid_str);
+        }
         else
 #endif
         {
