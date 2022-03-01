@@ -433,15 +433,9 @@ RRDHOST *rrdhost_create(const char *hostname,
     );
     
     // ------------------------------------------------------------------------
-    //GAPs struct initialization
-    host->gaps_timeline = (GAPS *)callocz(1, sizeof(GAPS));
-    gaps_init(host);
-    if (!host->gaps_timeline) {
-        error(
-            "%s: Failed to create GAP timeline - GAP Awarness is not supported for host %s",
-            REPLICATION_MSG,
-            host->hostname);
-    }
+    //GAPs struct initialization only for child hosts
+    if(strcmp(host->machine_guid, localhost->machine_guid))
+        gaps_init(&host);
     //Initialization of the Replication Tx thread.
     replication_sender_init(host->sender);
 
@@ -861,8 +855,6 @@ void rrdhost_free(RRDHOST *host) {
     // clean up streaming & replication
     replication_sender_thread_stop(host); // stop a possibly running Tx replication thread and clean-up the state of the REP Tx thread.
     rrdpush_sender_thread_stop(host); // stop a possibly running thread
-    // Clean-up the replication Tx thread structure.
-    replication_state_destroy(&host->sender->replication);    
     cbuffer_free(host->sender->buffer);
     buffer_free(host->sender->build);
 #ifdef ENABLE_COMPRESSION
@@ -887,8 +879,8 @@ void rrdhost_free(RRDHOST *host) {
         else
             netdata_mutex_unlock(&host->receiver_lock);
     }
-    gaps_destroy(host);
-    freez(host->gaps_timeline);
+    if(strcmp(host->machine_guid, localhost->machine_guid))
+        gaps_destroy(&host);
     
     rrdhost_wrlock(host);   // lock this RRDHOST
 #if defined(ENABLE_ACLK) && defined(ENABLE_NEW_CLOUD_PROTOCOL)

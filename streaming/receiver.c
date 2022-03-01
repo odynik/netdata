@@ -699,7 +699,7 @@ static int rrdpush_receive(struct receiver_state *rpt)
         }
         rrdhost_unlock(rpt->host);
         if (rpt->host->receiver == rpt) {
-            replication_sender_thread_stop(rpt->host);
+            // replication_sender_thread_stop(rpt->host);
             rrdpush_sender_thread_stop(rpt->host);
         }
         netdata_mutex_unlock(&rpt->host->receiver_lock);
