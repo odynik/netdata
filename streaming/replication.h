@@ -63,7 +63,7 @@ typedef struct replication_state {
 #endif
     char *program_name;
     char *program_version;
-    unsigned int shutdown:1;    // Tell the thread to exit
+    unsigned int shutdown;    // Set it to 1 to tell the thread to exit
     unsigned int exited;      // Indicates that the thread has exited  (NOT A BITFIELD!)
 } REPLICATION_STATE;
 

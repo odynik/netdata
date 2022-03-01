@@ -2147,13 +2147,16 @@ int sql_load_host_gap(RRDHOST *host)
         return SQLITE_ERROR;
     };
 
-    char *host_mguid_str = host->gaps_timeline->gap_data->host_mguid;
-    rc = sqlite3_bind_text(res, 1, host_mguid_str, -1, SQLITE_STATIC);
+    info("%s: LOAD from SQLITE: Query arguments", REPLICATION_MSG);
+    // char *host_mguid_str = strdupz(host->gaps_timeline->gap_data->host_mguid);
+    info("%s: LOAD from SQLITE: Copying mguid...", REPLICATION_MSG);
+    rc = sqlite3_bind_text(res, 1, host->machine_guid, -1, SQLITE_STATIC);
     if (unlikely(rc != SQLITE_OK)) {
         error_report("Failed to bind host_id parameter to load gap information");
         goto failed;
     }
 
+    info("%s: Just before the row process of the query:", REPLICATION_MSG);
     // Load here the gaps to the host->gaps_timeline
     rc = sqlite3_step(res);
     if (likely(rc == SQLITE_ROW)) {
@@ -2161,9 +2164,10 @@ int sql_load_host_gap(RRDHOST *host)
             set_host_gap(host, res);
             info("%s: Setting host gaps completed!", REPLICATION_MSG);
         }
-        else
+        else {
             set_host_gap(host, NULL);
-            info("%s: RES == NULL!", REPLICATION_MSG);
+            info("%s: RES == NULL!", REPLICATION_MSG);   
+        }
     }
 
 failed:
@@ -2213,12 +2217,14 @@ bind_fail:
  * Set the host GAP struct from the metdata database
  */
 void set_host_gap(RRDHOST *host, sqlite3_stmt *res) {
+    info("%s: SET HOST SQLITE this GAP:", REPLICATION_MSG);
     if(!res)
     {
         host->gaps_timeline->gap_data->status = "empty";
         infoerr("%s: The GAPs table in the metdata DB seems to be empty for the host %s.", REPLICATION_MSG, host->hostname);
         return;
     }
+    info("%s: SETTING HOST SQLITE from query return:", REPLICATION_MSG);
     uuid_copy(host->gaps_timeline->gap_data->gap_uuid, sqlite3_column_blob(res, 0));
     host->gaps_timeline->gap_data->host_mguid = strdupz((char *) sqlite3_column_text(res, 1));
     host->gaps_timeline->gap_data->t_window.t_start = (time_t) sqlite3_column_int(res, 2);

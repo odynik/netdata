@@ -506,7 +506,7 @@ void *replication_sender_thread(void *ptr) {
             // char *msg =buffer(GAP); // End your message with a newline. Split dilemeter on " ".
             //send_message(s->replication, "REP ON\n");
             replication_parser(s->replication, NULL, s->replication->fp);
-            //sleep(1);
+            sleep(1);
 
         }
     }
@@ -1051,7 +1051,7 @@ int load_gap(RRDHOST *host)
         return SQLITE_ERROR;
 
     rc = sql_load_host_gap(host);
-    if(!rc) {
+    if(rc) {
         info("%s: Load GAP from metadata DB in host %s", REPLICATION_MSG, host->hostname);
         print_replication_gap(host->gaps_timeline->gap_data);
     }
