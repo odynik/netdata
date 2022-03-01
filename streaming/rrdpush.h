@@ -176,7 +176,7 @@ extern void log_stream_connection(const char *client_ip, const char *client_port
 // Replication functions definitions
 // Initialization
 extern void replication_sender_init(struct sender_state *sender);
-extern void replication_receiver_init(struct receiver_state *receiver, struct config *stream_config);
+extern void replication_receiver_init(struct receiver_state **a_receiver, struct config *stream_config);
 // Threads
 extern void replication_sender_thread_spawn(RRDHOST *host);
 extern int replication_receiver_thread_spawn(struct web_client *w, char *url);
@@ -184,8 +184,8 @@ extern void replication_sender_thread_stop(RRDHOST *host);
 extern void *replication_sender_thread(void *ptr);
 extern void evaluate_gap_onconnection(struct receiver_state *stream_recv);
 extern void evaluate_gap_ondisconnection(struct receiver_state *stream_recv);
-extern void gaps_init(RRDHOST *host);
-extern void gaps_destroy(RRDHOST *host);
+extern void gaps_init(RRDHOST **a_host);
+extern void gaps_destroy(RRDHOST **a_host);
 #ifdef ENABLE_COMPRESSION
 struct compressor_state *create_compressor();
 struct decompressor_state *create_decompressor();

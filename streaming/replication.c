@@ -14,7 +14,8 @@ static void print_replication_gap(GAP *a_gap);
 int save_gap(GAP *a_gap);
 int remove_gap(GAP *a_gap);
 int load_gap(RRDHOST *host);
-void gaps_init(RRDHOST *host);
+// void gaps_init(RRDHOST **host);
+static void replication_gap_to_str(GAP *a_gap, char **gap_str, size_t *len);
 
 // Thread Initialization
 static void replication_state_init(REPLICATION_STATE *state)
@@ -46,8 +47,6 @@ void replication_state_destroy(REPLICATION_STATE **state)
 }
 
 void replication_sender_init(struct sender_state *sender){
-    if(!default_rrdpush_replication_enabled)
-        return;
     if(!sender || !sender->host){
         error("%s: Host or host's replication sender state is not initialized! - Tx thread Initialization failed!", REPLICATION_MSG);
         return;
@@ -67,31 +66,33 @@ void replication_sender_init(struct sender_state *sender){
 static unsigned int replication_rd_config(struct receiver_state *rpt, struct config *stream_config)
 {
     info("%s: Reading config Rx for host %s ", REPLICATION_MSG, rpt->host->hostname);
-    if(!default_rrdpush_replication_enabled)
-        return default_rrdpush_replication_enabled;
     unsigned int rrdpush_replication_enable = default_rrdpush_replication_enabled;
     rrdpush_replication_enable = appconfig_get_boolean(stream_config, rpt->key, "enable replication", rrdpush_replication_enable);
     rrdpush_replication_enable = appconfig_get_boolean(stream_config, rpt->machine_guid, "enable replication", rrdpush_replication_enable);
     // Runtime replication enable status
-    rrdpush_replication_enable = (default_rrdpush_replication_enabled && rrdpush_replication_enable && (rpt->stream_version >= VERSION_GAP_FILLING));
+    rrdpush_replication_enable = (rrdpush_replication_enable && (rpt->stream_version >= VERSION_GAP_FILLING));
     
     info("%s: Configuration applied %u ", REPLICATION_MSG, rrdpush_replication_enable);
     return rrdpush_replication_enable;
 }
 
-void replication_receiver_init(struct receiver_state *receiver, struct config *stream_config)
+void replication_receiver_init(struct receiver_state **a_receiver, struct config *stream_config)
 {
+    (*a_receiver)->replication = (REPLICATION_STATE *)callocz(1, sizeof(REPLICATION_STATE));
+    struct receiver_state *receiver = *a_receiver;    
     unsigned int rrdpush_replication_enable = replication_rd_config(receiver, stream_config);
     if(!rrdpush_replication_enable)
     {
-        info("%s:  Could not initialize Rx replication thread. Replication is disabled or not supported!", REPLICATION_MSG);
+        infoerr("%s:  Could not initialize Rx replication thread. Replication is disabled or not supported!", REPLICATION_MSG);
         return;
     }
-    // receiver->replication = (REPLICATION_STATE *)callocz(1, sizeof(REPLICATION_STATE));
     replication_state_init(receiver->replication);
     info("%s: REP Rx state initialized", REPLICATION_MSG);    
     receiver->replication->host = receiver->host;
     receiver->replication->enabled = rrdpush_replication_enable;
+#ifdef ENABLE_HTTPS
+    receiver->replication->ssl = &receiver->host->stream_ssl;
+#endif    
     info("%s: Initialize Rx for host %s ", REPLICATION_MSG, receiver->host->hostname);
     print_replication_state(receiver->replication);
 }
@@ -417,7 +418,7 @@ void replication_attempt_to_send(struct replication_state *replication) {
     netdata_mutex_lock(&replication->mutex);
     char *chunk;
     size_t outstanding = cbuffer_next_unsafe(replication->buffer, &chunk);
-    debug(D_REPLICATION, "REPLICATION: Sending data. Buffer r=%zu w=%zu s=%zu, next chunk=%zu", cb->read, cb->write, cb->size, outstanding);
+    debug(D_REPLICATION, "%s: Sending data. Buffer r=%zu w=%zu s=%zu, next chunk=%zu", REPLICATION_MSG, cb->read, cb->write, cb->size, outstanding);
     ssize_t ret;
 #ifdef ENABLE_HTTPS
     SSL *conn = replication->ssl->conn ;
@@ -502,6 +503,7 @@ void *replication_sender_thread(void *ptr) {
             s->replication->not_connected_loops++;            
         }
         else {
+            // char *msg =buffer(GAP); // End your message with a newline. Split dilemeter on " ".
             //send_message(s->replication, "REP ON\n");
             replication_parser(s->replication, NULL, s->replication->fp);
             //sleep(1);
@@ -532,6 +534,7 @@ void replication_sender_thread_spawn(RRDHOST *host) {
 }
 
 void send_message(struct replication_state *replication, char* message){
+    info("%s: Sending... [%s]", REPLICATION_MSG, message);
     replication_start(replication);
     buffer_sprintf(replication->build, message);
     replication_commit(replication);
@@ -608,7 +611,12 @@ void *replication_receiver_thread(void *ptr){
     log_stream_connection(rpt->replication->client_ip, rpt->replication->client_port, rpt->key, rpt->host->machine_guid, rpt->host->hostname, "CONNECTED");
 
     cd.version = rpt->stream_version;
-    UNUSED(rrdpush_replication_enabled);
+    RRDHOST *host = rpt->host;
+    REPLICATION_STATE *rep_state = rpt->replication;
+    GAP *the_gap = host->gaps_timeline->gap_data;
+    char *rep_msg_cmd;
+    size_t len;
+    replication_gap_to_str(the_gap, &rep_msg_cmd, &len);
 
     // Add here the receiver thread logic
     // Need a host
@@ -634,8 +642,14 @@ void *replication_receiver_thread(void *ptr){
     {
         // check for outstanding cancellation requests
         netdata_thread_testcancel();
+
+        if(!strcmp(the_gap->status, "oncompletion"))
+            send_message(rep_state, rep_msg_cmd);
+        // queue_pop(host->gaps_timeline->gaps);
         replication_parser(rpt->replication, &cd, fp);
+        sleep(1);
     }
+    freez(rep_msg_cmd);
     // Closing thread - clean up any resources allocated here
     netdata_thread_cleanup_pop(1);
     return NULL;   
@@ -843,8 +857,7 @@ int replication_receiver_thread_spawn(struct web_client *w, char *url) {
 
     // Host exists and replication is not active
     // Initialize replication receiver structure.
-    host->receiver->replication = (REPLICATION_STATE *)callocz(1, sizeof(REPLICATION_STATE));    
-    replication_receiver_init(host->receiver, &stream_config);
+    replication_receiver_init(&host->receiver, &stream_config);
     host->receiver->replication->last_msg_t = now_realtime_sec();
     host->receiver->replication->socket = w->ifd;
     host->receiver->replication->client_ip = strdupz(w->client_ip);
@@ -977,6 +990,8 @@ void replication_sender_thread_stop(RRDHOST *host) {
         netdata_thread_join(thr, &result);
         info("%s %s [send]: replication sending thread has exited.", REPLICATION_MSG, host->hostname);
     }
+    // Clean-up the replication Tx thread structure.
+    replication_state_destroy(&host->sender->replication);
 }
 
 // static inline int parse_replication_ack(char *http)
@@ -1007,6 +1022,9 @@ int save_gap(GAP *a_gap)
 
     if (unlikely(!db_meta) && default_rrd_memory_mode != RRD_MEMORY_MODE_DBENGINE)
         return 0;
+    if ((*a_gap->status == '\0'))
+        return 0;
+    
     rc = sql_store_gap(
         &a_gap->gap_uuid,
         a_gap->host_mguid,
@@ -1028,13 +1046,16 @@ int load_gap(RRDHOST *host)
     
     // TBR
     info("%s: LOAD from SQLITE this GAP:", REPLICATION_MSG);
-    print_replication_gap(host->gaps_timeline->gap_data);
 
     if (unlikely(!db_meta) && default_rrd_memory_mode != RRD_MEMORY_MODE_DBENGINE)
         return SQLITE_ERROR;
+
     rc = sql_load_host_gap(host);
-    if(!rc)
-        info("%s: Load GAPS from metadata DB in host %s", REPLICATION_MSG, host->hostname);
+    if(!rc) {
+        info("%s: Load GAP from metadata DB in host %s", REPLICATION_MSG, host->hostname);
+        print_replication_gap(host->gaps_timeline->gap_data);
+    }
+
     // Load on start up evaluate a crash
     // Update the queue values and let it consume the gaps on runtime
 
@@ -1163,16 +1184,16 @@ size_t replication_parser(struct replication_state *rpt, struct plugind *cd, FIL
     // parser->plugins_action->rdata_action    = &pluginsd_rdata_action;
 
     user->parser = parser;
-
+    info("%s: Rx REP Parser Init", REPLICATION_MSG);
     do {
         if (receiver_read(rpt, fp))
             break;
         int pos = 0;
         char *line;
         while ((line = receiver_next_line(rpt, &pos))) {
-            info("Parser received: %s \n", line);
+            info("%s: Rx REP Parser received: %s \n", REPLICATION_MSG, line);
             //TODO shutdown?
-            if (unlikely(netdata_exit /*|| rpt->shutdown*/ || parser_action(parser,  line)))
+            if (unlikely(netdata_exit || rpt->shutdown || parser_action(parser,  line)))
                 goto done;
         }
         rpt->last_msg_t = now_realtime_sec();
@@ -1201,37 +1222,31 @@ void gap_destroy(GAP *a_gap) {
     freez(a_gap);
 }
 
-
-
-// static int gaps_init(GAPS *new_gaps) {
-//     new_gaps = (GAPS *)callocz()
-//     info("LIBQUEUE Initialization");    
-//     new_gaps->gaps = queue_new(REPLICATION_RX_CMD_Q_MAX_SIZE);
-//     if(!new_gaps->gaps){
-//         error("%s Gaps timeline queue could not be created", REPLICATION_MSG);
-//         return 1;
-//         //Handle this case. Probably shutdown replication.
-//     }
-//     new_gaps->gaps_data = (GAP *)callocz(REPLICATION_RX_CMD_Q_MAX_SIZE, sizeof(GAP));
-//     info("%s: GAPs Initialization", REPLICATION_MSG);
-//     return 0;
-// }
-
-void gaps_init(RRDHOST *host) {
+void gaps_init(RRDHOST **a_host)
+{
+    (*a_host)->gaps_timeline = (GAPS *)callocz(1, sizeof(GAPS));
+    if (!(*a_host)->gaps_timeline) {
+        error(
+            "%s: Failed to create GAP timeline - GAP Awarness is not supported for host %s",
+            REPLICATION_MSG,
+            (*a_host)->hostname);
+            return;
+    }
+    RRDHOST *host = *a_host;
     info("%s: LibQueue Initialization", REPLICATION_MSG);
     host->gaps_timeline->gaps = queue_new(REPLICATION_RX_CMD_Q_MAX_SIZE);
-    if(!host->gaps_timeline->gaps){
+    if (!host->gaps_timeline->gaps) {
         error("%s Gaps timeline queue could not be created", REPLICATION_MSG);
         return;
         //Handle this case. Probably shutdown deactivate replication.
     }
     host->gaps_timeline->gap_data = (GAP *)callocz(1, sizeof(GAP));
     // load from agent metdata
-    if(load_gap(host)){
+    if (load_gap(host)) {
         infoerr("%s: GAPs struct in SQLITE is either empty or failed", REPLICATION_MSG);
         return;
     }
-    if(!queue_push(host->gaps_timeline->gaps, (void *)host->gaps_timeline->gap_data)){
+    if (!queue_push(host->gaps_timeline->gaps, (void *)host->gaps_timeline->gap_data)) {
         error("%s: Cannot insert the loaded GAP in the queue!", REPLICATION_MSG);
         print_replication_gap(host->gaps_timeline->gap_data);
         return;
@@ -1240,13 +1255,15 @@ void gaps_init(RRDHOST *host) {
     return;
 }
 
-void gaps_destroy(RRDHOST *host) {
+void gaps_destroy(RRDHOST **a_host) {
+    RRDHOST *host = *a_host;
     // Save gaps before destroy
     info("%s: DESTROYING GAP for HOST %s", REPLICATION_MSG, host->hostname);
     if(save_gap(host->gaps_timeline->gap_data))
         error("%s: Cannot save GAP struct in metadata DB.", REPLICATION_MSG);
     queue_free(host->gaps_timeline->gaps);
     gap_destroy(host->gaps_timeline->gap_data);
+    freez(host->gaps_timeline);
 }
 
 void generate_new_gap(struct receiver_state *stream_recv) {
@@ -1291,7 +1308,7 @@ void evaluate_gap_onconnection(struct receiver_state *stream_recv)
     }
     int count = stream_recv->host->gaps_timeline->gaps->count;
     // load_gap(stream_recv->host);
-    print_replication_gap(stream_recv->host->gaps_timeline->gap_data);
+    // print_replication_gap(stream_recv->host->gaps_timeline->gap_data);
     if(count != 0) {
         GAP *front = (GAP *)stream_recv->host->gaps_timeline->gaps->front->item;
         // Re-connection
@@ -1307,7 +1324,7 @@ void evaluate_gap_onconnection(struct receiver_state *stream_recv)
         info("%s: A new GAP was detected", REPLICATION_MSG);
         print_replication_gap(front);
         //verify it in memory
-        //push it in the queue
+        //pop it in the queue - send it for replication
         // save_gap(front);
         return;
     }
@@ -1377,4 +1394,19 @@ static void print_replication_gap(GAP *a_gap)
         a_gap->t_window.t_end,
         a_gap->host_mguid,
         gap_uuid_str);
+}
+
+static void replication_gap_to_str(GAP *a_gap, char **gap_str, size_t *len)
+{
+    char gap_uuid_str[UUID_STR_LEN];
+    uuid_unparse(a_gap->gap_uuid, gap_uuid_str);
+    // size_t len = sizeof("GAP ") + UUID_STR_LEN + 1 + 3*sizeof(time_t) + 2 + 1;
+    *len = (size_t) (sizeof("GAP ") + UUID_STR_LEN + 1 + 3*sizeof(time_t) + 2 + 1 + 1);
+    *gap_str = (char *)callocz(*len, sizeof(char));
+    snprintf(*gap_str, *len, "GAP %s %ld %ld %ld\n",
+        gap_uuid_str,
+        a_gap->t_window.t_start,
+        a_gap->t_window.t_first,
+        a_gap->t_window.t_end);
+    info("%s: GAP CMD details are:\nCMD: %s",REPLICATION_MSG, *gap_str);
 }

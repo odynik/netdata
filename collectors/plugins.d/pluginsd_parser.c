@@ -794,10 +794,11 @@ PARSER_RC pluginsd_gap(char **words, void *user, PLUGINSD_ACTION  *pluginr_actio
 
     char *uuid = words[1];
     char *ts = words[2];
-    char *te = words[3];
+    char *tf = words[3];
+    char *te = words[4];
     RRDHOST *host = ((PARSER_USER_OBJECT *) user)->host;
 
-    if (unlikely(!uuid || !ts || !te)) {
+    if (unlikely(!uuid || !ts || !tf || !te)) {
         error("requested a GAP without parameters for host '%s'. Disabling it.", host->hostname);
         goto disable;
     }
@@ -850,7 +851,7 @@ PARSER_RC pluginsd_suspend_this_action(void *user, RRDSET *st, usec_t microsecon
     UNUSED(user);    
     UNUSED(microseconds);
     UNUSED(trust_durations);
-    error("This keyword is not supported from the parser!");
+    error("This keyword is not supported from this parser!");
     //Parser continues?
     return PARSER_RC_OK;
     //Parser stops?

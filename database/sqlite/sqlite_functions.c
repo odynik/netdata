@@ -2128,7 +2128,7 @@ bind_fail:
 }
 
 /*
- * Store a gap in the database
+ * Load a gap in the database
  */
 int sql_load_host_gap(RRDHOST *host)
 {
@@ -2147,10 +2147,8 @@ int sql_load_host_gap(RRDHOST *host)
         return SQLITE_ERROR;
     };
 
-    // uuid_t host_mguid_blob;
-    // uuid_parse(host->gaps_timeline->gap_data->host_mguid, host_mguid_blob);
     char *host_mguid_str = host->gaps_timeline->gap_data->host_mguid;
-    rc = sqlite3_bind_blob(res, 1, &host_mguid_str, sizeof(*host_mguid_str), SQLITE_STATIC);
+    rc = sqlite3_bind_text(res, 1, host_mguid_str, -1, SQLITE_STATIC);
     if (unlikely(rc != SQLITE_OK)) {
         error_report("Failed to bind host_id parameter to load gap information");
         goto failed;
@@ -2161,9 +2159,11 @@ int sql_load_host_gap(RRDHOST *host)
     if (likely(rc == SQLITE_ROW)) {
         if (likely(sqlite3_column_bytes(res, 0) == sizeof(uuid_t))) {
             set_host_gap(host, res);
+            info("%s: Setting host gaps completed!", REPLICATION_MSG);
         }
         else
             set_host_gap(host, NULL);
+            info("%s: RES == NULL!", REPLICATION_MSG);
     }
 
 failed:
@@ -2220,9 +2220,9 @@ void set_host_gap(RRDHOST *host, sqlite3_stmt *res) {
         return;
     }
     uuid_copy(host->gaps_timeline->gap_data->gap_uuid, sqlite3_column_blob(res, 0));
-    host->gaps_timeline->gap_data->host_mguid = (char *) sqlite3_column_text(res, 1);
-    host->gaps_timeline->gap_data->t_window.t_start = (int) sqlite3_column_int(res, 2);
-    host->gaps_timeline->gap_data->t_window.t_first = (int) sqlite3_column_int(res, 3); 
-    host->gaps_timeline->gap_data->t_window.t_end = (int) sqlite3_column_int(res, 4);
-    host->gaps_timeline->gap_data->status = (char *) sqlite3_column_text(res, 5);
+    host->gaps_timeline->gap_data->host_mguid = strdupz((char *) sqlite3_column_text(res, 1));
+    host->gaps_timeline->gap_data->t_window.t_start = (time_t) sqlite3_column_int(res, 2);
+    host->gaps_timeline->gap_data->t_window.t_first = (time_t) sqlite3_column_int(res, 3); 
+    host->gaps_timeline->gap_data->t_window.t_end = (time_t) sqlite3_column_int(res, 4);
+    host->gaps_timeline->gap_data->status = strdupz((char *) sqlite3_column_text(res, 5));
 }
