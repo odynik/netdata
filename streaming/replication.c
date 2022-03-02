@@ -1069,7 +1069,7 @@ int load_gap(RRDHOST *host)
         info("%s: Load GAP from metadata DB in host %s", REPLICATION_MSG, host->hostname);
         print_replication_gap(host->gaps_timeline->gap_data);
     }
-
+    
     // Load on start up evaluate a crash
     // Update the queue values and let it consume the gaps on runtime
 
@@ -1118,6 +1118,7 @@ static char *receiver_next_line(struct replication_state *r, int *pos) {
 /* The receiver socket is blocking, perform a single read into a buffer so that we can reassemble lines for parsing.
  */
 static int receiver_read(struct replication_state *r, FILE *fp) {
+    info("%s: RxREAD Top", REPLICATION_MSG);
 #ifdef ENABLE_HTTPS
     if (r->ssl->conn && !r->ssl->flags) {
         ERR_clear_error();
@@ -1127,6 +1128,7 @@ static int receiver_read(struct replication_state *r, FILE *fp) {
             r->read_len += ret;
             return 0;
         }
+        info("%s: RxREAD After SSLread", REPLICATION_MSG);
         // Don't treat SSL_ERROR_WANT_READ or SSL_ERROR_WANT_WRITE differently on blocking socket
         u_long err;
         char buf[256];
@@ -1137,9 +1139,12 @@ static int receiver_read(struct replication_state *r, FILE *fp) {
         return 1;
     }
 #endif
-    if (!fgets(r->read_buffer, sizeof(r->read_buffer), fp))
+    if (!fgets(r->read_buffer, sizeof(r->read_buffer), fp)){
+        info("%s: RxREAD fgets() failed", REPLICATION_MSG);
         return 1;
+    }
     r->read_len = strlen(r->read_buffer);
+    info("%s: RxREAD END sucess", REPLICATION_MSG);
     return 0;
 }
 
@@ -1198,7 +1203,7 @@ size_t replication_parser(struct replication_state *rpt, struct plugind *cd, FIL
     // parser->plugins_action->rdata_action    = &pluginsd_rdata_action;
 
     user->parser = parser;
-    info("%s: Rx REP Parser Init", REPLICATION_MSG);
+    info("%s: THE REP Parser Init", REPLICATION_MSG);
     do {
         if (receiver_read(rpt, fp))
             break;
