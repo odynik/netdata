@@ -1242,7 +1242,7 @@ void gaps_init(RRDHOST **a_host)
     }
     host->gaps_timeline->gap_data = (GAP *)callocz(1, sizeof(GAP));
     // load from agent metdata
-    if (load_gap(host)) {
+    if (!load_gap(host)) {
         infoerr("%s: GAPs struct in SQLITE is either empty or failed", REPLICATION_MSG);
         return;
     }
