@@ -2183,7 +2183,7 @@ bind_fail:
 }
 
 /*
- * Load a gap in the database
+ * Load a gap from the SQLite DB
  */
 int sql_load_host_gap(RRDHOST *host)
 {
@@ -2214,15 +2214,20 @@ int sql_load_host_gap(RRDHOST *host)
     info("%s: Just before the row process of the query:", REPLICATION_MSG);
     // Load here the gaps to the host->gaps_timeline
     rc = sqlite3_step(res);
-    if (likely(rc == SQLITE_ROW)) {
-        if (likely(sqlite3_column_bytes(res, 0) == sizeof(uuid_t))) {
-            set_host_gap(host, res);
-            info("%s: Setting host gaps completed!", REPLICATION_MSG);
-        }
-        else {
+    switch (rc) {
+        case SQLITE_ROW:
+            if (likely(sqlite3_column_bytes(res, 0) == sizeof(uuid_t))) {
+                set_host_gap(host, res);
+                info("%s: Setting host latest gap completed!", REPLICATION_MSG);
+            }
+            break;
+        case SQLITE_DONE:
             set_host_gap(host, NULL);
-            info("%s: RES == NULL!", REPLICATION_MSG);   
-        }
+            info("%s: SQLite completed with NO ROWs!", REPLICATION_MSG);
+            break;
+        default:
+            error("%s: SQLite returned unexpected error code!", REPLICATION_MSG);
+            break;
     }
 
 failed:
