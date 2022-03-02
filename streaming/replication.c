@@ -1,4 +1,3 @@
-//Includes
 #include "rrdpush.h"
 #include "collectors/plugins.d/pluginsd_parser.h"
 
@@ -14,7 +13,6 @@ static void print_replication_gap(GAP *a_gap);
 int save_gap(GAP *a_gap);
 int remove_gap(GAP *a_gap);
 int load_gap(RRDHOST *host);
-// void gaps_init(RRDHOST **host);
 static void replication_gap_to_str(GAP *a_gap, char **gap_str, size_t *len);
 
 // Thread Initialization
@@ -327,7 +325,7 @@ static void replication_attempt_to_connect(struct sender_state *state)
         state->replication->connected = 1;
 
         // Set file pointer
-        state->replication->fp = fdopen(state->replication->socket, "r");
+        state->replication->fp = fdopen(state->replication->socket, "rw");
         if(!state->replication->fp) {
             log_stream_connection(state->replication->client_ip, state->replication->client_port, state->host->rrdpush_send_api_key, state->host->machine_guid, state->host->hostname, "SOCKET CONVERSION TO FD FAILED - SOCKET ERROR");
             error("%s %s [receive from [%s]:%s]: failed to get a FILE for FD %d.", REPLICATION_MSG, state->host->hostname, state->replication->client_ip, state->replication->client_port, state->replication->socket);
@@ -479,35 +477,21 @@ void *replication_sender_thread(void *ptr) {
     netdata_thread_cleanup_push(replication_sender_thread_cleanup_callback, s->host);
     // Add here the thread loop
     // break condition on netdata_exit, disabled replication (for runtime configuration/restart)
-    // for(; rrdpush_replication_enabled && !netdata_exit ;) {
-        // check for outstanding cancellation requests
-        // netdata_thread_testcancel();
-    //     // try to connect
-    //     // replcation parser
-    //     // send hi
-    //     // retrieve response
-    //     // if reponse is REP off - exit
-    // }
-    //Implementation...
-
     for(;rrdpush_replication_enabled && !netdata_exit;)
     {
         // check for outstanding cancellation requests
         netdata_thread_testcancel();
         
         // try to connect
-        // if(!s->replication->connected)
         if((s->replication->not_connected_loops < 3) && !s->replication->connected) {
             replication_attempt_to_connect(s);
             // Tmp solution to test the thread cleanup process
             s->replication->not_connected_loops++;            
         }
         else {
-            // char *msg =buffer(GAP); // End your message with a newline. Split dilemeter on " ".
-            //send_message(s->replication, "REP ON\n");
+            send_message(s->replication, "REP ON\n");
             replication_parser(s->replication, NULL, s->replication->fp);
-            sleep(1);
-
+            break;
         }
     }
     // Closing thread - clean up any resources allocated here
@@ -580,9 +564,9 @@ void *replication_receiver_thread(void *ptr){
     // debug(D_REPLICATION, "Initial REPLICATION response to %s: %s", rpt->client_ip, initial_response);
     info("%s: Initial REPLICATION response to [%s:%s]: %s", REPLICATION_MSG, rpt->replication->client_ip, rpt->replication->client_port, initial_response);
 #ifdef ENABLE_HTTPS
-    rpt->host->stream_ssl.conn = rpt->replication->ssl.conn;
-    rpt->host->stream_ssl.flags = rpt->replication->ssl.flags;
-    if(send_timeout(&rpt->replication->ssl, rpt->replication->socket, initial_response, strlen(initial_response), 0, 60) != (ssize_t)strlen(initial_response)) {
+    rpt->host->stream_ssl.conn = rpt->replication->ssl->conn;
+    rpt->host->stream_ssl.flags = rpt->replication->ssl->flags;
+    if(send_timeout(rpt->replication->ssl, rpt->replication->socket, initial_response, strlen(initial_response), 0, 60) != (ssize_t)strlen(initial_response)) {
 #else
     if(send_timeout(rpt->replication->socket, initial_response, strlen(initial_response), 0, 60) != strlen(initial_response)) {
 #endif
@@ -598,7 +582,7 @@ void *replication_receiver_thread(void *ptr){
         error("%s %s [receive from [%s]:%s]: cannot remove the non-blocking flag from socket %d", REPLICATION_MSG, rpt->host->hostname, rpt->replication->client_ip, rpt->replication->client_port, rpt->replication->socket);
 
     // convert the socket to a FILE *
-    FILE *fp = fdopen(rpt->replication->socket, "r");
+    FILE *fp = fdopen(rpt->replication->socket, "rw");
     if(!fp) {
         log_stream_connection(rpt->replication->client_ip, rpt->replication->client_port, rpt->key, rpt->host->machine_guid, rpt->host->hostname, "SOCKET CONVERSION TO FD FAILED - SOCKET ERROR");
         error("%s %s [receive from [%s]:%s]: failed to get a FILE for FD %d.", REPLICATION_MSG, rpt->host->hostname, rpt->replication->client_ip, rpt->replication->client_port, rpt->replication->socket);
@@ -634,27 +618,57 @@ void *replication_receiver_thread(void *ptr){
     //         break;
     //     }
 
-    //     // send GAP uid ts tf te to the child agent        
-    //     // recv RDATA command from child agent
+        // send GAP uid ts tf te to the child agent        
+        // recv RDATA command from child agent
     // }    
-    // Closing thread - clean any resources allocated in this thread function
-    for(;rrdpush_replication_enabled && !netdata_exit;)
-    {
-        // check for outstanding cancellation requests
-        netdata_thread_testcancel();
 
-        if(!strcmp(the_gap->status, "oncompletion"))
-            send_message(rep_state, rep_msg_cmd);
-        // queue_pop(host->gaps_timeline->gaps);
-        replication_parser(rpt->replication, &cd, fp);
-        sleep(1);
-    }
+    // if(!strcmp(the_gap->status, "oncompletion"))
+    //     send_message(rep_state, rep_msg_cmd);
+    //     // queue_pop(host->gaps_timeline->gaps);
+    // send GAP uid ts tf te to the child agent        
+    // recv RDATA command from child agent
+
+    // Wait for the sender thread to send REP ON
+    size_t count = replication_parser(rpt->replication, &cd, fp);
+
+    // On completion of replication - DISCONNECT - clean up the gaps
+    // On incomplete replication - DISCONNECT - evaluate the gaps that need to be removed
+    log_stream_connection(rpt->client_ip, rpt->client_port, rpt->key, rpt->host->machine_guid, rpt->hostname,
+                          "DISCONNECTED");
+    error("%s %s [receive from [%s]:%s]: disconnected (completed %zu updates).", REPLICATION_MSG, rpt->hostname, rpt->client_ip,
+          rpt->client_port, count);
+
+    // Use this section to clean a replication sender thread in case of gparent connection.
+    // During a shutdown there is cleanup code in rrdhost that will cancel the sender thread
+    // if (!netdata_exit && rpt->host) {
+    //     rrd_rdlock();
+    //     rrdhost_wrlock(rpt->host);
+    //     netdata_mutex_lock(&rpt->host->receiver_lock);
+    //     if (rpt->host->receiver == rpt) {            
+    //         rpt->host->senders_disconnected_time = now_realtime_sec();
+    //         rrdhost_flag_set(rpt->host, RRDHOST_FLAG_ORPHAN);
+    //         if(health_enabled == CONFIG_BOOLEAN_AUTO)
+    //             rpt->host->health_enabled = 0;
+    //     }
+    //     rrdhost_unlock(rpt->host);
+    //     if (rpt->host->receiver == rpt) {
+    //         // replication_sender_thread_stop(rpt->host);
+    //         rrdpush_sender_thread_stop(rpt->host);
+    //     }
+    //     netdata_mutex_unlock(&rpt->host->receiver_lock);
+    //     rrd_unlock();
+    // }
+
+    info("%s: Cleaning up the replication Rx thread - Replication Parser Finished (completed %zu updates)!", REPLICATION_MSG, count);
+    // cleanup
     freez(rep_msg_cmd);
+    fclose(fp);
     // Closing thread - clean up any resources allocated here
     netdata_thread_cleanup_pop(1);
     return NULL;   
 }
 
+// These should definitions should go to a header file.
 extern int rrdpush_receiver_too_busy_now(struct web_client *w);
 
 extern int rrdpush_receiver_permission_denied(struct web_client *w);
@@ -1347,7 +1361,6 @@ void evaluate_gap_ondisconnection(struct receiver_state *stream_recv){
         return;
     }
     info("%s: New GAP seed was queued!", REPLICATION_MSG);
-    // save_gap(the_gaps->gap_data);
     print_replication_gap(the_gaps->gap_data);
 }
 
