@@ -4,14 +4,7 @@
 #define REPLICATE_CMD "REPLICATE"
 #define REP_CMD "REP"
 #define REP_ACK_CMD "REP ACK"
-// REP command with arguments 
-// on, off, pause/continue, ack
-enum REP_ARG {
-    off = 0,
-    on = 1,
-    next = 2,
-    ack = 3
-};
+
 // RDATA command with arguments TBD?? BEGIN SET END
 #define RDATA_CMD "RDATA"
 // GAP command with arguments TBD?? probably a timewindow struct
@@ -87,3 +80,5 @@ typedef struct gaps_queue {
     GAP *gap_data; // hosting the gap data
     time_t beginoftime; // this should be the timestamp of the first sample in db OR the agents last_timestamp - uptime?
 } GAPS;
+
+void replication_gap_to_str(GAP *a_gap, char **gap_str, size_t *len);

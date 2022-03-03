@@ -13,7 +13,7 @@ static void print_replication_gap(GAP *a_gap);
 int save_gap(GAP *a_gap);
 int remove_gap(GAP *a_gap);
 int load_gap(RRDHOST *host);
-static void replication_gap_to_str(GAP *a_gap, char **gap_str, size_t *len);
+// static void replication_gap_to_str(GAP *a_gap, char **gap_str, size_t *len);
 
 // Thread Initialization
 static void replication_state_init(REPLICATION_STATE *state)
@@ -489,7 +489,7 @@ void *replication_sender_thread(void *ptr) {
             s->replication->not_connected_loops++;            
         }
         else {
-            send_message(s->replication, "REP ON\n");
+            send_message(s->replication, "REP 2\n");
             replication_parser(s->replication, NULL, s->replication->fp);
             break;
         }
@@ -598,12 +598,16 @@ void *replication_receiver_thread(void *ptr){
     log_stream_connection(rpt->replication->client_ip, rpt->replication->client_port, rpt->key, rpt->host->machine_guid, rpt->host->hostname, "CONNECTED");
 
     cd.version = rpt->stream_version;
+
+    // To be removed
     RRDHOST *host = rpt->host;
     REPLICATION_STATE *rep_state = rpt->replication;
     GAP *the_gap = host->gaps_timeline->gap_data;
     char *rep_msg_cmd;
     size_t len;
     replication_gap_to_str(the_gap, &rep_msg_cmd, &len);
+    UNUSED(rep_state);
+    UNUSED(rrdpush_replication_enabled);
 
     // Add here the receiver thread logic
     // Need a host
@@ -1188,8 +1192,9 @@ size_t replication_parser(struct replication_state *rpt, struct plugind *cd, FIL
     // parser_add_keyword(parser, "CLAIMED_ID", pluginsd_suspend_this_action);
 
     // These are not necessary for the replication parser. Normally I would suggest to assign an inactive action so the replication won't be able to use other functions that can trigger function execution not related with its tasks.
-    parser->plugins_action->begin_action     = &pluginsd_suspend_this_action;
-    // discuss it with the team
+    // parser->plugins_action->begin_action     = &pluginsd_suspend_this_action;
+    // // discuss it with the team
+    parser->plugins_action->begin_action     = &pluginsd_begin_action;
     parser->plugins_action->flush_action     = &pluginsd_flush_action;
     parser->plugins_action->end_action       = &pluginsd_end_action;
     parser->plugins_action->disable_action   = &pluginsd_disable_action;
@@ -1202,9 +1207,9 @@ size_t replication_parser(struct replication_state *rpt, struct plugind *cd, FIL
     parser->plugins_action->clabel_commit_action  = &pluginsd_clabel_commit_action;
     parser->plugins_action->clabel_action    = &pluginsd_clabel_action;
     // Add the actions related with replication here.
-    // parser->plugins_action->gap_action    = &pluginsd_gap_action;
-    // parser->plugins_action->rep_action    = &pluginsd_rep_action;
-    // parser->plugins_action->rdata_action    = &pluginsd_rdata_action;
+    parser->plugins_action->gap_action    = &pluginsd_gap_action;
+    parser->plugins_action->rep_action    = &pluginsd_rep_action;
+    parser->plugins_action->rdata_action    = &pluginsd_rdata_action;
 
     user->parser = parser;
     info("%s: THE REP Parser Init", REPLICATION_MSG);
@@ -1420,7 +1425,7 @@ static void print_replication_gap(GAP *a_gap)
         gap_uuid_str);
 }
 
-static void replication_gap_to_str(GAP *a_gap, char **gap_str, size_t *len)
+void replication_gap_to_str(GAP *a_gap, char **gap_str, size_t *len)
 {
     char gap_uuid_str[UUID_STR_LEN];
     uuid_unparse(a_gap->gap_uuid, gap_uuid_str);

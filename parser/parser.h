@@ -40,9 +40,9 @@ typedef struct pluginsd_action {
     PARSER_RC (*host_action)(void *user, char *machine_guid, char *hostname, char *registry_hostname, int update_every, char *os,
         char *timezone, char *tags);
     //Replication functions (Parameters will be redefined)
-    PARSER_RC (*rep_action)(void *user, RRDSET *st);
-    PARSER_RC (*gap_action)(void *user, RRDSET *st);
-    PARSER_RC (*rdata_action)(void *user, RRDSET *st);
+    PARSER_RC (*rep_action)(void *user, REP_ARG command);
+    PARSER_RC (*gap_action)(void *user);
+    PARSER_RC (*rdata_action)(void *user);
 } PLUGINSD_ACTION;
 
 typedef enum parser_input_type {

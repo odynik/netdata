@@ -726,77 +726,85 @@ PARSER_RC metalog_pluginsd_host(char **words, void *user, PLUGINSD_ACTION  *plug
 }
 
 // Pluginsd_action for the replication commands
-PARSER_RC pluginsd_rep_action(void *user, RRDSET *st)
+PARSER_RC pluginsd_rep_action(void *user, REP_ARG command)
 {
-    UNUSED(user);
-    UNUSED(st);
-    return PARSER_RC_OK;
-}
+    info("%s: REP command - pluginsd_rep_action\n", REPLICATION_MSG);
+    RRDHOST *host = ((PARSER_USER_OBJECT *)user)->host;
+    REPLICATION_STATE *rep_state = ((PARSER_USER_OBJECT *)user)->opaque;
 
-PARSER_RC pluginsd_gap_action(void *user, RRDSET *st)
-{
-    UNUSED(user);
-    UNUSED(st);
-    return PARSER_RC_OK;
-}
-
-PARSER_RC pluginsd_rdata_action(void *user, RRDSET *st)
-{
-    UNUSED(user);
-    UNUSED(st);
-    return PARSER_RC_OK;
-}
-
-PARSER_RC pluginsd_rep(char **words, void *user, PLUGINSD_ACTION  *pluginr_action)
-{
-    UNUSED(pluginr_action);
-
-    PARSER_USER_OBJECT *usr = (PARSER_USER_OBJECT *) user;
-
-    char *command = words[1];
-    info("Pluginsd_rep received! %s\n", words[1]);
-    RRDHOST *host = ((PARSER_USER_OBJECT *) user)->host;
-
-    if (unlikely(!command)) {
-        error("requested a REP without a command for host '%s'. Disabling it.", host->hostname);
-        goto disable;
-    }
-
-    if(strcmp(PLUGINSD_KEYWORD_REP_ON, command) == 0){
-        info("REP ON command is received!\n"); 
+    switch (command)
+    {
+      case REP_OFF:
+        info("%s: REP OFF command is received!\n", REPLICATION_MSG);
+        // Shutdown the replication thread.
+        // For now simply return an error to exit
+        return PARSER_RC_ERROR;
+      case REP_ON:
+        info("%s: REP ON command is received!\n", REPLICATION_MSG);
+        GAP *the_gap = host->gaps_timeline->gap_data;
+        char *rep_msg_cmd;
+        size_t len;
+        replication_gap_to_str(the_gap, &rep_msg_cmd, &len);        
         //Check if there is GAP and send GAP command, otherwise send REP OFF command 
-        send_message((REPLICATION_STATE *)usr->opaque, "GAP GAPUUID GAPDUMMY1 GAPDUMMY2 GAPDUMMY3\n");
-        return PARSER_RC_OK;
-    }
-
-    if(strcmp(PLUGINSD_KEYWORD_REP_OFF, command) == 0){
-        info("REP OFF command is received!\n");
-        //Do nothing
-        goto disable;
-        // return PARSER_RC_OK;
-    }
-
-    if(strcmp(PLUGINSD_KEYWORD_REP_ACK, command) == 0){
-        info("REP ACK command is received!\n");
-        //send_message((REPLICATION_STATE *)usr->opaque, "REP ON\n");
-        //Call REP ACK function
-        // return PARSER_RC_OK;
-        goto disable;
-    }
-
-    if(strcmp(PLUGINSD_KEYWORD_REP_PAUSE, command) == 0){
-        info("REP PAUSE command is received!\n");
+        send_message(rep_state, rep_msg_cmd);
+        return PARSER_RC_OK;   
+      case REP_PAUSE:
+        info("%s: REP PAUSE command is received!\n", REPLICATION_MSG);
         //Call REP PAUSE function
         return PARSER_RC_OK;
+      case REP_ACK:
+        info("%s: REP ACK command is received!\n", REPLICATION_MSG);
+        //send_message((REPLICATION_STATE *)user->opaque, "REP ON\n");
+        //Call REP ACK function
+        // return PARSER_RC_OK;
+        // For now simply return an error to exit
+        return PARSER_RC_ERROR;        
+      default:
+        info("%s: REP %d command is unknown!\n", REPLICATION_MSG, command);
     }
+
+    return PARSER_RC_OK;
+}
+
+PARSER_RC pluginsd_gap_action(void *user)
+{
+    UNUSED(user);
+    info("%s: GAP command - pluginsd_gap_action\n", REPLICATION_MSG);
+    return PARSER_RC_OK;
+}
+
+PARSER_RC pluginsd_rdata_action(void *user)
+{
+    UNUSED(user);
+    info("%s: RDATA command - pluginsd_rdata_action\n", REPLICATION_MSG);
+    return PARSER_RC_OK;
+}
+
+PARSER_RC pluginsd_rep(char **words, void *user, PLUGINSD_ACTION  *plugins_action)
+{
+    char *arg_str = words[1];
+    REP_ARG command = strtoul(arg_str, NULL, 10);
+    RRDHOST *host = ((PARSER_USER_OBJECT *) user)->host;
+
+    info("Pluginsd_rep received! %s %s(%d)\n", PLUGINSD_KEYWORD_REP, words[1], command);
+
+    if (unlikely((!arg_str || command == REP_ARG_ERROR || errno == ERANGE))) {
+        error("REP command either is missing or is wrong for host '%s'. Disabling it.", host->hostname);
+        goto disable;
+    }
+
+    if (plugins_action->rep_action) {
+        return plugins_action->rep_action((PARSER_USER_OBJECT *) user, command);
+    }
+    return PARSER_RC_OK;
 
 disable:
     ((PARSER_USER_OBJECT *)user)->enabled = 0;
     return PARSER_RC_ERROR;
 }
 
-PARSER_RC pluginsd_gap(char **words, void *user, PLUGINSD_ACTION  *pluginr_action){
-    UNUSED(pluginr_action);
+PARSER_RC pluginsd_gap(char **words, void *user, PLUGINSD_ACTION  *plugins_action){
+    UNUSED(plugins_action);
     PARSER_USER_OBJECT *usr = (PARSER_USER_OBJECT *) user;
 
     char *uuid = words[1];
@@ -817,6 +825,11 @@ PARSER_RC pluginsd_gap(char **words, void *user, PLUGINSD_ACTION  *pluginr_actio
         send_message((REPLICATION_STATE *)usr->opaque, rdata);
         sleep(1);
     }
+
+    if (plugins_action->gap_action) {
+        return plugins_action->gap_action((PARSER_USER_OBJECT *) user);
+    }
+
     return PARSER_RC_OK;
 
 disable:
@@ -824,8 +837,8 @@ disable:
     return PARSER_RC_ERROR;
 }
 
-PARSER_RC pluginsd_rdata(char **words, void *user, PLUGINSD_ACTION  *pluginr_action){
-    UNUSED(pluginr_action);
+PARSER_RC pluginsd_rdata(char **words, void *user, PLUGINSD_ACTION  *plugins_action){
+    UNUSED(plugins_action);
     PARSER_USER_OBJECT *usr = (PARSER_USER_OBJECT *) user;
 
     char *gapuuid = words[1];
@@ -843,8 +856,11 @@ PARSER_RC pluginsd_rdata(char **words, void *user, PLUGINSD_ACTION  *pluginr_act
         send_message((REPLICATION_STATE *)usr->opaque, "REP ACK\n");
         info("REP ACK command is sent!\n");
     }
+    //Call RDATA function with parameters    
+    if (plugins_action->rdata_action) {
+        return plugins_action->rdata_action((PARSER_USER_OBJECT *) user);
+    }    
 
-    //Call RDATA function with parameters
     return PARSER_RC_OK;
 
 disable:
