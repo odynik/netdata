@@ -749,7 +749,7 @@ PARSER_RC pluginsd_rep(char **words, void *user, PLUGINSD_ACTION  *pluginr_actio
     PARSER_USER_OBJECT *usr = (PARSER_USER_OBJECT *) user;
 
     char *command = words[1];
-    info("Pluginsd_rep recevied! %s\n", words[1]);
+    info("Pluginsd_rep received! %s\n", words[1]);
     RRDHOST *host = ((PARSER_USER_OBJECT *) user)->host;
 
     if (unlikely(!command)) {
@@ -760,7 +760,7 @@ PARSER_RC pluginsd_rep(char **words, void *user, PLUGINSD_ACTION  *pluginr_actio
     if(strcmp(PLUGINSD_KEYWORD_REP_ON, command) == 0){
         info("REP ON command is received!\n"); 
         //Check if there is GAP and send GAP command, otherwise send REP OFF command 
-        send_message((REPLICATION_STATE *)usr->opaque, "GAP GAPDUMMY1 GAPDUMMY2 GAPDUMMY3\n");
+        send_message((REPLICATION_STATE *)usr->opaque, "GAP GAPUUID GAPDUMMY1 GAPDUMMY2 GAPDUMMY3\n");
         return PARSER_RC_OK;
     }
 
@@ -806,7 +806,7 @@ PARSER_RC pluginsd_gap(char **words, void *user, PLUGINSD_ACTION  *pluginr_actio
     //Check if there is GAP and send GAP command, otherwise send REP OFF command
     char rdata[150];
     for(int i = 0; i < 10; i++){
-        sprintf (rdata, "RDATA RDATADUMMY1 RDATADUMMY2 %d\n", i);
+        sprintf (rdata, "RDATA GAPUUID RDATADUMMY_TS RDATADUMMY_TE %d\n", i);
         send_message((REPLICATION_STATE *)usr->opaque, rdata);
         sleep(1);
     }
@@ -821,12 +821,12 @@ PARSER_RC pluginsd_rdata(char **words, void *user, PLUGINSD_ACTION  *pluginr_act
     UNUSED(pluginr_action);
     PARSER_USER_OBJECT *usr = (PARSER_USER_OBJECT *) user;
 
-    char *chartid = words[1];
-    char *dimid = words[2];
-    char *ts = words[3];
+    char *gapuuid = words[1];
+    char *ts = words[2];
+    char *te = words[3];
     RRDHOST *host = ((PARSER_USER_OBJECT *) user)->host;
 
-    if (unlikely(!chartid || !dimid || !ts)) {
+    if (unlikely(!gapuuid || !ts || !te)) {
         error("requested a RDATA without parameters for host '%s'. Disabling it.", host->hostname);
         goto disable;
     }

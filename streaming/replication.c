@@ -325,7 +325,7 @@ static void replication_attempt_to_connect(struct sender_state *state)
         state->replication->connected = 1;
 
         // Set file pointer
-        state->replication->fp = fdopen(state->replication->socket, "rw");
+        state->replication->fp = fdopen(state->replication->socket, "w+");
         if(!state->replication->fp) {
             log_stream_connection(state->replication->client_ip, state->replication->client_port, state->host->rrdpush_send_api_key, state->host->machine_guid, state->host->hostname, "SOCKET CONVERSION TO FD FAILED - SOCKET ERROR");
             error("%s %s [receive from [%s]:%s]: failed to get a FILE for FD %d.", REPLICATION_MSG, state->host->hostname, state->replication->client_ip, state->replication->client_port, state->replication->socket);
@@ -582,7 +582,7 @@ void *replication_receiver_thread(void *ptr){
         error("%s %s [receive from [%s]:%s]: cannot remove the non-blocking flag from socket %d", REPLICATION_MSG, rpt->host->hostname, rpt->replication->client_ip, rpt->replication->client_port, rpt->replication->socket);
 
     // convert the socket to a FILE *
-    FILE *fp = fdopen(rpt->replication->socket, "rw");
+    FILE *fp = fdopen(rpt->replication->socket, "w+");
     if(!fp) {
         log_stream_connection(rpt->replication->client_ip, rpt->replication->client_port, rpt->key, rpt->host->machine_guid, rpt->host->hostname, "SOCKET CONVERSION TO FD FAILED - SOCKET ERROR");
         error("%s %s [receive from [%s]:%s]: failed to get a FILE for FD %d.", REPLICATION_MSG, rpt->host->hostname, rpt->replication->client_ip, rpt->replication->client_port, rpt->replication->socket);
@@ -1068,8 +1068,9 @@ int load_gap(RRDHOST *host)
     if(rc) {
         info("%s: Load GAP from metadata DB in host %s", REPLICATION_MSG, host->hostname);
         print_replication_gap(host->gaps_timeline->gap_data);
+        if(!strcmp(host->gaps_timeline->gap_data->status, "empty"))
+            return 0;
     }
-    
     // Load on start up evaluate a crash
     // Update the queue values and let it consume the gaps on runtime
 
@@ -1140,7 +1141,7 @@ static int receiver_read(struct replication_state *r, FILE *fp) {
     }
 #endif
     if (!fgets(r->read_buffer, sizeof(r->read_buffer), fp)){
-        info("%s: RxREAD fgets() failed", REPLICATION_MSG);
+        info("%s: RxREAD fgets() failed: [%s]", REPLICATION_MSG, r->read_buffer);
         return 1;
     }
     r->read_len = strlen(r->read_buffer);
@@ -1205,8 +1206,10 @@ size_t replication_parser(struct replication_state *rpt, struct plugind *cd, FIL
     user->parser = parser;
     info("%s: THE REP Parser Init", REPLICATION_MSG);
     do {
-        if (receiver_read(rpt, fp))
-            break;
+        if (receiver_read(rpt, fp)) {
+            sleep(1);
+            continue;
+        }
         int pos = 0;
         char *line;
         while ((line = receiver_next_line(rpt, &pos))) {
