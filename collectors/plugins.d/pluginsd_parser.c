@@ -766,18 +766,16 @@ PARSER_RC pluginsd_rep_action(void *user, REP_ARG command)
     return PARSER_RC_OK;
 }
 
-PARSER_RC pluginsd_gap_action(void *user)
+PARSER_RC pluginsd_gap_action(void *user, GAP rx_gap)
 {
-    GAP *the_gap = ((PARSER_USER_OBJECT *)user)->host->gaps_timeline->gap_data;
-    REPLICATION_STATE *rep_state = ((PARSER_USER_OBJECT *)user)->opaque;
-    
     info("%s: GAP command - pluginsd_gap_action\n", REPLICATION_MSG);
+    REPLICATION_STATE *rep_state = ((PARSER_USER_OBJECT *)user)->opaque;
     
     //Check if there is GAP and send GAP command, otherwise send REP OFF command
     char *rdata;
     size_t len;
     for(int i = 1; i < 10; i++){
-        replication_rdata_to_str(the_gap, &rdata, &len, i);
+        replication_rdata_to_str(&rx_gap, &rdata, &len, i);
         // sprintf (rdata, "RDATA GAPUUID RDATADUMMY_TS RDATADUMMY_TE %d\n", i);
         send_message(rep_state, rdata);
         sleep(1);
@@ -830,22 +828,26 @@ disable:
 
 PARSER_RC pluginsd_gap(char **words, void *user, PLUGINSD_ACTION  *plugins_action){
 
-    RRDHOST *host = ((PARSER_USER_OBJECT *) user)->host;    
+    info("%s: GAP command - pluginsd_gap_action\n", REPLICATION_MSG);
+    RRDHOST *host = ((PARSER_USER_OBJECT *) user)->host;
+    
+    // This needs to enable the LOCALHOST->gaps_timeline->gap_data struct in order to work
+    // GAP rx_gap = host->gaps_timeline->gap_data;
+    GAP rx_gap;
+    int rc = uuid_parse(words[1], rx_gap.gap_uuid);
+    rx_gap.t_window.t_start = (time_t) strtol(words[2], NULL, 10);
+    rx_gap.t_window.t_first = (time_t) strtol(words[3], NULL, 10);
+    rx_gap.t_window.t_end = (time_t) strtol(words[4], NULL, 10);
+    rx_gap.status = "onrequest";
 
-    GAP *rx_gap = host->gaps_timeline->gap_data;
-    int rc = uuid_parse(words[1], rx_gap->gap_uuid);
-    rx_gap->t_window.t_start = (time_t) strtol(words[2], NULL, 10);
-    rx_gap->t_window.t_first = (time_t) strtol(words[3], NULL, 10);
-    rx_gap->t_window.t_end = (time_t) strtol(words[2], NULL, 10);
-
-    if (unlikely((rc == -1) || ((!rx_gap->t_window.t_start || !rx_gap->t_window.t_first  || !rx_gap->t_window.t_end ) || errno == ERANGE))) {
+    if (unlikely((rc == -1) || ((!rx_gap.t_window.t_start || !rx_gap.t_window.t_first  || !rx_gap.t_window.t_end ) || errno == ERANGE))) {
         error("requested a GAP with wrong parameters for host '%s'. Disabling it.",
         host->hostname);
         goto disable;
     }
 
     if (plugins_action->gap_action) {
-        return plugins_action->gap_action((PARSER_USER_OBJECT *) user);
+        return plugins_action->gap_action((PARSER_USER_OBJECT *) user, rx_gap);
     }
 
     return PARSER_RC_OK;
