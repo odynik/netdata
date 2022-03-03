@@ -494,6 +494,9 @@ void *replication_sender_thread(void *ptr) {
             break;
         }
     }
+    send_message(s->replication, "REP OFF\n");
+    info("%s: Send REP OFF to terminate REP thread in parent", REPLICATION_MSG);
+
     // Closing thread - clean up any resources allocated here
     netdata_thread_cleanup_pop(1);
     return NULL;
