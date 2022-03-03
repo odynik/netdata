@@ -780,7 +780,8 @@ PARSER_RC pluginsd_rep(char **words, void *user, PLUGINSD_ACTION  *pluginr_actio
         info("REP ACK command is received!\n");
         //send_message((REPLICATION_STATE *)usr->opaque, "REP ON\n");
         //Call REP ACK function
-        return PARSER_RC_OK;
+        // return PARSER_RC_OK;
+        goto disable;
     }
 
     if(strcmp(PLUGINSD_KEYWORD_REP_PAUSE, command) == 0){
@@ -830,6 +831,7 @@ PARSER_RC pluginsd_rdata(char **words, void *user, PLUGINSD_ACTION  *pluginr_act
     char *gapuuid = words[1];
     char *ts = words[2];
     char *te = words[3];
+    char *block_id = words[4];
     RRDHOST *host = ((PARSER_USER_OBJECT *) user)->host;
 
     if (unlikely(!gapuuid || !ts || !te)) {
@@ -837,7 +839,7 @@ PARSER_RC pluginsd_rdata(char **words, void *user, PLUGINSD_ACTION  *pluginr_act
         goto disable;
     }
 
-    if(strcmp(te, "9") == 0){
+    if(strcmp(block_id, "9") == 0){
         send_message((REPLICATION_STATE *)usr->opaque, "REP ACK\n");
         info("REP ACK command is sent!\n");
     }
