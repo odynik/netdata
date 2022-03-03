@@ -772,7 +772,8 @@ PARSER_RC pluginsd_rep(char **words, void *user, PLUGINSD_ACTION  *pluginr_actio
     if(strcmp(PLUGINSD_KEYWORD_REP_OFF, command) == 0){
         info("REP OFF command is received!\n");
         //Do nothing
-        return PARSER_RC_OK;
+        goto disable;
+        // return PARSER_RC_OK;
     }
 
     if(strcmp(PLUGINSD_KEYWORD_REP_ACK, command) == 0){
@@ -836,7 +837,7 @@ PARSER_RC pluginsd_rdata(char **words, void *user, PLUGINSD_ACTION  *pluginr_act
         goto disable;
     }
 
-    if(strcmp(ts, "9") == 0){
+    if(strcmp(te, "9") == 0){
         send_message((REPLICATION_STATE *)usr->opaque, "REP ACK\n");
         info("REP ACK command is sent!\n");
     }
