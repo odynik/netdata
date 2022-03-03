@@ -82,3 +82,4 @@ typedef struct gaps_queue {
 } GAPS;
 
 void replication_gap_to_str(GAP *a_gap, char **gap_str, size_t *len);
+void replication_rdata_to_str(GAP *a_gap, char **rdata_str, size_t *len, int block_id);

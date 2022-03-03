@@ -763,15 +763,40 @@ PARSER_RC pluginsd_rep_action(void *user, REP_ARG command)
 
 PARSER_RC pluginsd_gap_action(void *user)
 {
-    UNUSED(user);
+    GAP *the_gap = ((PARSER_USER_OBJECT *)user)->host->gaps_timeline->gap_data;
+    REPLICATION_STATE *rep_state = ((PARSER_USER_OBJECT *)user)->opaque;
+    
     info("%s: GAP command - pluginsd_gap_action\n", REPLICATION_MSG);
+    
+    //Check if there is GAP and send GAP command, otherwise send REP OFF command
+    char *rdata;
+    size_t len;
+    for(int i = 1; i < 10; i++){
+        replication_rdata_to_str(the_gap, &rdata, &len, i);
+        // sprintf (rdata, "RDATA GAPUUID RDATADUMMY_TS RDATADUMMY_TE %d\n", i);
+        send_message(rep_state, rdata);
+        sleep(1);
+    }
+
     return PARSER_RC_OK;
 }
 
-PARSER_RC pluginsd_rdata_action(void *user)
+PARSER_RC pluginsd_rdata_action(void *user, GAP meta_rx_rdata, int block_id)
 {
-    UNUSED(user);
+    REPLICATION_STATE *rep_state = ((PARSER_USER_OBJECT *)user)->opaque;
+
     info("%s: RDATA command - pluginsd_rdata_action\n", REPLICATION_MSG);
+    if(!strcmp(meta_rx_rdata.status, "rx_complete")){
+        // Send REP ACK command
+        send_message(rep_state, "REP 4\n");
+        info("%s: REP ACK command is sent after block id [%d]!\n", REPLICATION_MSG, block_id);
+    }
+    else
+    {
+        char gap_uuid_str[UUID_STR_LEN];
+        uuid_unparse(meta_rx_rdata.gap_uuid, gap_uuid_str);
+        info("%s: Receiving RDATA block id#%d for gap(%s): %s\n", REPLICATION_MSG, block_id, meta_rx_rdata.status,gap_uuid_str);
+    }
     return PARSER_RC_OK;
 }
 
@@ -799,26 +824,19 @@ disable:
 }
 
 PARSER_RC pluginsd_gap(char **words, void *user, PLUGINSD_ACTION  *plugins_action){
-    UNUSED(plugins_action);
-    PARSER_USER_OBJECT *usr = (PARSER_USER_OBJECT *) user;
 
-    char *uuid = words[1];
-    char *ts = words[2];
-    char *tf = words[3];
-    char *te = words[4];
-    RRDHOST *host = ((PARSER_USER_OBJECT *) user)->host;
+    RRDHOST *host = ((PARSER_USER_OBJECT *) user)->host;    
 
-    if (unlikely(!uuid || !ts || !tf || !te)) {
-        error("requested a GAP without parameters for host '%s'. Disabling it.", host->hostname);
+    GAP *rx_gap = host->gaps_timeline->gap_data;
+    int rc = uuid_parse(words[1], rx_gap->gap_uuid);
+    rx_gap->t_window.t_start = (time_t) strtol(words[2], NULL, 10);
+    rx_gap->t_window.t_first = (time_t) strtol(words[3], NULL, 10);
+    rx_gap->t_window.t_end = (time_t) strtol(words[2], NULL, 10);
+
+    if (unlikely((rc == -1) || ((!rx_gap->t_window.t_start || !rx_gap->t_window.t_first  || !rx_gap->t_window.t_end ) || errno == ERANGE))) {
+        error("requested a GAP with wrong parameters for host '%s'. Disabling it.",
+        host->hostname);
         goto disable;
-    }
-
-    //Check if there is GAP and send GAP command, otherwise send REP OFF command
-    char rdata[150];
-    for(int i = 0; i < 10; i++){
-        sprintf (rdata, "RDATA GAPUUID RDATADUMMY_TS RDATADUMMY_TE %d\n", i);
-        send_message((REPLICATION_STATE *)usr->opaque, rdata);
-        sleep(1);
     }
 
     if (plugins_action->gap_action) {
@@ -833,27 +851,27 @@ disable:
 }
 
 PARSER_RC pluginsd_rdata(char **words, void *user, PLUGINSD_ACTION  *plugins_action){
-    UNUSED(plugins_action);
-    PARSER_USER_OBJECT *usr = (PARSER_USER_OBJECT *) user;
-
-    char *gapuuid = words[1];
-    char *ts = words[2];
-    char *te = words[3];
-    char *block_id = words[4];
+    
     RRDHOST *host = ((PARSER_USER_OBJECT *) user)->host;
 
-    if (unlikely(!gapuuid || !ts || !te)) {
+    GAP meta_rx_rdata;
+    int rc = uuid_parse(words[1], meta_rx_rdata.gap_uuid);
+    meta_rx_rdata.t_window.t_start = (time_t) strtol(words[2], NULL, 10);
+    meta_rx_rdata.t_window.t_end = (time_t) strtol(words[3], NULL, 10);
+    int block_id = strtol(words[4], NULL, 10);
+    meta_rx_rdata.status = "onreceive";
+
+    if (unlikely((rc == -1) || ((!meta_rx_rdata.t_window.t_start || !meta_rx_rdata.t_window.t_end ) || errno == ERANGE))) {
         error("requested a RDATA without parameters for host '%s'. Disabling it.", host->hostname);
         goto disable;
     }
 
-    if(strcmp(block_id, "9") == 0){
-        send_message((REPLICATION_STATE *)usr->opaque, "REP ACK\n");
-        info("REP ACK command is sent!\n");
-    }
+    if(block_id == 9)
+        meta_rx_rdata.status = "rx_complete";
+
     //Call RDATA function with parameters    
     if (plugins_action->rdata_action) {
-        return plugins_action->rdata_action((PARSER_USER_OBJECT *) user);
+        return plugins_action->rdata_action((PARSER_USER_OBJECT *) user, meta_rx_rdata, block_id);
     }    
 
     return PARSER_RC_OK;
