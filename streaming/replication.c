@@ -494,7 +494,7 @@ void *replication_sender_thread(void *ptr) {
             break;
         }
     }
-    send_message(s->replication, "REP OFF\n");
+    send_message(s->replication, "REP 1\n");
     info("%s: Send REP OFF to terminate REP thread in parent", REPLICATION_MSG);
 
     // Closing thread - clean up any resources allocated here
@@ -1430,7 +1430,7 @@ void replication_gap_to_str(GAP *a_gap, char **gap_str, size_t *len)
     char gap_uuid_str[UUID_STR_LEN];
     uuid_unparse(a_gap->gap_uuid, gap_uuid_str);
     // size_t len = sizeof("GAP ") + UUID_STR_LEN + 1 + 3*sizeof(time_t) + 2 + 1;
-    *len = (size_t) (sizeof("GAP ") + UUID_STR_LEN + 1 + 3*sizeof(time_t) + 2 + 1 + 1);
+    *len = (size_t) (sizeof("GAP ") + UUID_STR_LEN + 3*(10) + 2 + 1);
     *gap_str = (char *)callocz(*len, sizeof(char));
     snprintf(*gap_str, *len, "GAP %s %ld %ld %ld\n",
         gap_uuid_str,
@@ -1438,4 +1438,18 @@ void replication_gap_to_str(GAP *a_gap, char **gap_str, size_t *len)
         a_gap->t_window.t_first,
         a_gap->t_window.t_end);
     info("%s: GAP CMD details are:\nCMD: %s",REPLICATION_MSG, *gap_str);
+}
+
+void replication_rdata_to_str(GAP *a_gap, char **rdata_str, size_t *len, int block_id)
+{
+    char gap_uuid_str[UUID_STR_LEN];
+    uuid_unparse(a_gap->gap_uuid, gap_uuid_str);
+    *len = (size_t) (sizeof("RDATA ") + UUID_STR_LEN + 2*(10) + 3 + 1);
+    *rdata_str = (char *)callocz(*len, sizeof(char));
+    snprintf(*rdata_str, *len, "RDATA %s %ld %ld %d\n",
+        gap_uuid_str,
+        a_gap->t_window.t_start,
+        a_gap->t_window.t_end,
+        block_id);
+    info("%s: RDATA CMD details are:\nCMD: %s",REPLICATION_MSG, *rdata_str);
 }
