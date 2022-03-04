@@ -7,6 +7,8 @@
 #include "../../aclk/aclk_charts_api.h"
 #include "../../aclk/aclk.h"
 
+static RRD_MEMORY_MODE sql_get_host_memory_mode(uuid_t *host_id);
+
 static inline int sql_queue_chart_payload(struct aclk_database_worker_config *wc,
                                           void *data, enum aclk_database_opcode opcode)
 {
@@ -295,6 +297,94 @@ int aclk_add_dimension_event(struct aclk_database_worker_config *wc, struct aclk
     return rc;
 }
 
+#define SELECT_DIM_UPDATES "SELECT d.dim_id, c.update_every, c.type||'.'||c.id, d.id, d.name, last_updated(d.dim_id) FROM chart c, dimension d " \
+        "WHERE d.chart_id = c.chart_id AND c.host_id = @host_id ORDER BY c.update_every ASC;"
+
+#define SELECT_DIM_UPDATES_VOLATILE "SELECT distinct h.host_id, c.update_every, c.type||'.'||c.id FROM chart c, host h " \
+        "WHERE c.host_id = h.host_id AND c.host_id = @host_id ORDER BY c.update_every ASC;"
+
+void aclk_process_dimension_update(struct aclk_database_worker_config *wc, struct aclk_database_cmd cmd)
+{
+    UNUSED(cmd);
+    int rc;
+
+    if (!aclk_use_new_cloud_arch || !aclk_connected)
+        return;
+
+    char *claim_id = is_agent_claimed();
+    if (unlikely(!claim_id))
+        return;
+
+    sqlite3_stmt *res = NULL;
+    RRD_MEMORY_MODE memory_mode;
+
+    uuid_t host_uuid;
+    rc = uuid_parse(wc->host_guid, host_uuid);
+    if (unlikely(rc)) {
+        freez(claim_id);
+        return;
+    }
+
+    if (wc->host)
+        memory_mode = wc->host->rrd_memory_mode;
+    else
+        memory_mode = sql_get_host_memory_mode(&host_uuid);
+
+    if (memory_mode == RRD_MEMORY_MODE_DBENGINE)
+        rc = sqlite3_prepare_v2(db_meta, SELECT_DIM_UPDATES, -1, &res, 0);
+    else
+        rc = sqlite3_prepare_v2(db_meta, SELECT_DIM_UPDATES_VOLATILE, -1, &res, 0);
+
+    if (unlikely(rc != SQLITE_OK)) {
+        error_report("Failed to prepare statement to fetch host last_updated timestamps of dimensions");
+        freez(claim_id);
+        return;
+    }
+
+    rc = sqlite3_bind_blob(res, 1, &host_uuid, sizeof(host_uuid), SQLITE_STATIC);
+    if (unlikely(rc != SQLITE_OK)) {
+        error_report("Failed to bind host parameter to fetch host last_updated timestamps of dimensions");
+        goto failed;
+    }
+
+    time_t  first_entry_t;
+    time_t  last_entry_t;
+
+    int max_intervals = 32;
+
+    // time_t now = now_realtime_sec();
+    while (sqlite3_step(res) == SQLITE_ROW) {
+#ifdef ENABLE_DBENGINE
+        if (memory_mode == RRD_MEMORY_MODE_DBENGINE) {
+            rc = rrdeng_metric_latest_time_by_uuid((uuid_t *)sqlite3_column_blob(res, 0), &first_entry_t, &last_entry_t);
+            time_t dim_last_updated = (time_t) sqlite3_column_int64(res, 5);
+            char dim_uuid_str[UUID_STR_LEN];
+            uuid_unparse(*((uuid_t *)sqlite3_column_blob(res, 0)), dim_uuid_str);
+            info("STALE_CHARTS: dbengine_last_entry_t: %ld, sqlite_func_t: %ld, uuid_t: %s", last_entry_t, dim_last_updated, dim_uuid_str);
+        }
+        else
+#endif
+        {
+            if (wc->host) {
+                RRDSET *st = NULL;
+                rc = (st = rrdset_find(wc->host, (const char *)sqlite3_column_text(res, 2))) ? 0 : 1;
+                if (!rc) {
+                    first_entry_t = rrdset_first_entry_t(st);
+                    last_entry_t = rrdset_last_entry_t(st);
+                }
+            }
+            else
+                rc = 0;
+        }
+    }
+
+failed:
+    freez(claim_id);
+    rc = sqlite3_finalize(res);
+    if (unlikely(rc != SQLITE_OK))
+        error_report("Failed to finalize the prepared statement when reading host dimensions");
+    return;
+}
 
 void aclk_send_chart_event(struct aclk_database_worker_config *wc, struct aclk_database_cmd cmd)
 {
@@ -862,7 +952,7 @@ void aclk_update_retention(struct aclk_database_worker_config *wc, struct aclk_d
             time_t dim_last_updated = (time_t) sqlite3_column_int64(res, 5);
             char dim_uuid_str[UUID_STR_LEN];
             uuid_unparse(*((uuid_t *)sqlite3_column_blob(res, 0)), dim_uuid_str);
-            info("STALE CHARTS: dbengine_last_entry_t: %ld, sqlite_func_t: %ld, uuid_t: %s", last_entry_t, dim_last_updated, dim_uuid_str);
+            info("ACLK_UPDATE_RETENTION: dbengine_last_entry_t: %ld, sqlite_func_t: %ld, uuid_t: %s", last_entry_t, dim_last_updated, dim_uuid_str);
         }
         else
 #endif

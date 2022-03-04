@@ -405,6 +405,11 @@ void aclk_database_worker(void *arg)
     wc->chart_payload_count = sql_get_pending_count(wc);
     if (!wc->chart_payload_count)
         info("%s: No pending charts and dimensions detected during startup", wc->host_guid);
+    // Add here the OnStartUp dimension comparison to send last update timestamps
+    cmd.opcode = ACLK_DATABASE_DIM_UPDATE_ONSTART;
+    if (!aclk_database_enq_cmd_noblock(wc, &cmd))
+        wc->rotation_after += ACLK_DATABASE_ROTATION_INTERVAL;    
+    cmd.opcode = 0; // reset opcode to enter the loop
 #endif
 
     wc->startup_time = now_realtime_sec();
@@ -470,6 +475,10 @@ void aclk_database_worker(void *arg)
                     debug(D_ACLK_SYNC, "RESET chart SEQ for %s to %"PRIu64, wc->uuid_str, (uint64_t) cmd.param1);
                     aclk_receive_chart_reset(wc, cmd);
                     break;
+                case ACLK_DATABASE_DIM_UPDATE_ONSTART:
+                    debug(D_ACLK_SYNC,"Sending dimension last_update timestamp on start up for %s", wc->host_guid);
+                    aclk_process_dimension_update(wc, cmd);
+                    break;                    
 #endif
 // ALERTS
                 case ACLK_DATABASE_PUSH_ALERT_CONFIG:
