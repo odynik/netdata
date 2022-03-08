@@ -905,10 +905,16 @@ disable:
 
 PARSER_RC pluginsd_fill(char **words, void *user, PLUGINSD_ACTION  *plugins_action)
 {    
+    REPLICATION_STATE *rep_state = (REPLICATION_STATE *)((PARSER_USER_OBJECT *)user)->opaque;
     char *chart_id = words[1];
     char *dim_id = words[2];
     char *timestamp = words[3];
     char *value = words[4];
+
+    if (unlikely( !chart_id || !dim_id || !timestamp || !value)) {
+        error("Parsing FILL command parameters has failed for host '%s'. Disabling it.", rep_state->host->hostname);
+        goto disable;
+    }
 
     info("%s: FILL %s.%s %s %s", REPLICATION_MSG, chart_id, dim_id, timestamp, value);
     //Call the replication function to save the parameters.

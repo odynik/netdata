@@ -1557,7 +1557,6 @@ void sender_fill_gap_nolock(REPLICATION_STATE *rep_state, RRDSET *st, GAP *a_gap
 
     rrdset_dump_debug_state(st);
 
-    rrdset_rdlock(st);
     size_t num_points = 0;
     rrddim_foreach_read(rd, st) {
         // Send the intersection of this dimension and the time-window on the chart
@@ -1585,7 +1584,7 @@ void sender_fill_gap_nolock(REPLICATION_STATE *rep_state, RRDSET *st, GAP *a_gap
                 if (n == SN_EMPTY_SLOT)
                     debug(D_REPLICATION, "%s.%s db empty in valid dimension range @ %ld", st->id, rd->id, metric_t);
                 else {
-                    buffer_sprintf(rep_state->build, "FILL \"%s\" %ld " STORAGE_NUMBER_FORMAT "\n", rd->id, metric_t, n);
+                    buffer_sprintf(rep_state->build, "FILL \"%s\" \"%s\" %ld " STORAGE_NUMBER_FORMAT "\n", st->id, rd->id, metric_t, n);
                     debug(D_REPLICATION, "%s.%s FILL %ld " STORAGE_NUMBER_FORMAT "\n", st->id, rd->id, metric_t, n);
                 }
                 num_points++;
@@ -1598,7 +1597,6 @@ void sender_fill_gap_nolock(REPLICATION_STATE *rep_state, RRDSET *st, GAP *a_gap
                                  rd->last_collected_time.tv_usec);
 
     }
-    rrdset_unlock(st);
     buffer_sprintf(rep_state->build, "FILLEND %zu %d\n", num_points, block_id);
     st->rrdhost->sender->last_sent_t = window_end - st->update_every;
     debug(D_REPLICATION, "Send BUFFER(%s): [%s]",rep_state->host->hostname, buffer_tostring(rep_state->build));
@@ -1637,6 +1635,7 @@ void sender_gap_filling(REPLICATION_STATE *rep_state, GAP *a_gap)
 // Send RDATA per chart
 void sender_chart_gap_filling(RRDSET *st, GAP *a_gap) {
     REPLICATION_STATE *rep_state = st->rrdhost->sender->replication;
+    rrdset_rdlock(st);    
     if(unlikely(!should_send_chart_matching(st)))
         return;
 
@@ -1646,6 +1645,7 @@ void sender_chart_gap_filling(RRDSET *st, GAP *a_gap) {
     sender_fill_gap_nolock(rep_state, st, a_gap);
     replication_commit(rep_state);        // Releases the sender buffer
     replication_attempt_to_send(rep_state);
+    rrdset_unlock(st);
 }
 
 void sender_block_gap_filling(REPLICATION_STATE *rep_state, GAP *a_gap, RRDSET *st) {
