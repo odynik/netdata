@@ -434,19 +434,19 @@ void replication_attempt_to_send(struct replication_state *replication) {
         cbuffer_remove_unsafe(replication->buffer, ret);
         replication->sent_bytes_on_this_connection += ret;
         replication->sent_bytes += ret;
-        debug(D_REPLICATION, "REPLICATION %s [send to %s]: Sent %zd bytes", "s->host->hostname???", replication->connected_to, ret);
+        debug(D_REPLICATION, "%s: Host %s [send to %s]: Sent %zd bytes", REPLICATION_MSG, replication->host->hostname, replication->connected_to, ret);
         replication->last_sent_t = now_monotonic_sec();
     }
     else if (ret == -1 && (errno == EAGAIN || errno == EINTR || errno == EWOULDBLOCK))
-        debug(D_REPLICATION, "REPLICATION %s [send to %s]: unavailable after polling POLLOUT", replication->host->hostname,
+        debug(D_REPLICATION, "%s: Host %s [send to %s]: unavailable after polling POLLOUT", REPLICATION_MSG, replication->host->hostname,
               replication->connected_to);
     else if (ret == -1) {
-        debug(D_REPLICATION, "REPLICATION: Send failed - closing socket...");
-        error("REPLICATION %s [send to %s]: failed to send metrics - closing connection - we have sent %zu bytes on this connection.",  replication->host->hostname, replication->connected_to, replication->sent_bytes_on_this_connection);
+        debug(D_REPLICATION, "%s: Send failed - closing socket...", REPLICATION_MSG);
+        error("%s: Host %s [send to %s]: failed to send metrics - closing connection - we have sent %zu bytes on this connection.", REPLICATION_MSG,  replication->host->hostname, replication->connected_to, replication->sent_bytes_on_this_connection);
         replication_thread_close_socket(replication);
     }
     else {
-        debug(D_REPLICATION, "REPLICATION: send() returned 0 -> no error but no transmission");
+        debug(D_REPLICATION, "%s: send() returned 0 -> no error but no transmission", REPLICATION_MSG);
     }
 
     netdata_mutex_unlock(&replication->mutex);
