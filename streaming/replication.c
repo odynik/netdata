@@ -381,9 +381,9 @@ int ret;
         char buf[256];
         while ((err = ERR_get_error()) != 0) {
             ERR_error_string_n(err, buf, sizeof(buf));
-            error("REPLICATION %s [send to %s] ssl error: %s", replication->host->hostname, replication->connected_to, buf);
+            error("%s: Host %s [send to %s] ssl error: %s", REPLICATION_MSG, replication->host->hostname, replication->connected_to, buf);
         }
-        error("Restarting connection");
+        error("%s: Restarting connection", REPLICATION_MSG);
         replication_thread_close_socket(replication);
         return;
     }
@@ -395,15 +395,14 @@ int ret;
         replication->read_len += ret;
         return;
     }
-    debug(D_REPLICATION, "Socket was POLLIN, but req %zu bytes gave %d", sizeof(replication->read_buffer) - replication->read_len - 1, ret);
+    debug(D_REPLICATION, "%s: Socket was POLLIN, but req %zu bytes gave %d", REPLICATION_MSG, sizeof(replication->read_buffer) - replication->read_len - 1, ret);
     
     if (ret<0 && (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR))
         return;
     if (ret==0)
-        error("REPLICATION %s [send to %s]: connection closed by far end. Restarting connection", "s->host->hostname???", replication->connected_to);
+        error("%s: Host %s [send to %s]: connection closed by far end. Restarting connection", REPLICATION_MSG, replication->host->hostname, replication->connected_to);
     else
-        error("REPLICATION %s [send to %s]: error during read (%d). Restarting connection", "s->host->hostname???", replication->connected_to,
-              ret);
+        error("%s: Host %s [send to %s]: error during read (%d). Restarting connection", REPLICATION_MSG, replication->host->hostname, replication->connected_to, ret);
     replication_thread_close_socket(replication);
 }
 
