@@ -1585,8 +1585,8 @@ void sender_fill_gap_nolock(REPLICATION_STATE *rep_state, RRDSET *st, GAP *a_gap
                 else {
                     buffer_sprintf(rep_state->build, "FILL \"%s\" \"%s\" %ld " STORAGE_NUMBER_FORMAT "\n", st->id, rd->id, metric_t, n);
                     debug(D_REPLICATION, "%s.%s FILL %ld " STORAGE_NUMBER_FORMAT "\n", st->id, rd->id, metric_t, n);
+                    num_points++;
                 }
-                num_points++;
             }
             rd->state->query_ops.finalize(&handle);
         }
