@@ -1599,7 +1599,7 @@ void sender_fill_gap_nolock(REPLICATION_STATE *rep_state, RRDSET *st, GAP *a_gap
 
     }
     rrdset_unlock(st);
-    buffer_sprintf(rep_state->build, "FILLEND %zu %lld %lld\n", num_points, st->collected_total, st->last_collected_total);
+    buffer_sprintf(rep_state->build, "FILLEND %zu %d\n", num_points, block_id);
     st->rrdhost->sender->last_sent_t = window_end - st->update_every;
     debug(D_REPLICATION, "Send BUFFER(%s): [%s]",rep_state->host->hostname, buffer_tostring(rep_state->build));
 }

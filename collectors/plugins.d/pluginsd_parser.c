@@ -806,13 +806,13 @@ PARSER_RC pluginsd_fill_action(void *user)
     return PARSER_RC_OK;
 }
 
-PARSER_RC pluginsd_fill_end_action(void *user)
+PARSER_RC pluginsd_fill_end_action(void *user, int block_id)
 {
     REPLICATION_STATE *rep_state = (REPLICATION_STATE *)((PARSER_USER_OBJECT *)user)->opaque;
     info("%s: FILLEND command - pluginsd_fill_end_action\n", REPLICATION_MSG);
     // Send REP ACK command
     send_message(rep_state, "REP 4\n");
-    info("%s: REP ACK command is sent after block id [%d]!\n", REPLICATION_MSG);
+    info("%s: REP ACK command is sent after block id [%d]!\n", REPLICATION_MSG, block_id);
 
     return PARSER_RC_OK;
 }
@@ -910,7 +910,7 @@ PARSER_RC pluginsd_fill(char **words, void *user, PLUGINSD_ACTION  *plugins_acti
     char *timestamp = words[3];
     char *value = words[4];
 
-    info("%s: FILL %s.%s %s %s", chart_id, dim_id, timestamp, value);
+    info("%s: FILL %s.%s %s %s", REPLICATION_MSG, chart_id, dim_id, timestamp, value);
     //Call the replication function to save the parameters.
     if (plugins_action->fill_action) {
         return plugins_action->fill_action((PARSER_USER_OBJECT *) user);
@@ -925,11 +925,18 @@ disable:
 
 PARSER_RC pluginsd_fill_end(char **words, void *user, PLUGINSD_ACTION  *plugins_action)
 {    
-    char *fill_end_arg = words[1];
+    RRDHOST *host = ((PARSER_USER_OBJECT *)user)->host;
+    int numofpoints = strtol(words[1], NULL, 10);
+    int block_id = strtol(words[2], NULL, 10);
+
+    if (unlikely(errno == ERANGE)) {
+        error("%s: FILLEND parameters parsing failed for host '%s'. Disabling it.", REPLICATION_MSG, host->hostname);
+        goto disable;
+    }
 
     //Call the replication function to save the parameters.
     if (plugins_action->fill_end_action) {
-        return plugins_action->fill_end_action((PARSER_USER_OBJECT *) user);
+        return plugins_action->fill_end_action((PARSER_USER_OBJECT *) user, block_id);
     }    
 
     return PARSER_RC_OK;
