@@ -873,12 +873,13 @@ PARSER_RC pluginsd_rdata(char **words, void *user, PLUGINSD_ACTION  *plugins_act
 
     GAP meta_rx_rdata;
     int rc = uuid_parse(words[1], meta_rx_rdata.gap_uuid);
-    meta_rx_rdata.t_window.t_start = (time_t) strtol(words[2], NULL, 10);
-    meta_rx_rdata.t_window.t_end = (time_t) strtol(words[3], NULL, 10);
-    int block_id = strtol(words[4], NULL, 10);
+    char *chart_id = strdupz(words[2]);
+    meta_rx_rdata.t_window.t_start = (time_t) strtol(words[3], NULL, 10);
+    meta_rx_rdata.t_window.t_end = (time_t) strtol(words[4], NULL, 10);
+    int block_id = strtol(words[5], NULL, 10);
     meta_rx_rdata.status = "onreceive";
 
-    if (unlikely((rc == -1) || ((!meta_rx_rdata.t_window.t_start || !meta_rx_rdata.t_window.t_end ) || errno == ERANGE))) {
+    if (unlikely((rc == -1) || !chart_id || ((!meta_rx_rdata.t_window.t_start || !meta_rx_rdata.t_window.t_end ) || errno == ERANGE))) {
         error("requested a RDATA without parameters for host '%s'. Disabling it.", host->hostname);
         goto disable;
     }
