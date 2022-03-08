@@ -838,7 +838,7 @@ disable:
 
 PARSER_RC pluginsd_gap(char **words, void *user, PLUGINSD_ACTION  *plugins_action){
 
-    info("%s: GAP command - pluginsd_gap_action\n", REPLICATION_MSG);
+    info("%s: GAP command - pluginsd_gap\n", REPLICATION_MSG);
     RRDHOST *host = ((PARSER_USER_OBJECT *) user)->host;
     
     // This needs to enable the LOCALHOST->gaps_timeline->gap_data struct in order to work
@@ -883,7 +883,7 @@ PARSER_RC pluginsd_rdata(char **words, void *user, PLUGINSD_ACTION  *plugins_act
         goto disable;
     }
 
-    if(block_id == 9)
+    if(block_id == 0)
         meta_rx_rdata.status = "rx_complete";
 
     //Call RDATA function with parameters    

@@ -1548,13 +1548,16 @@ void sender_fill_gap_nolock(REPLICATION_STATE *rep_state, RRDSET *st, GAP *a_gap
         unsent_points = default_rrdpush_gap_block_size;
     time_t window_end = window_start + unsent_points * st->update_every;
     
+    char gap_uuid_str[UUID_STR_LEN];
+    uuid_unparse(a_gap->gap_uuid, gap_uuid_str);
     if (gap_t_delta_first == 0)
-        buffer_sprintf(rep_state->build, "RDATA \"%s\" %ld %ld %d\n", st->id, window_start, gap_t_delta_end, block_id);
+        buffer_sprintf(rep_state->build, "RDATA %s \"%s\" %ld %ld %d\n", gap_uuid_str, st->id, window_start, gap_t_delta_end, block_id);
     else
-        buffer_sprintf(rep_state->build, "RDATA \"%s\" %ld %ld %d\n", st->id, gap_t_delta_first, gap_t_delta_end, block_id);
+        buffer_sprintf(rep_state->build, "RDATA %s \"%s\" %ld %ld %d\n", gap_uuid_str, st->id, gap_t_delta_first, gap_t_delta_end, block_id);
 
     rrdset_dump_debug_state(st);
 
+    rrdset_rdlock(st);
     size_t num_points = 0;
     rrddim_foreach_read(rd, st) {
         // Send the intersection of this dimension and the time-window on the chart
@@ -1595,6 +1598,7 @@ void sender_fill_gap_nolock(REPLICATION_STATE *rep_state, RRDSET *st, GAP *a_gap
                                  rd->last_collected_time.tv_usec);
 
     }
+    rrdset_unlock(st);
     buffer_sprintf(rep_state->build, "FILLEND %zu %lld %lld\n", num_points, st->collected_total, st->last_collected_total);
     st->rrdhost->sender->last_sent_t = window_end - st->update_every;
     debug(D_REPLICATION, "Send BUFFER(%s): [%s]",rep_state->host->hostname, buffer_tostring(rep_state->build));
@@ -1619,6 +1623,7 @@ void sender_gap_filling(REPLICATION_STATE *rep_state, GAP *a_gap)
     // unsigned int residual_num_of_samples_in_time;
 
     // TODO: Probably need to use rrdhost read locks here.
+    rrdhost_rdlock(host);
     rrdset_foreach_read(st, host)
     {
         // num_of_samples_in_time = (t_delta_end - (t_delta_first + st->update_every)) / st->update_every;
@@ -1626,6 +1631,7 @@ void sender_gap_filling(REPLICATION_STATE *rep_state, GAP *a_gap)
         // //send RDATA
         sender_chart_gap_filling(st, a_gap);
     }
+    rrdhost_unlock(host);
 }
 
 // Send RDATA per chart
