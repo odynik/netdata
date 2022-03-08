@@ -124,5 +124,6 @@ extern PARSER_RC pluginsd_clabel(char **words, void *user, PLUGINSD_ACTION  *plu
 extern PARSER_RC pluginsd_rep(char **words, void *user, PLUGINSD_ACTION  *pluginr_action);
 extern PARSER_RC pluginsd_gap(char **words, void *user, PLUGINSD_ACTION  *pluginr_action);
 extern PARSER_RC pluginsd_rdata(char **words, void *user, PLUGINSD_ACTION  *pluginr_action);
-
+extern PARSER_RC pluginsd_fill(char **words, void *user, PLUGINSD_ACTION  *plugins_action);
+extern PARSER_RC pluginsd_fill_end(char **words, void *user, PLUGINSD_ACTION  *plugins_action);
 #endif
