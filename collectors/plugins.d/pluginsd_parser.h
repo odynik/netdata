@@ -42,6 +42,8 @@ extern PARSER_RC pluginsd_suspend_this_action(void *user, RRDSET *st, usec_t mic
 extern PARSER_RC pluginsd_rep_action(void *user, REP_ARG command);
 extern PARSER_RC pluginsd_gap_action(void *user, GAP rx_gap);
 extern PARSER_RC pluginsd_rdata_action(void *user, GAP meta_rx_rdata, int block_id);
+extern PARSER_RC pluginsd_fill_action(void *user);
+extern PARSER_RC pluginsd_fill_end_action(void *user);
 extern void send_message(struct replication_state *replication, char* message);
 
 #endif //NETDATA_PLUGINSD_PARSER_H

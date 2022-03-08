@@ -43,6 +43,8 @@ typedef struct pluginsd_action {
     PARSER_RC (*rep_action)(void *user, REP_ARG command);
     PARSER_RC (*gap_action)(void *user, GAP rx_gap);
     PARSER_RC (*rdata_action)(void *user, GAP meta_rx_rdata, int block_id);
+    PARSER_RC (*fill_action)(void *user);
+    PARSER_RC (*fill_end_action)(void *user);
 } PLUGINSD_ACTION;
 
 typedef enum parser_input_type {
