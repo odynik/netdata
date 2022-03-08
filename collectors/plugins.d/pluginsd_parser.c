@@ -813,8 +813,12 @@ PARSER_RC pluginsd_fill_action(void *user)
 
 PARSER_RC pluginsd_fill_end_action(void *user)
 {
-    UNUSED(user);
+    REPLICATION_STATE *rep_state = (REPLICATION_STATE *)((PARSER_USER_OBJECT *)user)->opaque;
     info("%s: FILLEND command - pluginsd_fill_end_action\n", REPLICATION_MSG);
+    // Send REP ACK command
+    send_message(rep_state, "REP 4\n");
+    info("%s: REP ACK command is sent after block id [%d]!\n", REPLICATION_MSG);
+
     return PARSER_RC_OK;
 }
 
@@ -889,7 +893,7 @@ PARSER_RC pluginsd_rdata(char **words, void *user, PLUGINSD_ACTION  *plugins_act
         goto disable;
     }
 
-    if(block_id == 0)
+    if(block_id == 9)
         meta_rx_rdata.status = "rx_complete";
 
     //Call RDATA function with parameters    
@@ -911,6 +915,7 @@ PARSER_RC pluginsd_fill(char **words, void *user, PLUGINSD_ACTION  *plugins_acti
     char *timestamp = words[3];
     char *value = words[4];
 
+    info("%s: FILL %s.%s %s %s", chart_id, dim_id, timestamp, value);
     //Call the replication function to save the parameters.
     if (plugins_action->fill_action) {
         return plugins_action->fill_action((PARSER_USER_OBJECT *) user);
