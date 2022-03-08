@@ -173,6 +173,15 @@ extern void rrdpush_sender_thread_stop(RRDHOST *host);
 extern void rrdpush_sender_send_this_host_variable_now(RRDHOST *host, RRDVAR *rv);
 extern void log_stream_connection(const char *client_ip, const char *client_port, const char *api_key, const char *machine_guid, const char *host, const char *msg);
 
+extern int should_send_chart_matching(RRDSET *st);
+extern int need_to_send_chart_definition(RRDSET *st);
+
+#ifdef ENABLE_COMPRESSION
+struct compressor_state *create_compressor();
+struct decompressor_state *create_decompressor();
+size_t is_compressed_data(const char *data, size_t data_size);
+#endif
+
 // Replication functions definitions
 // Initialization
 extern void replication_sender_init(struct sender_state *sender);
@@ -186,11 +195,11 @@ extern void evaluate_gap_onconnection(struct receiver_state *stream_recv);
 extern void evaluate_gap_ondisconnection(struct receiver_state *stream_recv);
 extern void gaps_init(RRDHOST **a_host);
 extern void gaps_destroy(RRDHOST **a_host);
-#ifdef ENABLE_COMPRESSION
-struct compressor_state *create_compressor();
-struct decompressor_state *create_decompressor();
-size_t is_compressed_data(const char *data, size_t data_size);
-#endif
-void replication_state_destroy(REPLICATION_STATE **state);
-
+extern void replication_state_destroy(REPLICATION_STATE **state);
+extern void rrdset_dump_debug_state(RRDSET *st);
+extern void replication_rdata_to_str(GAP *a_gap, char **rdata_str, size_t *len, int block_id);
+extern void replication_gap_to_str(GAP *a_gap, char **gap_str, size_t *len);
+extern void sender_chart_gap_filling(RRDSET *st, GAP *a_gap);
+extern void sender_gap_filling(REPLICATION_STATE *rep_state, GAP *a_gap);
+extern void sender_fill_gap_nolock(REPLICATION_STATE *rep_state, RRDSET *st, GAP *a_gap);
 #endif //NETDATA_RRDPUSH_H

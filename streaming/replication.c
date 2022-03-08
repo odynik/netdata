@@ -14,6 +14,8 @@ int save_gap(GAP *a_gap);
 int remove_gap(GAP *a_gap);
 int load_gap(RRDHOST *host);
 // static void replication_gap_to_str(GAP *a_gap, char **gap_str, size_t *len);
+void replication_send_clabels(REPLICATION_STATE *rep_state, RRDSET *st);
+static inline void replication_send_chart_definition_nolock(RRDSET *st);
 
 // Thread Initialization
 static void replication_state_init(REPLICATION_STATE *state)
@@ -1210,6 +1212,8 @@ size_t replication_parser(struct replication_state *rpt, struct plugind *cd, FIL
     parser->plugins_action->gap_action    = &pluginsd_gap_action;
     parser->plugins_action->rep_action    = &pluginsd_rep_action;
     parser->plugins_action->rdata_action    = &pluginsd_rdata_action;
+    parser->plugins_action->fill_action    = &pluginsd_fill_action;
+    parser->plugins_action->fill_end_action    = &pluginsd_fill_end_action;
 
     user->parser = parser;
     info("%s: THE REP Parser Init", REPLICATION_MSG);
@@ -1391,7 +1395,278 @@ int transmit_gap(){
 // REP pause/continue
 // REP ack
 
-// RDATA
+// RDATA functions
+// chart labels
+void replication_send_clabels(REPLICATION_STATE *rep_state, RRDSET *st) {
+    RRDHOST *host = st->rrdhost;
+    struct label_index *labels_c = &st->state->labels;
+    if (labels_c) {
+        netdata_rwlock_rdlock(&host->labels.labels_rwlock);
+        struct label *lbl = labels_c->head;
+        while(lbl) {
+            buffer_sprintf(rep_state->build,
+                           "CLABEL \"%s\" \"%s\" %d\n", lbl->key, lbl->value, (int)lbl->label_source);
+
+            lbl = lbl->next;
+        }
+        if (labels_c->head)
+            buffer_sprintf(rep_state->build,"CLABEL_COMMIT\n");
+        netdata_rwlock_unlock(&host->labels.labels_rwlock);
+    }
+}
+
+// Send the current chart definition.
+// Assumes that collector thread has already called sender_start for mutex / buffer state.
+static inline void replication_send_chart_definition_nolock(RRDSET *st) {
+    RRDHOST *host = st->rrdhost;
+    REPLICATION_STATE *rep_state = host->sender->replication;
+
+    rrdset_flag_set(st, RRDSET_FLAG_UPSTREAM_EXPOSED);
+
+    // properly set the name for the remote end to parse it
+    char *name = "";
+    if(likely(st->name)) {
+        if(unlikely(strcmp(st->id, st->name))) {
+            // they differ
+            name = strchr(st->name, '.');
+            if(name)
+                name++;
+            else
+                name = "";
+        }
+    }
+
+    // send the chart
+    buffer_sprintf(
+            rep_state->build
+            , "CHART \"%s\" \"%s\" \"%s\" \"%s\" \"%s\" \"%s\" \"%s\" %ld %d \"%s %s %s %s\" \"%s\" \"%s\"\n"
+            , st->id
+            , name
+            , st->title
+            , st->units
+            , st->family
+            , st->context
+            , rrdset_type_name(st->chart_type)
+            , st->priority
+            , st->update_every
+            , rrdset_flag_check(st, RRDSET_FLAG_OBSOLETE)?"obsolete":""
+            , rrdset_flag_check(st, RRDSET_FLAG_DETAIL)?"detail":""
+            , rrdset_flag_check(st, RRDSET_FLAG_STORE_FIRST)?"store_first":""
+            , rrdset_flag_check(st, RRDSET_FLAG_HIDDEN)?"hidden":""
+            , (st->plugin_name)?st->plugin_name:""
+            , (st->module_name)?st->module_name:""
+    );
+
+    // send the chart labels
+    if (host->sender->version >= STREAM_VERSION_CLABELS)
+        replication_send_clabels(rep_state, st);
+
+    // send the dimensions
+    RRDDIM *rd;
+    rrddim_foreach_read(rd, st) {
+        buffer_sprintf(
+                rep_state->build
+                , "DIMENSION \"%s\" \"%s\" \"%s\" " COLLECTED_NUMBER_FORMAT " " COLLECTED_NUMBER_FORMAT " \"%s %s %s\"\n"
+                , rd->id
+                , rd->name
+                , rrd_algorithm_name(rd->algorithm)
+                , rd->multiplier
+                , rd->divisor
+                , rrddim_flag_check(rd, RRDDIM_FLAG_OBSOLETE)?"obsolete":""
+                , rrddim_flag_check(rd, RRDDIM_FLAG_HIDDEN)?"hidden":""
+                , rrddim_flag_check(rd, RRDDIM_FLAG_DONT_DETECT_RESETS_OR_OVERFLOWS)?"noreset":""
+        );
+        rd->exposed = 1;
+    }
+
+    // send the chart local custom variables
+    RRDSETVAR *rs;
+    for(rs = st->variables; rs ;rs = rs->next) {
+        if(unlikely(rs->type == RRDVAR_TYPE_CALCULATED && rs->options & RRDVAR_OPTION_CUSTOM_CHART_VAR)) {
+            calculated_number *value = (calculated_number *) rs->value;
+
+            buffer_sprintf(
+                    rep_state->build
+                    , "VARIABLE CHART %s = " CALCULATED_NUMBER_FORMAT "\n"
+                    , rs->variable
+                    , *value
+            );
+        }
+    }
+
+    st->upstream_resync_time = st->last_collected_time.tv_sec + (remote_clock_resync_iterations * st->update_every);
+}
+
+/* start_time is set during an explicit replication request from the far end, or zero if we are pushing the latest
+   data from the collector.
+*/
+void sender_fill_gap_nolock(REPLICATION_STATE *rep_state, RRDSET *st, GAP *a_gap)
+{
+    RRDDIM *rd;
+    struct rrddim_query_handle handle;
+    // Move to stream.conf file
+    unsigned int default_rrdpush_gap_block_size = RRDENG_BLOCK_SIZE;
+    unsigned int block_id = 0;
+
+    time_t t_delta_start = a_gap->t_window.t_start;
+    time_t t_delta_first = a_gap->t_window.t_first;
+    time_t t_delta_end = a_gap->t_window.t_end;
+
+    int update_every = st->update_every;
+    unsigned int block_size_in_bytes = RRDENG_BLOCK_SIZE;
+    unsigned int sample_in_bytes = (unsigned int) sizeof(storage_number);
+
+    unsigned int num_of_samples_in_memory = block_size_in_bytes/sample_in_bytes;
+    unsigned int residual_num_of_samples_in_memory = block_size_in_bytes % sample_in_bytes;
+
+    unsigned int num_of_samples_in_time = (t_delta_end - (t_delta_first + update_every))/update_every;
+    unsigned int residual_num_of_samples_in_time = (t_delta_end - (t_delta_first + update_every))  % update_every;    
+
+    // When the sync is unknown against the far end (last_sent=0), sending the latest sample will trigger a
+    // replication from the far end if necessary.
+    time_t first_t = rrdset_first_entry_t(st);
+    time_t st_newest = st->last_updated.tv_sec;
+    time_t window_start;
+    time_t st_last_sent_sample_delta = st->rrdhost->sender->last_sent_t;
+
+    time_t gap_t_delta_start = a_gap->t_window.t_start;
+    time_t gap_t_delta_first = a_gap->t_window.t_first;
+    time_t gap_t_delta_end = a_gap->t_window.t_end;
+
+    if (gap_t_delta_first == 0) {
+        if (st_last_sent_sample_delta)
+            window_start = MAX(st->rrdhost->sender->last_sent_t + st->update_every, first_t);
+        else
+            window_start = st_newest;
+    }
+    else
+        window_start = MAX(gap_t_delta_first, first_t);
+
+    // Need to handle the blocks here
+    time_t unsent_points = (gap_t_delta_end - window_start) / st->update_every + 1;
+    if (unsent_points > default_rrdpush_gap_block_size)
+        unsent_points = default_rrdpush_gap_block_size;
+    time_t window_end = window_start + unsent_points * st->update_every;
+    
+    if (gap_t_delta_first == 0)
+        buffer_sprintf(rep_state->build, "RDATA \"%s\" %ld %ld %d\n", st->id, window_start, gap_t_delta_end, block_id);
+    else
+        buffer_sprintf(rep_state->build, "RDATA \"%s\" %ld %ld %d\n", st->id, gap_t_delta_first, gap_t_delta_end, block_id);
+
+    rrdset_dump_debug_state(st);
+
+    size_t num_points = 0;
+    rrddim_foreach_read(rd, st) {
+        // Send the intersection of this dimension and the time-window on the chart
+        if (!rd->exposed)
+            continue;
+        time_t rd_start = rrddim_first_entry_t(rd);
+        time_t rd_end   = rrddim_last_entry_t(rd) + st->update_every;
+        if (rd_start < window_end && rd_end >= window_start) {
+
+            time_t rd_oldest = MAX(rd_start, window_start);
+            rd_end = MIN(rd_end,   window_end);
+
+            rd->state->query_ops.init(rd, &handle, rd_oldest, rd_end);
+            debug(D_REPLICATION, "Fill replication with %s.%s window=%ld-%ld data=%ld-%ld query=%ld-%ld",
+                  st->id, rd->id, window_start, window_end, rd_oldest, rd_end, handle.start_time, handle.end_time);
+
+            for (time_t metric_t = rd_oldest; metric_t < rd_end; ) {
+
+                if (rd->state->query_ops.is_finished(&handle)) {
+                    debug(D_REPLICATION, "%s.%s query handle finished early @%ld", st->id, rd->id, metric_t);
+                    break;
+                }
+
+                storage_number n = rd->state->query_ops.next_metric(&handle, &metric_t);
+                if (n == SN_EMPTY_SLOT)
+                    debug(D_REPLICATION, "%s.%s db empty in valid dimension range @ %ld", st->id, rd->id, metric_t);
+                else {
+                    buffer_sprintf(rep_state->build, "FILL \"%s\" %ld " STORAGE_NUMBER_FORMAT "\n", rd->id, metric_t, n);
+                    debug(D_REPLICATION, "%s.%s FILL %ld " STORAGE_NUMBER_FORMAT "\n", st->id, rd->id, metric_t, n);
+                }
+                num_points++;
+            }
+            rd->state->query_ops.finalize(&handle);
+        }
+        else
+            debug(D_REPLICATION, "%s.%s has no data in the replication window (@%ld-%ld) last_collected=%ld.%ld",
+                                 st->id, rd->id, (long)window_start, window_end, (long)rd->last_collected_time.tv_sec,
+                                 rd->last_collected_time.tv_usec);
+
+    }
+    buffer_sprintf(rep_state->build, "FILLEND %zu %lld %lld\n", num_points, st->collected_total, st->last_collected_total);
+    st->rrdhost->sender->last_sent_t = window_end - st->update_every;
+    debug(D_REPLICATION, "Send BUFFER(%s): [%s]",rep_state->host->hostname, buffer_tostring(rep_state->build));
+}
+
+void sender_gap_filling(REPLICATION_STATE *rep_state, GAP *a_gap)
+{
+    RRDSET *st;
+    RRDHOST *host = rep_state->host;
+    // time_t t_delta_start = a_gap->t_window.t_start;
+    // time_t t_delta_first = a_gap->t_window.t_first;
+    // time_t t_delta_end = a_gap->t_window.t_end;
+    // storage_number dim_sample;
+    // struct circular_buffer *rdata = cbuffer_new(RRDENG_BLOCK_SIZE/4, RRDENG_BLOCK_SIZE);
+    // unsigned int block_size_in_bytes = RRDENG_BLOCK_SIZE;
+    // unsigned int sample_in_bytes = (unsigned int) sizeof(storage_number);
+
+    // unsigned int num_of_samples_in_memory = block_size_in_bytes/sample_in_bytes;
+    // unsigned int residual_num_of_samples_in_memory = block_size_in_bytes%sample_in_bytes;
+
+    // unsigned int num_of_samples_in_time;
+    // unsigned int residual_num_of_samples_in_time;
+
+    // TODO: Probably need to use rrdhost read locks here.
+    rrdset_foreach_read(st, host)
+    {
+        // num_of_samples_in_time = (t_delta_end - (t_delta_first + st->update_every)) / st->update_every;
+        // residual_num_of_samples_in_time = (t_delta_end - (t_delta_first + st->update_every)) % st->update_every;
+        // //send RDATA
+        sender_chart_gap_filling(st, a_gap);
+    }
+}
+
+// Send RDATA per chart
+void sender_chart_gap_filling(RRDSET *st, GAP *a_gap) {
+    REPLICATION_STATE *rep_state = st->rrdhost->sender->replication;
+    if(unlikely(!should_send_chart_matching(st)))
+        return;
+
+    replication_start(rep_state);         // Locks the sender buffer
+    if(need_to_send_chart_definition(st))
+        replication_send_chart_definition_nolock(st);        
+    sender_fill_gap_nolock(rep_state, st, a_gap);
+    replication_commit(rep_state);        // Releases the sender buffer
+    replication_attempt_to_send(rep_state);
+}
+
+void sender_block_gap_filling(REPLICATION_STATE *rep_state, GAP *a_gap, RRDSET *st) {
+    RRDHOST *host = rep_state->host;
+
+    time_t t_delta_start = a_gap->t_window.t_start;
+    time_t t_delta_first = a_gap->t_window.t_first;
+    time_t t_delta_end = a_gap->t_window.t_end;
+
+    int update_every = st->update_every;
+    unsigned int block_size_in_bytes = RRDENG_BLOCK_SIZE;
+    unsigned int sample_in_bytes = (unsigned int) sizeof(storage_number);
+
+    unsigned int num_of_samples_in_memory = block_size_in_bytes/sample_in_bytes;
+    unsigned int residual_num_of_samples_in_memory = block_size_in_bytes % sample_in_bytes;
+
+    unsigned int num_of_samples_in_time = (t_delta_end - (t_delta_first + update_every))/update_every;
+    unsigned int residual_num_of_samples_in_time = (t_delta_end - (t_delta_first + update_every))  % update_every;
+
+    storage_number rrddim_sample;
+    BUFFER *rdata = buffer_create(RRDENG_BLOCK_SIZE);
+    // cbuffer_new(RRDENG_BLOCK_SIZE/4, RRDENG_BLOCK_SIZE);
+    buffer_reset(rdata);
+    unsigned sent_bytes = 0;
+    unsigned int sent_block_count = 0;
+}
+
 
 // Replication FSM logic functions
 
@@ -1452,4 +1727,64 @@ void replication_rdata_to_str(GAP *a_gap, char **rdata_str, size_t *len, int blo
         a_gap->t_window.t_end,
         block_id);
     info("%s: RDATA CMD details are:\nCMD: %s",REPLICATION_MSG, *rdata_str);
+}
+
+void rrdset_dump_debug_state(RRDSET *st) {
+#ifdef NETDATA_INTERNAL_CHECKS
+    if (debug_flags & D_REPLICATION) {
+        RRDDIM *rd;
+        debug(D_REPLICATION, "Chart state %s: counter=%zu counter_done=%zu current_entry=%ld usec_since_last=%llu last_updated=%ld.%ld"
+                             " last_collected=%ld.%ld collected_total=%lld last_collected_total=%lld",
+                             st->id, st->counter, st->counter_done, st->current_entry, st->usec_since_last_update,
+                             st->last_updated.tv_sec, st->last_updated.tv_usec,
+                             st->last_collected_time.tv_sec, st->last_collected_time.tv_usec,
+                             st->collected_total, st->last_collected_total);
+        netdata_rwlock_rdlock(&st->rrdset_rwlock);
+        rrddim_foreach_read(rd, st) {
+            debug(D_REPLICATION, "Dimension state %s.%s: calculated_value=" CALCULATED_NUMBER_FORMAT
+                                 " last_calculated_value=" CALCULATED_NUMBER_FORMAT
+                                 " last_stored_value=" CALCULATED_NUMBER_FORMAT
+                                 " collected_value=" COLLECTED_NUMBER_FORMAT
+                                 " last_collected_value=" COLLECTED_NUMBER_FORMAT
+                                 " col_counter=%zu"
+                                 " col_volume=" CALCULATED_NUMBER_FORMAT
+                                 " store_volume=" CALCULATED_NUMBER_FORMAT
+                                 " last_coll_time=%ld.%ld",
+                                 st->id, rd->id, rd->calculated_value, rd->last_calculated_value,
+                                 rd->last_stored_value, rd->collected_value, rd->last_collected_value,
+                                 rd->collections_counter, rd->collected_volume,
+                                 rd->stored_volume, rd->last_collected_time.tv_sec, rd->last_collected_time.tv_usec);
+            #ifdef ENABLE_DBENGINE
+            if (st->rrd_memory_mode == RRD_MEMORY_MODE_DBENGINE && !rrddim_flag_check(rd, RRDDIM_FLAG_ARCHIVED) &&
+                rd->state->handle.rrdeng.descr) {
+                // This is safe but do not do this from production code. (The debugging points that call this are
+                // on the collector thread and this is the hot-page so it cannot be flushed during execution).
+                uv_rwlock_rdlock(&rd->state->handle.rrdeng.ctx->pg_cache.pg_cache_rwlock);
+
+                struct rrdeng_page_descr *descr = rd->state->handle.rrdeng.descr;
+                struct page_cache_descr *pc_descr = descr->pg_cache_descr;
+                if (pc_descr) {
+                    storage_number x;
+                    uint32_t entries = descr->page_length / sizeof(x);
+                    uint32_t start = 0;
+                    if (entries > 3)
+                        start = entries-3;
+                    char buffer[80] = {0};
+                    for(uint32_t i=start; i<entries; i++) {
+                        x = ((storage_number*)pc_descr->page)[i];
+                        sprintf(buffer + strlen(buffer), STORAGE_NUMBER_FORMAT " ", x);
+                    }
+                    debug(D_REPLICATION, "%s.%s page_descr %llu - %llu with %u, last points %s", st->id, rd->id,
+                                         descr->start_time,
+                                         descr->end_time,
+                                         entries,
+                                         buffer);
+                }
+                uv_rwlock_rdunlock(&rd->state->handle.rrdeng.ctx->pg_cache.pg_cache_rwlock);
+            }
+            #endif
+        }
+        netdata_rwlock_unlock(&st->rrdset_rwlock);
+    }
+#endif
 }

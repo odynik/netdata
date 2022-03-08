@@ -140,7 +140,7 @@ int rrdpush_init() {
 unsigned int remote_clock_resync_iterations = 60;
 
 
-static inline int should_send_chart_matching(RRDSET *st) {
+int should_send_chart_matching(RRDSET *st) {
     if(unlikely(!rrdset_flag_check(st, RRDSET_FLAG_ENABLED))) {
         rrdset_flag_clear(st, RRDSET_FLAG_UPSTREAM_SEND);
         rrdset_flag_set(st, RRDSET_FLAG_UPSTREAM_IGNORE);
@@ -182,7 +182,7 @@ int configured_as_parent() {
 }
 
 // checks if the current chart definition has been sent
-static inline int need_to_send_chart_definition(RRDSET *st) {
+int need_to_send_chart_definition(RRDSET *st) {
     rrdset_check_rdlock(st);
 
     if(unlikely(!(rrdset_flag_check(st, RRDSET_FLAG_UPSTREAM_EXPOSED))))
