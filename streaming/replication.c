@@ -28,6 +28,8 @@ static void replication_state_init(REPLICATION_STATE *state)
 #ifdef ENABLE_HTTPS
     state->ssl = (struct netdata_ssl *)callocz(1, sizeof(struct netdata_ssl));
 #endif
+    state->dim_past_data = callocz(1,sizeof(RRDIM_PAST_DATA));
+    state->dim_past_data->page = callocz(RRDENG_BLOCK_SIZE, sizeof(char));
     netdata_mutex_init(&state->mutex);
 }
 
@@ -42,6 +44,8 @@ void replication_state_destroy(REPLICATION_STATE **state)
         SSL_free(r->ssl->conn);
     }
 #endif
+    freez(r->dim_past_data->page);
+    freez(r->dim_past_data);
     freez(*state);
     info("%s: Replication state destroyed.", REPLICATION_MSG);
 }
@@ -1017,21 +1021,56 @@ void replication_sender_thread_stop(RRDHOST *host) {
 }
 
 // DBENGINE rrddim past data operations
-struct rrdim_past_data {
-    RRDDIM *rd;
-    void* page;
-    struct rrdeng_page_descr* descr;
-    struct rrdengine_instance *ctx;
-} RRDIM_PAST_DATA;
+void replication_collect_past_metric_init(REPLICATION_STATE *rep_state, char *rrdset_id, char *rrddim_id) {
 
+    info("%s: Collect past metric INIT: %s %s\n", REPLICATION_MSG, rrdset_id, rrddim_id);
+    RRDIM_PAST_DATA *dim_past_data = rep_state->dim_past_data;
+    RRDSET *st = rrdset_find_byname(rep_state->host,rrdset_id);
+    if(unlikely(!st)) {
+        error("Cannot find chart with name_id '%s' on host '%s'.", rrdset_id, rep_state->host->hostname);
+        return;
+    }
+    dim_past_data->rd = rrddim_find(st, rrddim_id);
+    if(unlikely(!dim_past_data->rd)) {
+        error("Cannot find dimension with id '%s' in chart '%s' on host '%s'.", rrddim_id, rrdset_id, rep_state->host->hostname);
+        return;
+    }
+    if(dim_past_data->page){
+        memset(dim_past_data->page, 0, RRDENG_BLOCK_SIZE);
+        dim_past_data->page_length = 0;
+        dim_past_data->start_time = 0;
+        dim_past_data->end_time = 0;
+    }
+    info("%s: Collect past metric INIT finished: %s %s\n", REPLICATION_MSG, rrdset_id, rrddim_id);
+}
+
+void replication_collect_past_metric(REPLICATION_STATE *rep_state, time_t timestamp, storage_number number) {
+    storage_number *page = rep_state->dim_past_data->page;
+    uint32_t page_length = rep_state->dim_past_data->page_length;
+    if(!page_length)
+        rep_state->dim_past_data->start_time = timestamp * USEC_PER_SEC;
+    if((page_length + sizeof(number)) < RRDENG_BLOCK_SIZE){
+        page[page_length / sizeof(number)] = number;
+        page_length += sizeof(number);
+        rep_state->dim_past_data->end_time = timestamp * USEC_PER_SEC;
+    }
+    info("%s: Collect past metric sample(%ld): %d \n", REPLICATION_MSG, timestamp, number);
+}
+
+void replication_collect_past_metric_done(REPLICATION_STATE *rep_state) {
+    info("%s: Collect past metrics DONE: \n", REPLICATION_MSG);
+    RRDIM_PAST_DATA *dim_past_data = rep_state->dim_past_data;
+    print_collected_metric_past_data(dim_past_data);
+}
+
+void rrdeng_store_past_metric_init(){
+    // page = rrdeng_create_page(ctx, &rd->state->page_index->id, &descr);
+}
 void rrdeng_store_past_metric(){
     // collection of gap data in cache/temporary structure
     // READ THE FILL command data
     // pack them in proper struct or type format
     // keep them in page.    
-}
-void rrdeng_store_past_metric_init(){
-    // page = rrdeng_create_page(ctx, &rd->state->page_index->id, &descr);
 }
 void rrdeng_store_past_metric_finalize(){
     // destroy the past data structs
@@ -1564,10 +1603,6 @@ void sender_fill_gap_nolock(REPLICATION_STATE *rep_state, RRDSET *st, GAP *a_gap
     rrddim_foreach_read(rd, st) {
         if (!rd->exposed)
             continue;        
-        if (gap_t_delta_first == 0)
-            buffer_sprintf(rep_state->build, "RDATA %s %s %s %ld %ld %d\n", gap_uuid_str, st->id, rd->id, window_start, gap_t_delta_end, block_id);
-        else
-            buffer_sprintf(rep_state->build, "RDATA %s %s %s %ld %ld %d\n", gap_uuid_str, st->id, rd->id, gap_t_delta_first, gap_t_delta_end, block_id);
 
         // Send the intersection of this dimension and the time-window on the chart
         time_t rd_start = rrddim_first_entry_t(rd);
@@ -1580,7 +1615,13 @@ void sender_fill_gap_nolock(REPLICATION_STATE *rep_state, RRDSET *st, GAP *a_gap
             rd->state->query_ops.init(rd, &handle, rd_oldest, rd_end);
             debug(D_REPLICATION, "Fill replication with %s.%s window=%ld-%ld data=%ld-%ld query=%ld-%ld",
                   st->id, rd->id, window_start, window_end, rd_oldest, rd_end, handle.start_time, handle.end_time);
-
+            
+            if (gap_t_delta_first == 0)
+                buffer_sprintf(rep_state->build, "RDATA %s \"%s\" \"%s\" %ld %ld %d\n", gap_uuid_str, st->id, rd->id, window_start, gap_t_delta_end, block_id);
+            else
+                buffer_sprintf(rep_state->build, "RDATA %s \"%s\" \"%s\" %ld %ld %d\n", gap_uuid_str, st->id, rd->id, gap_t_delta_first, gap_t_delta_end, block_id);
+            
+            num_points = 0;
             for (time_t metric_t = rd_oldest; metric_t < rd_end; ) {
 
                 if (rd->state->query_ops.is_finished(&handle)) {
@@ -1802,4 +1843,19 @@ void rrdset_dump_debug_state(RRDSET *st) {
         netdata_rwlock_unlock(&st->rrdset_rwlock);
     }
 #endif
+}
+
+void print_collected_metric_past_data(RRDIM_PAST_DATA *past_data){
+    RRDDIM *rd = past_data->rd;
+    time_t ts = past_data->start_time  / USEC_PER_SEC;
+    time_t te = past_data->end_time  / USEC_PER_SEC;
+    storage_number *page = (storage_number *)past_data->page;
+    uint32_t len = past_data->page_length / RRDENG_BLOCK_SIZE;
+    
+    info("%s: Past Samples(%d) [%ld, %ld] for dimension %s\n", REPLICATION_MSG, len, ts, te, rd->id);
+    time_t t = ts;
+    for(int i=0; i < (len + (uint32_t) sizeof(storage_number)) ; i+=sizeof(storage_number)){
+        info("T: %ld, V: "STORAGE_NUMBER_FORMAT" \n", t, page[i]);
+        t += rd->update_every;
+    }
 }

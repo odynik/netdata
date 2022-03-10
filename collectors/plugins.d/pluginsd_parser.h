@@ -41,8 +41,8 @@ extern PARSER_RC pluginsd_clabel_action(void *user, char *key, char *value, LABE
 extern PARSER_RC pluginsd_suspend_this_action(void *user, RRDSET *st, usec_t microseconds, int trust_durations);
 extern PARSER_RC pluginsd_rep_action(void *user, REP_ARG command);
 extern PARSER_RC pluginsd_gap_action(void *user, GAP rx_gap);
-extern PARSER_RC pluginsd_rdata_action(void *user, GAP meta_rx_rdata, int block_id);
-extern PARSER_RC pluginsd_fill_action(void *user);
+extern PARSER_RC pluginsd_rdata_action(void *user, GAP meta_rx_rdata, int block_id, char *chart_id, char *dim_id);
+extern PARSER_RC pluginsd_fill_action(void *user, time_t timestamp, storage_number value);
 extern PARSER_RC pluginsd_fill_end_action(void *user, int block_id);
 extern void send_message(struct replication_state *replication, char* message);
 
