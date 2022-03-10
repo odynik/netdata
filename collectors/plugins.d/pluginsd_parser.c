@@ -801,6 +801,8 @@ PARSER_RC pluginsd_rdata_action(void *user, GAP meta_rx_rdata, int block_id)
         uuid_unparse(meta_rx_rdata.gap_uuid, gap_uuid_str);
         info("%s: Receiving RDATA block id#%d for gap(%s): %s\n", REPLICATION_MSG, block_id, meta_rx_rdata.status,gap_uuid_str);
     }
+
+    //Create a page to receive the metrics
     return PARSER_RC_OK;
 }
 
@@ -808,6 +810,10 @@ PARSER_RC pluginsd_fill_action(void *user)
 {
     UNUSED(user);
     info("%s: FILL command - pluginsd_fill_action\n", REPLICATION_MSG);
+    //rrddim_find
+    //call a similar void rrdeng_store_metric_next(RRDDIM *rd, usec_t point_in_time, storage_number number)
+    //function to save the fill value in the page
+    //collect_replication_gap_data(rd, timestamp, value);
     return PARSER_RC_OK;
 }
 
@@ -819,6 +825,7 @@ PARSER_RC pluginsd_fill_end_action(void *user, int block_id)
     send_message(rep_state, "REP 4\n");
     info("%s: REP ACK command is sent after block id [%d]!\n", REPLICATION_MSG, block_id);
 
+    // Save the data in dbengine
     return PARSER_RC_OK;
 }
 
@@ -883,12 +890,13 @@ PARSER_RC pluginsd_rdata(char **words, void *user, PLUGINSD_ACTION  *plugins_act
     GAP meta_rx_rdata;
     int rc = uuid_parse(words[1], meta_rx_rdata.gap_uuid);
     char *chart_id = strdupz(words[2]);
-    meta_rx_rdata.t_window.t_start = (time_t) strtol(words[3], NULL, 10);
-    meta_rx_rdata.t_window.t_end = (time_t) strtol(words[4], NULL, 10);
-    int block_id = strtol(words[5], NULL, 10);
+    char *dim_id = strdupz(words[3]);
+    meta_rx_rdata.t_window.t_start = (time_t) strtol(words[4], NULL, 10);
+    meta_rx_rdata.t_window.t_end = (time_t) strtol(words[5], NULL, 10);
+    int block_id = strtol(words[6], NULL, 10);
     meta_rx_rdata.status = "onreceive";
 
-    if (unlikely((rc == -1) || !chart_id || ((!meta_rx_rdata.t_window.t_start || !meta_rx_rdata.t_window.t_end ) || errno == ERANGE))) {
+    if (unlikely((rc == -1) || !chart_id || !dim_id || ((!meta_rx_rdata.t_window.t_start || !meta_rx_rdata.t_window.t_end ) || errno == ERANGE))) {
         error("requested a RDATA without parameters for host '%s'. Disabling it.", host->hostname);
         goto disable;
     }
@@ -911,17 +919,17 @@ disable:
 PARSER_RC pluginsd_fill(char **words, void *user, PLUGINSD_ACTION  *plugins_action)
 {    
     REPLICATION_STATE *rep_state = (REPLICATION_STATE *)((PARSER_USER_OBJECT *)user)->opaque;
-    char *chart_id = words[1];
-    char *dim_id = words[2];
-    char *timestamp = words[3];
-    char *value = words[4];
+    char *chart_id = strdupz(words[1]);
+    char *dim_id = strdupz(words[2]);
+    time_t timestamp = (time_t) strtol(words[3], NULL, 10);
+    storage_number value = str2uint32_t(words[4]);
 
-    if (unlikely( !chart_id || !dim_id || !timestamp || !value)) {
+    if (unlikely( !chart_id || !dim_id || !timestamp || errno == ERANGE)) {
         error("Parsing FILL command parameters has failed for host '%s'. Disabling it.", rep_state->host->hostname);
         goto disable;
     }
 
-    info("%s: FILL %s.%s %s %s", REPLICATION_MSG, chart_id, dim_id, timestamp, value);
+    info("%s: FILL %s.%s %ld %d", REPLICATION_MSG, chart_id, dim_id, timestamp, value);
     //Call the replication function to save the parameters.
     if (plugins_action->fill_action) {
         return plugins_action->fill_action((PARSER_USER_OBJECT *) user);
