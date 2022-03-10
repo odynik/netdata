@@ -1016,21 +1016,30 @@ void replication_sender_thread_stop(RRDHOST *host) {
     replication_state_destroy(&host->sender->replication);
 }
 
-// static inline int parse_replication_ack(char *http)
-// {
-//     if(unlikely(memcmp(http, REP_ACK_CMD, (size_t)strlen(REP_ACK_CMD))))
-//         return 1;
-//     return 0;
-// }
+// DBENGINE rrddim past data operations
+struct rrdim_past_data {
+    RRDDIM *rd;
+    void* page;
+    struct rrdeng_page_descr* descr;
+    struct rrdengine_instance *ctx;
+} RRDIM_PAST_DATA;
 
-// Memory Mode access
-void collect_replication_gap_data(){
+void rrdeng_store_past_metric(){
     // collection of gap data in cache/temporary structure
+    // READ THE FILL command data
+    // pack them in proper struct or type format
+    // keep them in page.    
 }
-
-void update_memory_index(){
+void rrdeng_store_past_metric_init(){
+    // page = rrdeng_create_page(ctx, &rd->state->page_index->id, &descr);
+}
+void rrdeng_store_past_metric_finalize(){
+    // destroy the past data structs
+    // cleanup the handles + pages
+}
+void rrdeng_flush_past_metrics(){
     //dbengine
-    //other memory modes?
+    //Similar to void rrdeng_store_metric_flush_current_page(RRDDIM *rd)
 }
 
 // Store gap in agent metdata DB(sqlite)
@@ -1383,11 +1392,6 @@ void evaluate_gap_ondisconnection(struct receiver_state *stream_recv){
     print_replication_gap(the_gaps->gap_data);
 }
 
-// transmit the gap information to the child nodes - send the GAP command
-int transmit_gap(){
-    return 0;
-}
-
 // FSMs for replication protocol implementation
 // REP on
 // REP off
@@ -1549,18 +1553,23 @@ void sender_fill_gap_nolock(REPLICATION_STATE *rep_state, RRDSET *st, GAP *a_gap
     
     char gap_uuid_str[UUID_STR_LEN];
     uuid_unparse(a_gap->gap_uuid, gap_uuid_str);
-    if (gap_t_delta_first == 0)
-        buffer_sprintf(rep_state->build, "RDATA %s \"%s\" %ld %ld %d\n", gap_uuid_str, st->id, window_start, gap_t_delta_end, block_id);
-    else
-        buffer_sprintf(rep_state->build, "RDATA %s \"%s\" %ld %ld %d\n", gap_uuid_str, st->id, gap_t_delta_first, gap_t_delta_end, block_id);
+    // if (gap_t_delta_first == 0)
+    //     buffer_sprintf(rep_state->build, "RDATA %s \"%s\" %ld %ld %d\n", gap_uuid_str, st->id, window_start, gap_t_delta_end, block_id);
+    // else
+    //     buffer_sprintf(rep_state->build, "RDATA %s \"%s\" %ld %ld %d\n", gap_uuid_str, st->id, gap_t_delta_first, gap_t_delta_end, block_id);
 
     rrdset_dump_debug_state(st);
 
     size_t num_points = 0;
     rrddim_foreach_read(rd, st) {
-        // Send the intersection of this dimension and the time-window on the chart
         if (!rd->exposed)
-            continue;
+            continue;        
+        if (gap_t_delta_first == 0)
+            buffer_sprintf(rep_state->build, "RDATA %s %s %s %ld %ld %d\n", gap_uuid_str, st->id, rd->id, window_start, gap_t_delta_end, block_id);
+        else
+            buffer_sprintf(rep_state->build, "RDATA %s %s %s %ld %ld %d\n", gap_uuid_str, st->id, rd->id, gap_t_delta_first, gap_t_delta_end, block_id);
+
+        // Send the intersection of this dimension and the time-window on the chart
         time_t rd_start = rrddim_first_entry_t(rd);
         time_t rd_end   = rrddim_last_entry_t(rd) + st->update_every;
         if (rd_start < window_end && rd_end >= window_start) {
@@ -1586,8 +1595,10 @@ void sender_fill_gap_nolock(REPLICATION_STATE *rep_state, RRDSET *st, GAP *a_gap
                     buffer_sprintf(rep_state->build, "FILL \"%s\" \"%s\" %ld " STORAGE_NUMBER_FORMAT "\n", st->id, rd->id, metric_t, n);
                     debug(D_REPLICATION, "%s.%s FILL %ld " STORAGE_NUMBER_FORMAT "\n", st->id, rd->id, metric_t, n);
                     num_points++;
+                    
                 }
             }
+            buffer_sprintf(rep_state->build, "FILLEND %zu %d\n", num_points, block_id);
             rd->state->query_ops.finalize(&handle);
         }
         else
@@ -1596,7 +1607,7 @@ void sender_fill_gap_nolock(REPLICATION_STATE *rep_state, RRDSET *st, GAP *a_gap
                                  rd->last_collected_time.tv_usec);
 
     }
-    buffer_sprintf(rep_state->build, "FILLEND %zu %d\n", num_points, block_id);
+    // buffer_sprintf(rep_state->build, "FILLEND %zu %d\n", num_points, block_id);
     st->rrdhost->sender->last_sent_t = window_end - st->update_every;
     debug(D_REPLICATION, "Send BUFFER(%s): [%s]",rep_state->host->hostname, buffer_tostring(rep_state->build));
 }
@@ -1674,7 +1685,6 @@ void sender_block_gap_filling(REPLICATION_STATE *rep_state, GAP *a_gap, RRDSET *
 
 
 // Replication FSM logic functions
-
 
 // Helper and Debug functions
 static void print_replication_state(REPLICATION_STATE *state)
