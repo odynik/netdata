@@ -84,6 +84,8 @@ typedef struct gaps_queue {
 } GAPS;
 
 typedef struct rrdim_past_data {
+    char* rrdset_id;
+    char* rrddim_id;
     RRDDIM *rd;
     void* page;
     uint32_t page_length;
@@ -95,7 +97,11 @@ typedef struct rrdim_past_data {
 
 void replication_gap_to_str(GAP *a_gap, char **gap_str, size_t *len);
 void replication_rdata_to_str(GAP *a_gap, char **rdata_str, size_t *len, int block_id);
-void print_collected_metric_past_data(RRDIM_PAST_DATA *past_data);
+void print_collected_metric_past_data(RRDIM_PAST_DATA *past_data, REPLICATION_STATE *rep_state);
 void replication_collect_past_metric_init(REPLICATION_STATE *rep_state, char *rrdset_id, char *rrddim_id);
 void replication_collect_past_metric(REPLICATION_STATE *rep_state, time_t timestamp, storage_number number);
 void replication_collect_past_metric_done(REPLICATION_STATE *rep_state);
+
+// extern void rrdeng_store_past_metric_init(RRDIM_PAST_DATA *dim_past_data, REPLICATION_STATE *rep_state);
+// extern void rrdeng_store_past_metric_finalize(RRDIM_PAST_DATA *dim_past_data, REPLICATION_STATE *rep_state);
+// extern void rrdeng_flush_past_metrics(RRDIM_PAST_DATA *dim_past_data, REPLICATION_STATE *rep_state);

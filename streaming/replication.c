@@ -1025,22 +1025,15 @@ void replication_collect_past_metric_init(REPLICATION_STATE *rep_state, char *rr
 
     info("%s: Collect past metric INIT: %s %s\n", REPLICATION_MSG, rrdset_id, rrddim_id);
     RRDIM_PAST_DATA *dim_past_data = rep_state->dim_past_data;
-    RRDSET *st = rrdset_find_byname(rep_state->host,rrdset_id);
-    if(unlikely(!st)) {
-        error("Cannot find chart with name_id '%s' on host '%s'.", rrdset_id, rep_state->host->hostname);
-        return;
-    }
-    dim_past_data->rd = rrddim_find(st, rrddim_id);
-    if(unlikely(!dim_past_data->rd)) {
-        error("Cannot find dimension with id '%s' in chart '%s' on host '%s'.", rrddim_id, rrdset_id, rep_state->host->hostname);
-        return;
-    }
     if(dim_past_data->page){
         memset(dim_past_data->page, 0, RRDENG_BLOCK_SIZE);
         dim_past_data->page_length = 0;
         dim_past_data->start_time = 0;
         dim_past_data->end_time = 0;
     }
+    dim_past_data->rrdset_id = strdupz(rrdset_id);
+    dim_past_data->rrddim_id = strdupz(rrddim_id);
+
     info("%s: Collect past metric INIT finished: %s %s\n", REPLICATION_MSG, rrdset_id, rrddim_id);
 }
 
@@ -1052,34 +1045,128 @@ void replication_collect_past_metric(REPLICATION_STATE *rep_state, time_t timest
     if((page_length + sizeof(number)) < RRDENG_BLOCK_SIZE){
         page[page_length / sizeof(number)] = number;
         page_length += sizeof(number);
+        rep_state->dim_past_data->page_length = page_length;
         rep_state->dim_past_data->end_time = timestamp * USEC_PER_SEC;
+        if(rep_state->dim_past_data->rd){
+            time_t current_end_time = rep_state->dim_past_data->end_time / USEC_PER_SEC;
+            if((timestamp -  current_end_time) > (time_t) rep_state->dim_past_data->rd->update_every){
+                error("%s: Hard gap was detected. Need to fill it with zeros", REPLICATION_MSG);
+                //Either make a jump in the index of a page(4096)
+                //OR handle the hard gap at least to collect the latest samples.
+            }
+        }        
     }
-    info("%s: Collect past metric sample(%ld): %d \n", REPLICATION_MSG, timestamp, number);
+    info("%s: Collect past metric sample#%d@%ld: %d \n", REPLICATION_MSG, page_length, timestamp, number);
 }
 
 void replication_collect_past_metric_done(REPLICATION_STATE *rep_state) {
     info("%s: Collect past metrics DONE: \n", REPLICATION_MSG);
     RRDIM_PAST_DATA *dim_past_data = rep_state->dim_past_data;
-    print_collected_metric_past_data(dim_past_data);
+    print_collected_metric_past_data(dim_past_data, rep_state);
 }
 
-void rrdeng_store_past_metric_init(){
-    // page = rrdeng_create_page(ctx, &rd->state->page_index->id, &descr);
-}
-void rrdeng_store_past_metric(){
-    // collection of gap data in cache/temporary structure
-    // READ THE FILL command data
-    // pack them in proper struct or type format
-    // keep them in page.    
-}
-void rrdeng_store_past_metric_finalize(){
-    // destroy the past data structs
-    // cleanup the handles + pages
-}
-void rrdeng_flush_past_metrics(){
-    //dbengine
-    //Similar to void rrdeng_store_metric_flush_current_page(RRDDIM *rd)
-}
+// void rrdeng_store_past_metric_init(RRDIM_PAST_DATA *dim_past_data, REPLICATION_STATE *rep_state){
+
+//     RRDSET *st = rrdset_find_byname(rep_state->host, dim_past_data->rrdset_id);
+//     if(unlikely(!st)) {
+//         error("%s: Abort Replication - Cannot find chart with name_id '%s' on host '%s'.", REPLICATION_MSG, dim_past_data->rrdset_id, rep_state->host->hostname);
+//         return;
+//     }
+//     dim_past_data->rd = rrddim_find(st, dim_past_data->rrddim_id);
+//     if(unlikely(!dim_past_data->rd)) {
+//         error("%s: Abort Replication - Cannot find dimension with id '%s' in chart '%s' on host '%s'.", REPLICATION_MSG, dim_past_data->rrddim_id, dim_past_data->rrdset_id, rep_state->host->hostname);
+//         return;
+//     }
+
+//     // Use names to separate the stream/replication handles/pages
+//     RRDDIM *rd = dim_past_data->rd;
+    
+//     // STORE METRIC NEXT sample code
+//     // struct rrdeng_collect_handle *stream_handle;
+//     struct rrdeng_collect_handle *rep_handle;
+//     // struct rrdengine_instance *ctx;
+//     // struct pg_cache_page_index *page_index;    
+    
+//     // ctx = rd->rrdset->rrdhost->rrdeng_ctx;
+//     // stream_handle = &rd->state->handle.rrdeng;
+//     // stream_handle->ctx = ctx;
+
+//     // stream_handle->descr = NULL;
+//     // stream_handle->prev_descr = NULL;
+//     // stream_handle->unaligned_page = 0;
+
+//     // page_index = rd->state->page_index;
+//     // uv_rwlock_wrlock(&page_index->lock);
+//     // ++page_index->writers;
+//     // uv_rwlock_wrunlock(&page_index->lock);
+
+//     // rep_handle->page_correlation_id = rrd_atomic_fetch_add(&pg_cache->committed_page_index.latest_corr_id, 1);
+//     // rrdeng code
+//     dim_past_data->ctx = rd->rrdset->rrdhost->rrdeng_ctx;
+//     // create a dbengine page
+//     void *page = rrdeng_create_page(dim_past_data->ctx, &rd->state->page_index->id, &dim_past_data->descr);
+//     // copy the values in this page
+//     memcpy(page, dim_past_data->page, (size_t)dim_past_data->page_length);
+//     pg_cache_atomic_set_pg_info(dim_past_data->descr,dim_past_data->end_time, dim_past_data->page_length);
+// }
+
+
+// void rrdeng_store_past_metric_finalize(){
+//     // destroy the past data structs
+//     // cleanup the handles + pages
+// }
+
+// void rrdeng_flush_past_metrics(){
+//     struct rrdeng_collect_handle *handle;
+//     struct rrdengine_instance *ctx;
+//     struct rrdeng_page_descr *descr;
+
+//     handle = &rd->state->handle.rrdeng;
+//     ctx = handle->ctx;
+//     if (unlikely(!ctx))
+//         return;
+//     descr = handle->descr;
+//     if (unlikely(NULL == descr)) {
+//         return;
+//     }
+//     if (likely(descr->page_length)) {
+//         int page_is_empty;
+
+//         rrd_stat_atomic_add(&ctx->stats.metric_API_producers, -1);
+
+//         if (handle->prev_descr) {
+//             /* unpin old second page */
+//             pg_cache_put(ctx, handle->prev_descr);
+//         }
+//         page_is_empty = page_has_only_empty_metrics(descr);
+//         if (page_is_empty) {
+//             debug(D_RRDENGINE, "Page has empty metrics only, deleting:");
+//             if (unlikely(debug_flags & D_RRDENGINE))
+//                 print_page_cache_descr(descr);
+//             pg_cache_put(ctx, descr);
+//             pg_cache_punch_hole(ctx, descr, 1, 0, NULL);
+//             handle->prev_descr = NULL;
+//         } else {
+//             /*
+//              * Disable pinning for now as it leads to deadlocks. When a collector stops collecting the extra pinned page
+//              * eventually gets rotated but it cannot be destroyed due to the extra reference.
+//              */
+//             /* added 1 extra reference to keep 2 dirty pages pinned per metric, expected refcnt = 2 */
+// /*          rrdeng_page_descr_mutex_lock(ctx, descr);
+//             ret = pg_cache_try_get_unsafe(descr, 0);
+//             rrdeng_page_descr_mutex_unlock(ctx, descr);
+//             fatal_assert(1 == ret);*/
+
+//             rrdeng_commit_page(ctx, descr, handle->page_correlation_id);
+//             /* handle->prev_descr = descr;*/
+//         }
+//     } else {
+//         freez(descr->pg_cache_descr->page);
+//         rrdeng_destroy_pg_cache_descr(ctx, descr->pg_cache_descr);
+//         freez(descr);
+//     }
+//     handle->descr = NULL;
+// }
 
 // Store gap in agent metdata DB(sqlite)
 int save_gap(GAP *a_gap)
@@ -1575,6 +1662,13 @@ void sender_fill_gap_nolock(REPLICATION_STATE *rep_state, RRDSET *st, GAP *a_gap
     time_t gap_t_delta_first = a_gap->t_window.t_first;
     time_t gap_t_delta_end = a_gap->t_window.t_end;
 
+    UNUSED(gap_t_delta_start);
+    UNUSED(residual_num_of_samples_in_time);
+    UNUSED(num_of_samples_in_time);
+    UNUSED(residual_num_of_samples_in_memory);
+    UNUSED(num_of_samples_in_memory);
+    UNUSED(t_delta_start);
+
     if (gap_t_delta_first == 0) {
         if (st_last_sent_sample_delta)
             window_start = MAX(st->rrdhost->sender->last_sent_t + st->update_every, first_t);
@@ -1699,30 +1793,35 @@ void sender_chart_gap_filling(RRDSET *st, GAP *a_gap) {
     rrdset_unlock(st);
 }
 
-void sender_block_gap_filling(REPLICATION_STATE *rep_state, GAP *a_gap, RRDSET *st) {
-    RRDHOST *host = rep_state->host;
+// void sender_block_gap_filling(REPLICATION_STATE *rep_state, GAP *a_gap, RRDSET *st) {
+//     RRDHOST *host = rep_state->host;
 
-    time_t t_delta_start = a_gap->t_window.t_start;
-    time_t t_delta_first = a_gap->t_window.t_first;
-    time_t t_delta_end = a_gap->t_window.t_end;
+//     time_t t_delta_start = a_gap->t_window.t_start;
+//     time_t t_delta_first = a_gap->t_window.t_first;
+//     time_t t_delta_end = a_gap->t_window.t_end;
 
-    int update_every = st->update_every;
-    unsigned int block_size_in_bytes = RRDENG_BLOCK_SIZE;
-    unsigned int sample_in_bytes = (unsigned int) sizeof(storage_number);
+//     int update_every = st->update_every;
+//     unsigned int block_size_in_bytes = RRDENG_BLOCK_SIZE;
+//     unsigned int sample_in_bytes = (unsigned int) sizeof(storage_number);
 
-    unsigned int num_of_samples_in_memory = block_size_in_bytes/sample_in_bytes;
-    unsigned int residual_num_of_samples_in_memory = block_size_in_bytes % sample_in_bytes;
+//     unsigned int num_of_samples_in_memory = block_size_in_bytes/sample_in_bytes;
+//     unsigned int residual_num_of_samples_in_memory = block_size_in_bytes % sample_in_bytes;
 
-    unsigned int num_of_samples_in_time = (t_delta_end - (t_delta_first + update_every))/update_every;
-    unsigned int residual_num_of_samples_in_time = (t_delta_end - (t_delta_first + update_every))  % update_every;
-
-    storage_number rrddim_sample;
-    BUFFER *rdata = buffer_create(RRDENG_BLOCK_SIZE);
-    // cbuffer_new(RRDENG_BLOCK_SIZE/4, RRDENG_BLOCK_SIZE);
-    buffer_reset(rdata);
-    unsigned sent_bytes = 0;
-    unsigned int sent_block_count = 0;
-}
+//     unsigned int num_of_samples_in_time = (t_delta_end - (t_delta_first + update_every))/update_every;
+//     unsigned int residual_num_of_samples_in_time = (t_delta_end - (t_delta_first + update_every))  % update_every;
+    
+//     storage_number rrddim_sample;
+//     BUFFER *rdata = buffer_create(RRDENG_BLOCK_SIZE);
+//     // cbuffer_new(RRDENG_BLOCK_SIZE/4, RRDENG_BLOCK_SIZE);
+//     buffer_reset(rdata);
+//     unsigned sent_bytes = 0;
+//     unsigned int sent_block_count = 0;
+    
+//     UNUSED(sent_block_count);
+//     UNUSED(sent_bytes);
+//     UNUSED(rrddim_sample);
+//     UNUSED(host);
+// }
 
 
 // Replication FSM logic functions
@@ -1845,16 +1944,28 @@ void rrdset_dump_debug_state(RRDSET *st) {
 #endif
 }
 
-void print_collected_metric_past_data(RRDIM_PAST_DATA *past_data){
+void print_collected_metric_past_data(RRDIM_PAST_DATA *past_data, REPLICATION_STATE *rep_state){
+
+    RRDSET *st = rrdset_find_byname(rep_state->host, past_data->rrdset_id);
+    if(unlikely(!st)) {
+        error("Cannot find chart with name_id '%s' on host '%s'.", past_data->rrdset_id, rep_state->host->hostname);
+        return;
+    }
+    past_data->rd = rrddim_find(st, past_data->rrddim_id);
+    if(unlikely(!past_data->rd)) {
+        error("Cannot find dimension with id '%s' in chart '%s' on host '%s'.", past_data->rrddim_id, past_data->rrdset_id, rep_state->host->hostname);
+        return;
+    }
+
     RRDDIM *rd = past_data->rd;
     time_t ts = past_data->start_time  / USEC_PER_SEC;
     time_t te = past_data->end_time  / USEC_PER_SEC;
     storage_number *page = (storage_number *)past_data->page;
-    uint32_t len = past_data->page_length / RRDENG_BLOCK_SIZE;
+    uint32_t len = past_data->page_length / sizeof(storage_number);
     
     info("%s: Past Samples(%d) [%ld, %ld] for dimension %s\n", REPLICATION_MSG, len, ts, te, rd->id);
     time_t t = ts;
-    for(int i=0; i < (len + (uint32_t) sizeof(storage_number)) ; i+=sizeof(storage_number)){
+    for(uint32_t i=0; i < len ; i++){
         info("T: %ld, V: "STORAGE_NUMBER_FORMAT" \n", t, page[i]);
         t += rd->update_every;
     }
