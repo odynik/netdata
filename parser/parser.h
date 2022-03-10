@@ -42,8 +42,8 @@ typedef struct pluginsd_action {
     //Replication functions (Parameters will be redefined)
     PARSER_RC (*rep_action)(void *user, REP_ARG command);
     PARSER_RC (*gap_action)(void *user, GAP rx_gap);
-    PARSER_RC (*rdata_action)(void *user, GAP meta_rx_rdata, int block_id);
-    PARSER_RC (*fill_action)(void *user);
+    PARSER_RC (*rdata_action)(void *user, GAP meta_rx_rdata, int block_id, char *chart_id, char *dim_id);
+    PARSER_RC (*fill_action)(void *user, time_t timestamp, storage_number value);
     PARSER_RC (*fill_end_action)(void *user, int block_id);
 } PLUGINSD_ACTION;
 

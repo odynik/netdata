@@ -785,7 +785,7 @@ PARSER_RC pluginsd_gap_action(void *user, GAP rx_gap)
     return PARSER_RC_OK;
 }
 
-PARSER_RC pluginsd_rdata_action(void *user, GAP meta_rx_rdata, int block_id)
+PARSER_RC pluginsd_rdata_action(void *user, GAP meta_rx_rdata, int block_id, char *chart_id, char *dim_id)
 {
     REPLICATION_STATE *rep_state = ((PARSER_USER_OBJECT *)user)->opaque;
 
@@ -800,20 +800,23 @@ PARSER_RC pluginsd_rdata_action(void *user, GAP meta_rx_rdata, int block_id)
         char gap_uuid_str[UUID_STR_LEN];
         uuid_unparse(meta_rx_rdata.gap_uuid, gap_uuid_str);
         info("%s: Receiving RDATA block id#%d for gap(%s): %s\n", REPLICATION_MSG, block_id, meta_rx_rdata.status,gap_uuid_str);
+        replication_collect_past_metric_init(rep_state, chart_id, dim_id);
     }
 
     //Create a page to receive the metrics
     return PARSER_RC_OK;
 }
 
-PARSER_RC pluginsd_fill_action(void *user)
+PARSER_RC pluginsd_fill_action(void *user, time_t timestamp, storage_number value)
 {
-    UNUSED(user);
+    REPLICATION_STATE *rep_state = ((PARSER_USER_OBJECT *)user)->opaque;
     info("%s: FILL command - pluginsd_fill_action\n", REPLICATION_MSG);
     //rrddim_find
     //call a similar void rrdeng_store_metric_next(RRDDIM *rd, usec_t point_in_time, storage_number number)
     //function to save the fill value in the page
     //collect_replication_gap_data(rd, timestamp, value);
+    replication_collect_past_metric(rep_state, timestamp, value);
+
     return PARSER_RC_OK;
 }
 
@@ -824,6 +827,7 @@ PARSER_RC pluginsd_fill_end_action(void *user, int block_id)
     // Send REP ACK command
     send_message(rep_state, "REP 4\n");
     info("%s: REP ACK command is sent after block id [%d]!\n", REPLICATION_MSG, block_id);
+    replication_collect_past_metric_done(rep_state);
 
     // Save the data in dbengine
     return PARSER_RC_OK;
@@ -906,7 +910,7 @@ PARSER_RC pluginsd_rdata(char **words, void *user, PLUGINSD_ACTION  *plugins_act
 
     //Call RDATA function with parameters    
     if (plugins_action->rdata_action) {
-        return plugins_action->rdata_action((PARSER_USER_OBJECT *) user, meta_rx_rdata, block_id);
+        return plugins_action->rdata_action((PARSER_USER_OBJECT *) user, meta_rx_rdata, block_id, chart_id, dim_id);
     }    
 
     return PARSER_RC_OK;
@@ -932,7 +936,7 @@ PARSER_RC pluginsd_fill(char **words, void *user, PLUGINSD_ACTION  *plugins_acti
     info("%s: FILL %s.%s %ld %d", REPLICATION_MSG, chart_id, dim_id, timestamp, value);
     //Call the replication function to save the parameters.
     if (plugins_action->fill_action) {
-        return plugins_action->fill_action((PARSER_USER_OBJECT *) user);
+        return plugins_action->fill_action((PARSER_USER_OBJECT *) user, timestamp, value);
     }
 
     return PARSER_RC_OK;
