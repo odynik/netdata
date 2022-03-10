@@ -1020,3 +1020,62 @@ void rrdeng_prepare_exit(struct rrdengine_instance *ctx)
     //metalog_prepare_exit(ctx->metalog_ctx);
 }
 
+void rrdeng_store_past_metric_init(RRDIM_PAST_DATA *dim_past_data, REPLICATION_STATE *rep_state){
+
+    RRDSET *st = rrdset_find_byname(rep_state->host, dim_past_data->rrdset_id);
+    if(unlikely(!st)) {
+        error("%s: Abort Replication - Cannot find chart with name_id '%s' on host '%s'.", REPLICATION_MSG, dim_past_data->rrdset_id, rep_state->host->hostname);
+        return;
+    }
+    dim_past_data->rd = rrddim_find(st, dim_past_data->rrddim_id);
+    if(unlikely(!dim_past_data->rd)) {
+        error("%s: Abort Replication - Cannot find dimension with id '%s' in chart '%s' on host '%s'.", REPLICATION_MSG, dim_past_data->rrddim_id, dim_past_data->rrdset_id, rep_state->host->hostname);
+        return;
+    }
+
+    // Use names to separate the stream/replication handles/pages
+    RRDDIM *rd = dim_past_data->rd;
+    
+    // STORE METRIC NEXT sample code
+    // struct rrdeng_collect_handle *stream_handle;
+    // struct rrdeng_collect_handle *rep_handle;
+    // struct rrdengine_instance *ctx;
+    // struct pg_cache_page_index *page_index;    
+    
+    // ctx = rd->rrdset->rrdhost->rrdeng_ctx;
+    // stream_handle = &rd->state->handle.rrdeng;
+    // stream_handle->ctx = ctx;
+
+    // stream_handle->descr = NULL;
+    // stream_handle->prev_descr = NULL;
+    // stream_handle->unaligned_page = 0;
+
+    // page_index = rd->state->page_index;
+    // uv_rwlock_wrlock(&page_index->lock);
+    // ++page_index->writers;
+    // uv_rwlock_wrunlock(&page_index->lock);
+
+    // rep_handle->page_correlation_id = rrd_atomic_fetch_add(&pg_cache->committed_page_index.latest_corr_id, 1);
+    // rrdeng code
+    dim_past_data->ctx = get_rrdeng_ctx_from_host(rd->rrdset->rrdhost);
+    // create a dbengine page
+    void *page = rrdeng_create_page(dim_past_data->ctx, &rd->state->page_index->id, &dim_past_data->descr);
+    // copy the values in this page
+    memcpy(page, dim_past_data->page, (size_t)dim_past_data->page_length);
+    pg_cache_atomic_set_pg_info(dim_past_data->descr,dim_past_data->end_time, dim_past_data->page_length);
+}
+
+void rrdeng_store_past_metric_finalize(RRDIM_PAST_DATA *dim_past_data, REPLICATION_STATE *rep_state){
+    UNUSED(dim_past_data);
+    UNUSED(rep_state);
+    // destroy the past data structs
+    // cleanup the handles + pages
+}
+
+void rrdeng_flush_past_metrics(RRDIM_PAST_DATA *dim_past_data, REPLICATION_STATE *rep_state){
+    UNUSED(dim_past_data);
+    UNUSED(rep_state);
+    // correlation id
+    // insert
+    // commit  
+}

@@ -767,9 +767,9 @@ PARSER_RC pluginsd_gap_action(void *user, GAP rx_gap)
     REPLICATION_STATE *rep_state = ((PARSER_USER_OBJECT *)user)->opaque;
     
     //Check if there is GAP and send GAP command, otherwise send REP OFF command
-    char *rdata;
-    size_t len;
     sender_gap_filling(rep_state, &rx_gap);
+    // char *rdata;
+    // size_t len;
     // for(int i = 1; i < 10; i++){
     //     replication_rdata_to_str(&rx_gap, &rdata, &len, i);
     //     // sprintf (rdata, "RDATA GAPUUID RDATADUMMY_TS RDATADUMMY_TE %d\n", i);
@@ -946,6 +946,8 @@ PARSER_RC pluginsd_fill_end(char **words, void *user, PLUGINSD_ACTION  *plugins_
     RRDHOST *host = ((PARSER_USER_OBJECT *)user)->host;
     int numofpoints = strtol(words[1], NULL, 10);
     int block_id = strtol(words[2], NULL, 10);
+
+    UNUSED(numofpoints);
 
     if (unlikely(errno == ERANGE)) {
         error("%s: FILLEND parameters parsing failed for host '%s'. Disabling it.", REPLICATION_MSG, host->hostname);
