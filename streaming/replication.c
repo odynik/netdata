@@ -528,7 +528,7 @@ void replication_sender_thread_spawn(RRDHOST *host) {
 void send_message(struct replication_state *replication, char* message){
     info("%s: Sending... [%s]", REPLICATION_MSG, message);
     replication_start(replication);
-    buffer_sprintf(replication->build, message);
+    buffer_sprintf(replication->build,"%s", message);
     replication_commit(replication);
     replication_attempt_to_send(replication);
 }
@@ -1402,14 +1402,14 @@ void gaps_init(RRDHOST **a_host)
     }
     RRDHOST *host = *a_host;
     info("%s: LibQueue Initialization", REPLICATION_MSG);
-    host->gaps_timeline->gaps = queue_new(REPLICATION_RX_CMD_Q_MAX_SIZE);
+    host->gaps_timeline->gaps = queue_new(REPLICATION_RX_CMD_Q_MAX_SIZE, false);
     if (!host->gaps_timeline->gaps) {
         error("%s Gaps timeline queue could not be created", REPLICATION_MSG);
         return;
         //Handle this case. Probably shutdown deactivate replication.
     }
     host->gaps_timeline->gap_data = (GAP *)callocz(1, sizeof(GAP));
-    // load from agent metdata
+    // load from agent metadata
     if (!load_gap(host)) {
         infoerr("%s: GAPs struct in SQLITE is either empty or failed", REPLICATION_MSG);
         return;

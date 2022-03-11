@@ -22,9 +22,10 @@ struct queue_s{
 	node rear;
 	int max;
 	int count;
+	int blocked;
 };
 
-queue_t queue_new(int size);
+queue_t queue_new(int size, int blocked);
 void queue_free(queue_t q);
 int queue_push(queue_t q, void *data);
 void *queue_pop(queue_t q);				
