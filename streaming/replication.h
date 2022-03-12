@@ -14,7 +14,7 @@
 typedef struct gap GAP;
 typedef struct time_window TIME_WINDOW;
 typedef struct gaps_queue GAPS;
-typedef struct rrdim_past_data RRDIM_PAST_DATA;
+typedef struct rrddim_past_data RRDDIM_PAST_DATA;
 
 // Replication structs
 typedef struct replication_state {
@@ -59,7 +59,7 @@ typedef struct replication_state {
     char *program_version;
     unsigned int shutdown;    // Set it to 1 to tell the thread to exit
     unsigned int exited;      // Indicates that the thread has exited  (NOT A BITFIELD!)
-    RRDIM_PAST_DATA *dim_past_data;
+    RRDDIM_PAST_DATA *dim_past_data;
 } REPLICATION_STATE;
 
 // GAP structs
@@ -83,7 +83,7 @@ typedef struct gaps_queue {
     time_t beginoftime; // this should be the timestamp of the first sample in db OR the agents last_timestamp - uptime?
 } GAPS;
 
-typedef struct rrdim_past_data {
+typedef struct rrddim_past_data {
     char* rrdset_id;
     char* rrddim_id;
     RRDDIM *rd;
@@ -93,15 +93,19 @@ typedef struct rrdim_past_data {
     usec_t end_time;
     struct rrdeng_page_descr* descr;
     struct rrdengine_instance *ctx;
-} RRDIM_PAST_DATA;
+    unsigned long page_correlation_id;
+} RRDDIM_PAST_DATA;
 
 void replication_gap_to_str(GAP *a_gap, char **gap_str, size_t *len);
 void replication_rdata_to_str(GAP *a_gap, char **rdata_str, size_t *len, int block_id);
-void print_collected_metric_past_data(RRDIM_PAST_DATA *past_data, REPLICATION_STATE *rep_state);
+void print_collected_metric_past_data(RRDDIM_PAST_DATA *past_data, REPLICATION_STATE *rep_state);
 void replication_collect_past_metric_init(REPLICATION_STATE *rep_state, char *rrdset_id, char *rrddim_id);
 void replication_collect_past_metric(REPLICATION_STATE *rep_state, time_t timestamp, storage_number number);
 void replication_collect_past_metric_done(REPLICATION_STATE *rep_state);
+void flush_collected_metric_past_data(RRDDIM_PAST_DATA *dim_past_data, REPLICATION_STATE *rep_state);
 
-// extern void rrdeng_store_past_metric_init(RRDIM_PAST_DATA *dim_past_data, REPLICATION_STATE *rep_state);
-// extern void rrdeng_store_past_metric_finalize(RRDIM_PAST_DATA *dim_past_data, REPLICATION_STATE *rep_state);
-// extern void rrdeng_flush_past_metrics(RRDIM_PAST_DATA *dim_past_data, REPLICATION_STATE *rep_state);
+extern void test_rrdeng_store_past_metric_page(RRDHOST *host, char *rrdset_id, char *rrddim_id);
+extern int rrdeng_store_past_metrics_page_init(RRDDIM_PAST_DATA *dim_past_data, REPLICATION_STATE *rep_state);
+extern void rrdeng_store_past_metrics_page(RRDDIM_PAST_DATA *dim_past_data, REPLICATION_STATE *rep_state);
+extern void rrdeng_flush_past_metrics_page(RRDDIM_PAST_DATA *dim_past_data, REPLICATION_STATE *rep_state);
+extern void rrdeng_store_past_metrics_page_finalize(RRDDIM_PAST_DATA *dim_past_data, REPLICATION_STATE *rep_state);

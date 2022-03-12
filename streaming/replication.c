@@ -28,7 +28,7 @@ static void replication_state_init(REPLICATION_STATE *state)
 #ifdef ENABLE_HTTPS
     state->ssl = (struct netdata_ssl *)callocz(1, sizeof(struct netdata_ssl));
 #endif
-    state->dim_past_data = callocz(1,sizeof(RRDIM_PAST_DATA));
+    state->dim_past_data = callocz(1,sizeof(RRDDIM_PAST_DATA));
     state->dim_past_data->page = callocz(RRDENG_BLOCK_SIZE, sizeof(char));
     netdata_mutex_init(&state->mutex);
 }
@@ -613,6 +613,9 @@ void *replication_receiver_thread(void *ptr){
     replication_gap_to_str(the_gap, &rep_msg_cmd, &len);
     UNUSED(rep_state);
     UNUSED(rrdpush_replication_enabled);
+    // info("%s TEST:<<<<<<<<<<<<<<TESTING>>>>>>>>>>>>>>>>>>", REPLICATION_MSG);
+    // test_rrdeng_store_past_metric_page(localhost, "system.cpu", "guest");
+    // info("%s TEST:<<<<<<<<<<<<<<END TESTING>>>>>>>>>>>>>>>>>>", REPLICATION_MSG);
 
     // Add here the receiver thread logic
     // Need a host
@@ -1024,7 +1027,7 @@ void replication_sender_thread_stop(RRDHOST *host) {
 void replication_collect_past_metric_init(REPLICATION_STATE *rep_state, char *rrdset_id, char *rrddim_id) {
 
     info("%s: Collect past metric INIT: %s %s\n", REPLICATION_MSG, rrdset_id, rrddim_id);
-    RRDIM_PAST_DATA *dim_past_data = rep_state->dim_past_data;
+    RRDDIM_PAST_DATA *dim_past_data = rep_state->dim_past_data;
     if(dim_past_data->page){
         memset(dim_past_data->page, 0, RRDENG_BLOCK_SIZE);
         dim_past_data->page_length = 0;
@@ -1061,112 +1064,18 @@ void replication_collect_past_metric(REPLICATION_STATE *rep_state, time_t timest
 
 void replication_collect_past_metric_done(REPLICATION_STATE *rep_state) {
     info("%s: Collect past metrics DONE: \n", REPLICATION_MSG);
-    RRDIM_PAST_DATA *dim_past_data = rep_state->dim_past_data;
+    RRDDIM_PAST_DATA *dim_past_data = rep_state->dim_past_data;
     print_collected_metric_past_data(dim_past_data, rep_state);
+    flush_collected_metric_past_data(dim_past_data, rep_state);
 }
 
-// void rrdeng_store_past_metric_init(RRDIM_PAST_DATA *dim_past_data, REPLICATION_STATE *rep_state){
-
-//     RRDSET *st = rrdset_find_byname(rep_state->host, dim_past_data->rrdset_id);
-//     if(unlikely(!st)) {
-//         error("%s: Abort Replication - Cannot find chart with name_id '%s' on host '%s'.", REPLICATION_MSG, dim_past_data->rrdset_id, rep_state->host->hostname);
-//         return;
-//     }
-//     dim_past_data->rd = rrddim_find(st, dim_past_data->rrddim_id);
-//     if(unlikely(!dim_past_data->rd)) {
-//         error("%s: Abort Replication - Cannot find dimension with id '%s' in chart '%s' on host '%s'.", REPLICATION_MSG, dim_past_data->rrddim_id, dim_past_data->rrdset_id, rep_state->host->hostname);
-//         return;
-//     }
-
-//     // Use names to separate the stream/replication handles/pages
-//     RRDDIM *rd = dim_past_data->rd;
-    
-//     // STORE METRIC NEXT sample code
-//     // struct rrdeng_collect_handle *stream_handle;
-//     struct rrdeng_collect_handle *rep_handle;
-//     // struct rrdengine_instance *ctx;
-//     // struct pg_cache_page_index *page_index;    
-    
-//     // ctx = rd->rrdset->rrdhost->rrdeng_ctx;
-//     // stream_handle = &rd->state->handle.rrdeng;
-//     // stream_handle->ctx = ctx;
-
-//     // stream_handle->descr = NULL;
-//     // stream_handle->prev_descr = NULL;
-//     // stream_handle->unaligned_page = 0;
-
-//     // page_index = rd->state->page_index;
-//     // uv_rwlock_wrlock(&page_index->lock);
-//     // ++page_index->writers;
-//     // uv_rwlock_wrunlock(&page_index->lock);
-
-//     // rep_handle->page_correlation_id = rrd_atomic_fetch_add(&pg_cache->committed_page_index.latest_corr_id, 1);
-//     // rrdeng code
-//     dim_past_data->ctx = rd->rrdset->rrdhost->rrdeng_ctx;
-//     // create a dbengine page
-//     void *page = rrdeng_create_page(dim_past_data->ctx, &rd->state->page_index->id, &dim_past_data->descr);
-//     // copy the values in this page
-//     memcpy(page, dim_past_data->page, (size_t)dim_past_data->page_length);
-//     pg_cache_atomic_set_pg_info(dim_past_data->descr,dim_past_data->end_time, dim_past_data->page_length);
-// }
-
-
-// void rrdeng_store_past_metric_finalize(){
-//     // destroy the past data structs
-//     // cleanup the handles + pages
-// }
-
-// void rrdeng_flush_past_metrics(){
-//     struct rrdeng_collect_handle *handle;
-//     struct rrdengine_instance *ctx;
-//     struct rrdeng_page_descr *descr;
-
-//     handle = &rd->state->handle.rrdeng;
-//     ctx = handle->ctx;
-//     if (unlikely(!ctx))
-//         return;
-//     descr = handle->descr;
-//     if (unlikely(NULL == descr)) {
-//         return;
-//     }
-//     if (likely(descr->page_length)) {
-//         int page_is_empty;
-
-//         rrd_stat_atomic_add(&ctx->stats.metric_API_producers, -1);
-
-//         if (handle->prev_descr) {
-//             /* unpin old second page */
-//             pg_cache_put(ctx, handle->prev_descr);
-//         }
-//         page_is_empty = page_has_only_empty_metrics(descr);
-//         if (page_is_empty) {
-//             debug(D_RRDENGINE, "Page has empty metrics only, deleting:");
-//             if (unlikely(debug_flags & D_RRDENGINE))
-//                 print_page_cache_descr(descr);
-//             pg_cache_put(ctx, descr);
-//             pg_cache_punch_hole(ctx, descr, 1, 0, NULL);
-//             handle->prev_descr = NULL;
-//         } else {
-//             /*
-//              * Disable pinning for now as it leads to deadlocks. When a collector stops collecting the extra pinned page
-//              * eventually gets rotated but it cannot be destroyed due to the extra reference.
-//              */
-//             /* added 1 extra reference to keep 2 dirty pages pinned per metric, expected refcnt = 2 */
-// /*          rrdeng_page_descr_mutex_lock(ctx, descr);
-//             ret = pg_cache_try_get_unsafe(descr, 0);
-//             rrdeng_page_descr_mutex_unlock(ctx, descr);
-//             fatal_assert(1 == ret);*/
-
-//             rrdeng_commit_page(ctx, descr, handle->page_correlation_id);
-//             /* handle->prev_descr = descr;*/
-//         }
-//     } else {
-//         freez(descr->pg_cache_descr->page);
-//         rrdeng_destroy_pg_cache_descr(ctx, descr->pg_cache_descr);
-//         freez(descr);
-//     }
-//     handle->descr = NULL;
-// }
+void flush_collected_metric_past_data(RRDDIM_PAST_DATA *dim_past_data, REPLICATION_STATE *rep_state){
+    if(rrdeng_store_past_metrics_page_init(dim_past_data, rep_state))
+        return;
+    rrdeng_store_past_metrics_page(dim_past_data, rep_state);
+    rrdeng_flush_past_metrics_page(dim_past_data, rep_state);
+    rrdeng_store_past_metrics_page_finalize(dim_past_data, rep_state);    
+};
 
 // Store gap in agent metdata DB(sqlite)
 int save_gap(GAP *a_gap)
@@ -1944,7 +1853,7 @@ void rrdset_dump_debug_state(RRDSET *st) {
 #endif
 }
 
-void print_collected_metric_past_data(RRDIM_PAST_DATA *past_data, REPLICATION_STATE *rep_state){
+void print_collected_metric_past_data(RRDDIM_PAST_DATA *past_data, REPLICATION_STATE *rep_state){
 
     RRDSET *st = rrdset_find_byname(rep_state->host, past_data->rrdset_id);
     if(unlikely(!st)) {
