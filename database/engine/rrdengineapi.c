@@ -1154,7 +1154,7 @@ void rrdeng_flush_past_metrics_page(RRDDIM_PAST_DATA *dim_past_data, REPLICATION
         freez(descr);
     }
     info("%s REP: Commit page in dbengine....END", REPLICATION_MSG);
-    info("%s REP: OBSERVE dimension (%s) in time_interval[%ld, %ld] #samples(%u)....END", REPLICATION_MSG, rd->id, (time_t)(descr->start_time/USEC_PER_SEC), (time_t)(descr->end_time/USEC_PER_SEC), (descr->page_length/sizeof(storage_number)));
+    info("%s REP: OBSERVE dimension (%s.%s) in time_interval[%ld, %ld] #samples(%lu)....END", REPLICATION_MSG, rd->rrdset->id, rd->id, (time_t)(descr->start_time/USEC_PER_SEC), (time_t)(descr->end_time/USEC_PER_SEC), (descr->page_length/sizeof(storage_number)));
 }
 
 void rrdeng_store_past_metrics_page_finalize(RRDDIM_PAST_DATA *dim_past_data, REPLICATION_STATE *rep_state){
