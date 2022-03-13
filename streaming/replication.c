@@ -1208,6 +1208,21 @@ int load_gap(RRDHOST *host)
         return SQLITE_ERROR;
 
     rc = sql_load_host_gap(host);
+    
+    //Just for test purpose, should be deleted before merging to the master branch 
+    /*
+    for (; ; )
+    {
+        host->gaps_timeline->gap_data = queue_pop(host->gaps_timeline->gaps);
+        if (host->gaps_timeline->gap_data)
+        {
+            print_replication_gap(host->gaps_timeline->gap_data);
+        }else
+        {
+            break;
+        }
+    }
+    */
     if(rc) {
         info("%s: Load GAP from metadata DB in host %s", REPLICATION_MSG, host->hostname);
         print_replication_gap(host->gaps_timeline->gap_data);
@@ -1414,11 +1429,14 @@ void gaps_init(RRDHOST **a_host)
         infoerr("%s: GAPs struct in SQLITE is either empty or failed", REPLICATION_MSG);
         return;
     }
+    //print_replication_gap(host->gaps_timeline->gap_data);
+    /*
     if (!queue_push(host->gaps_timeline->gaps, (void *)host->gaps_timeline->gap_data)) {
         error("%s: Cannot insert the loaded GAP in the queue!", REPLICATION_MSG);
         print_replication_gap(host->gaps_timeline->gap_data);
         return;
     }
+    */
     info("%s: GAPs STRUCT Initialization/Loading", REPLICATION_MSG);
     return;
 }
