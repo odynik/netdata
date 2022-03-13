@@ -756,9 +756,9 @@ PARSER_RC pluginsd_rep_action(void *user, REP_ARG command)
         info("%s: REP ACK command is received!\n", REPLICATION_MSG);
         //send_message((REPLICATION_STATE *)user->opaque, "REP ON\n");
         //Call REP ACK function
-        // return PARSER_RC_OK;
+        return PARSER_RC_OK;
         // For now simply return an error to exit
-        return PARSER_RC_ERROR;        
+        // return PARSER_RC_ERROR;        
       default:
         info("%s: REP %d command is unknown!\n", REPLICATION_MSG, command);
     }
