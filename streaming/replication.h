@@ -103,6 +103,9 @@ void replication_collect_past_metric_init(REPLICATION_STATE *rep_state, char *rr
 void replication_collect_past_metric(REPLICATION_STATE *rep_state, time_t timestamp, storage_number number);
 void replication_collect_past_metric_done(REPLICATION_STATE *rep_state);
 void flush_collected_metric_past_data(RRDDIM_PAST_DATA *dim_past_data, REPLICATION_STATE *rep_state);
+int save_gap(GAP *a_gap);
+int remove_gap(GAP *a_gap);
+int load_gap(RRDHOST *host);
 
 extern void test_rrdeng_store_past_metric_page(RRDHOST *host, char *rrdset_id, char *rrddim_id);
 extern int rrdeng_store_past_metrics_page_init(RRDDIM_PAST_DATA *dim_past_data, REPLICATION_STATE *rep_state);
