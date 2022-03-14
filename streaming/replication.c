@@ -437,9 +437,12 @@ void replication_attempt_to_send(struct replication_state *replication) {
         debug(D_REPLICATION, "%s: Host %s [send to %s]: Sent %zd bytes", REPLICATION_MSG, replication->host->hostname, replication->connected_to, ret);
         replication->last_sent_t = now_monotonic_sec();
     }
-    else if (ret == -1 && (errno == EAGAIN || errno == EINTR || errno == EWOULDBLOCK))
+    else if (ret == -1 && (errno == EAGAIN || errno == EINTR || errno == EWOULDBLOCK)) {
         debug(D_REPLICATION, "%s: Host %s [send to %s]: unavailable after polling POLLOUT", REPLICATION_MSG, replication->host->hostname,
               replication->connected_to);
+              error("%s: Host %s [send to %s]: unavailable after polling POLLOUT", REPLICATION_MSG, replication->host->hostname,
+              replication->connected_to);
+    }
     else if (ret == -1) {
         debug(D_REPLICATION, "%s: Send failed - closing socket...", REPLICATION_MSG);
         error("%s: Host %s [send to %s]: failed to send metrics - closing connection - we have sent %zu bytes on this connection.", REPLICATION_MSG,  replication->host->hostname, replication->connected_to, replication->sent_bytes_on_this_connection);
