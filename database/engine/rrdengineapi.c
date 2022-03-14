@@ -1092,7 +1092,6 @@ void rrdeng_store_past_metrics_page(RRDDIM_PAST_DATA *dim_past_data, REPLICATION
     info("%s REP: Page correlation ID and page info updates....", REPLICATION_MSG);
     // prepare the pg descr to insert and commit the dbengine page
     dim_past_data->page_correlation_id = rrd_atomic_fetch_add(&pg_cache->committed_page_index.latest_corr_id, 1);
-    info("%s REP: ~~~~~~~~~~~~", REPLICATION_MSG);    
     pg_cache_atomic_set_pg_info(descr, descr->end_time, descr->page_length);
     info("%s REP: Page correlation ID and page info updates....END", REPLICATION_MSG);
 }

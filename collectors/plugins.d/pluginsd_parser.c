@@ -733,7 +733,8 @@ PARSER_RC pluginsd_rep_action(void *user, REP_ARG command)
         info("%s: REP OFF command is received!\n", REPLICATION_MSG);
         // Shutdown the replication thread.
         // For now simply return an error to exit
-        return PARSER_RC_ERROR;
+        remove_gap(host->gaps_timeline->gap_data);
+        return PARSER_RC_STOP;
       case REP_ON:
         info("%s: REP ON command is received!\n", REPLICATION_MSG);
         GAP *the_gap = host->gaps_timeline->gap_data;
@@ -777,7 +778,8 @@ PARSER_RC pluginsd_gap_action(void *user, GAP rx_gap)
     //     sleep(1);
     // }
 
-    return PARSER_RC_OK;
+    // return PARSER_RC_OK;
+    return PARSER_RC_STOP;
 }
 
 PARSER_RC pluginsd_rdata_action(void *user, GAP meta_rx_rdata, int block_id, char *chart_id, char *dim_id)
@@ -788,7 +790,7 @@ PARSER_RC pluginsd_rdata_action(void *user, GAP meta_rx_rdata, int block_id, cha
     if(!strcmp(meta_rx_rdata.status, "rx_complete")){
         // Send REP ACK command
         send_message(rep_state, "REP 4\n");
-        info("%s: REP ACK command is sent after block id [%d]!\n", REPLICATION_MSG, block_id);
+        info("%s: REP ACK and RDATA command is sent after block id [%d]!\n", REPLICATION_MSG, block_id);
     }
     else
     {
