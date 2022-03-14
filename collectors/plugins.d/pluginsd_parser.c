@@ -739,7 +739,7 @@ PARSER_RC pluginsd_rep_action(void *user, REP_ARG command)
         // Shutdown the replication thread.
         // For now simply return an error to exit
         remove_gap(host->gaps_timeline->gap_data);
-        return PARSER_RC_STOP;
+        return PARSER_RC_ERROR;
       case REP_ON:
         info("%s: REP ON command is received!\n", REPLICATION_MSG);
         GAP *the_gap = host->gaps_timeline->gap_data;
@@ -774,6 +774,7 @@ PARSER_RC pluginsd_gap_action(void *user, GAP rx_gap)
     
     //Check if there is GAP and send GAP command, otherwise send REP OFF command
     sender_gap_filling(rep_state, &rx_gap);
+    info("%s: EXITING GAP command - All charts sent\n", REPLICATION_MSG);
     // char *rdata;
     // size_t len;
     // for(int i = 1; i < 10; i++){
@@ -784,7 +785,7 @@ PARSER_RC pluginsd_gap_action(void *user, GAP rx_gap)
     // }
 
     // return PARSER_RC_OK;
-    return PARSER_RC_STOP;
+    return PARSER_RC_ERROR;
 }
 
 PARSER_RC pluginsd_rdata_action(void *user, GAP meta_rx_rdata, int block_id, char *chart_id, char *dim_id)

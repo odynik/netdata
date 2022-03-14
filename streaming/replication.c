@@ -420,38 +420,64 @@ void replication_attempt_to_send(struct replication_state *replication) {
     size_t outstanding = cbuffer_next_unsafe(replication->buffer, &chunk);
     debug(D_REPLICATION, "%s: Sending data. Buffer r=%zu w=%zu s=%zu, next chunk=%zu", REPLICATION_MSG, cb->read, cb->write, cb->size, outstanding);
     ssize_t ret;
+    int send_retry = 0;
+    do {
 #ifdef ENABLE_HTTPS
-    SSL *conn = replication->ssl->conn ;
-    if(conn && !replication->ssl->flags) {
-        ret = SSL_write(conn, chunk, outstanding);
-    } else {
-        ret = send(replication->socket, chunk, outstanding, MSG_DONTWAIT);
-    }
+        SSL *conn = replication->ssl->conn;
+        if(conn && !replication->ssl->flags) {
+            ret = SSL_write(conn, chunk, outstanding);
+        } else {
+            ret = send(replication->socket, chunk, outstanding, MSG_DONTWAIT);
+        }
 #else
-    ret = send(replication->socket, chunk, outstanding, MSG_DONTWAIT);
+        ret = send(replication->socket, chunk, outstanding, MSG_DONTWAIT);
 #endif
-    if (likely(ret > 0)) {
-        cbuffer_remove_unsafe(replication->buffer, ret);
-        replication->sent_bytes_on_this_connection += ret;
-        replication->sent_bytes += ret;
-        debug(D_REPLICATION, "%s: Host %s [send to %s]: Sent %zd bytes", REPLICATION_MSG, replication->host->hostname, replication->connected_to, ret);
-        replication->last_sent_t = now_monotonic_sec();
-    }
-    else if (ret == -1 && (errno == EAGAIN || errno == EINTR || errno == EWOULDBLOCK)) {
-        debug(D_REPLICATION, "%s: Host %s [send to %s]: unavailable after polling POLLOUT", REPLICATION_MSG, replication->host->hostname,
-              replication->connected_to);
-              error("%s: Host %s [send to %s]: unavailable after polling POLLOUT", REPLICATION_MSG, replication->host->hostname,
-              replication->connected_to);
-    }
-    else if (ret == -1) {
-        debug(D_REPLICATION, "%s: Send failed - closing socket...", REPLICATION_MSG);
-        error("%s: Host %s [send to %s]: failed to send metrics - closing connection - we have sent %zu bytes on this connection.", REPLICATION_MSG,  replication->host->hostname, replication->connected_to, replication->sent_bytes_on_this_connection);
-        replication_thread_close_socket(replication);
-    }
-    else {
-        debug(D_REPLICATION, "%s: send() returned 0 -> no error but no transmission", REPLICATION_MSG);
-    }
-
+        if (likely(ret > 0)) {
+            cbuffer_remove_unsafe(replication->buffer, ret);
+            replication->sent_bytes_on_this_connection += ret;
+            replication->sent_bytes += ret;
+            debug(
+                D_REPLICATION,
+                "%s: Host %s [send to %s]: Sent %zd bytes",
+                REPLICATION_MSG,
+                replication->host->hostname,
+                replication->connected_to,
+                ret);
+            replication->last_sent_t = now_monotonic_sec();
+            send_retry = 0;
+            break;
+        } else if (ret == -1 && (errno == EAGAIN || errno == EINTR || errno == EWOULDBLOCK)) {
+            debug(
+                D_REPLICATION,
+                "%s: Host %s [send to %s]: unavailable after polling POLLOUT",
+                REPLICATION_MSG,
+                replication->host->hostname,
+                replication->connected_to);
+                sleep(1);
+                send_retry++;
+                error(
+                    "%s: Host %s [send to %s]: unavailable after polling POLLOUT (retry #%d)",
+                    REPLICATION_MSG,
+                    replication->host->hostname,
+                    replication->connected_to, send_retry);                
+                continue;
+        } else if (ret == -1) {
+            debug(D_REPLICATION, "%s: Send failed - closing socket...", REPLICATION_MSG);
+            error(
+                "%s: Host %s [send to %s]: failed to send metrics - closing connection - we have sent %zu bytes on this connection.",
+                REPLICATION_MSG,
+                replication->host->hostname,
+                replication->connected_to,
+                replication->sent_bytes_on_this_connection);
+            replication_thread_close_socket(replication);
+            send_retry = 0;
+            break;
+        } else {
+            debug(D_REPLICATION, "%s: send() returned 0 -> no error but no transmission", REPLICATION_MSG);
+            send_retry = 0;
+            break;
+        }
+    } while (send_retry);
     netdata_mutex_unlock(&replication->mutex);
     netdata_thread_enable_cancelability();
 }
@@ -496,6 +522,7 @@ void *replication_sender_thread(void *ptr) {
         else {
             send_message(s->replication, "REP 2\n");
             replication_parser(s->replication, NULL, s->replication->fp);
+            info("%s: EXITING PARSER", REPLICATION_MSG);
             break;
         }
     }
