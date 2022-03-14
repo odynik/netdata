@@ -822,8 +822,8 @@ PARSER_RC pluginsd_fill_end_action(void *user, int block_id)
     REPLICATION_STATE *rep_state = (REPLICATION_STATE *)((PARSER_USER_OBJECT *)user)->opaque;
     info("%s: FILLEND command - pluginsd_fill_end_action\n", REPLICATION_MSG);
     // Send REP ACK command
-    send_message(rep_state, "REP 4\n");
-    info("%s: REP ACK command is sent after block id [%d]!\n", REPLICATION_MSG, block_id);
+    // send_message(rep_state, "REP 4\n");
+    // info("%s: REP ACK command is sent after block id [%d]!\n", REPLICATION_MSG, block_id);
     replication_collect_past_metric_done(rep_state);
 
     // Save the data in dbengine
