@@ -674,6 +674,7 @@ void *replication_receiver_thread(void *ptr){
     size_t count = replication_parser(rpt->replication, &cd, fp);
 
     // On completion of replication - DISCONNECT - clean up the gaps
+    remove_gap(host->gaps_timeline->gap_data);
     // On incomplete replication - DISCONNECT - evaluate the gaps that need to be removed
     log_stream_connection(rpt->client_ip, rpt->client_port, rpt->key, rpt->host->machine_guid, rpt->hostname,
                           "DISCONNECTED");
