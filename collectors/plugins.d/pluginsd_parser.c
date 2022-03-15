@@ -733,7 +733,7 @@ PARSER_RC pluginsd_rep_action(void *user, REP_ARG command)
         info("%s: REP OFF command is received!\n", REPLICATION_MSG);
         // Shutdown the replication thread.
         // For now simply return an error to exit
-        remove_gap(host->gaps_timeline->gap_data);
+        ((PARSER_USER_OBJECT *)user)->enabled = 0;
         return PARSER_RC_ERROR;
       case REP_ON:
         info("%s: REP ON command is received!\n", REPLICATION_MSG);
@@ -780,6 +780,7 @@ PARSER_RC pluginsd_gap_action(void *user, GAP rx_gap)
     // }
 
     // return PARSER_RC_OK;
+    ((PARSER_USER_OBJECT *)user)->enabled = 0;
     return PARSER_RC_ERROR;
 }
 
