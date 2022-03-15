@@ -1,20 +1,20 @@
 #include "rrdpush.h"
 #include "collectors/plugins.d/pluginsd_parser.h"
-
-extern struct config stream_config;
-extern int netdata_use_ssl_on_stream;
-
+// SOS fix the header file to look nice and clean
+extern void rrdpush_encode_variable(stream_encoded_t *se, RRDHOST *host);
+extern void rrdpush_clean_encoded(stream_encoded_t *se);
 size_t replication_parser(struct replication_state *rpt, struct plugind *cd, FILE *fp);
 
 static void replication_receiver_thread_cleanup_callback(void *host);
 static void replication_sender_thread_cleanup_callback(void *ptr);
 static void print_replication_state(REPLICATION_STATE *state);
 static void print_replication_gap(GAP *a_gap);
-// static void replication_gap_to_str(GAP *a_gap, char **gap_str, size_t *len);
-void replication_send_clabels(REPLICATION_STATE *rep_state, RRDSET *st);
 static inline void replication_send_chart_definition_nolock(RRDSET *st);
+// static void replication_gap_to_str(GAP *a_gap, char **gap_str, size_t *len);
 
-// Thread Initialization
+/********************************
+* Thread Initialization functions
+*********************************/ 
 static void replication_state_init(REPLICATION_STATE *state)
 {
     info("%s: REPlication State Initilization", REPLICATION_MSG);
@@ -98,9 +98,10 @@ void replication_receiver_init(struct receiver_state **a_receiver, struct config
     print_replication_state(receiver->replication);
 }
 
-// Connection management & socket handling functions
+/**************************************************
+* Connection management & socket handling functions
+***************************************************/ 
 //Close the socket of the replication sender thread
-//Do we need seperating as sender and receiver ??
 static void replication_sender_thread_close_socket(RRDHOST *host) {
     host->sender->replication->connected = 0;
 
@@ -118,9 +119,6 @@ static void replication_thread_close_socket(REPLICATION_STATE *replication) {
         replication->socket = -1;
     }
 }
-
-extern void rrdpush_encode_variable(stream_encoded_t *se, RRDHOST *host);
-extern void rrdpush_clean_encoded(stream_encoded_t *se);
 
 // Connect to parent. The REPLICATE command over HTTP req triggers the receiver thread in parent.
 // TODO: revise the logic of the communication
@@ -492,31 +490,15 @@ void *replication_sender_thread(void *ptr) {
     unsigned int rrdpush_replication_enabled = s->replication->enabled;
     info("%s Replication sender thread is starting", REPLICATION_MSG);
 
-   /*
-    // convert the socket to a FILE *
-    FILE *fp = fdopen(s->replication->socket, "r");
-    if(!fp) {
-        log_stream_connection(s->replication->client_ip, s->replication->client_port, s->host->rrdpush_send_api_key, s->host->machine_guid, s->host->hostname, "SOCKET CONVERSION TO FD FAILED - SOCKET ERROR");
-        error("%s %s [receive from [%s]:%s]: failed to get a FILE for FD %d.", REPLICATION_MSG, s->host->hostname, s->replication->client_ip, s->replication->client_port, s->replication->socket);
-        close(s->replication->socket);
-        return 0;
-    }
-  */
-    // attempt to connect to parent
     // Read the config for sending in replication
-    // Add here the sender initialization logic of the thread.
     netdata_thread_cleanup_push(replication_sender_thread_cleanup_callback, s->host);
-    // Add here the thread loop
-    // break condition on netdata_exit, disabled replication (for runtime configuration/restart)
     for(;rrdpush_replication_enabled && !netdata_exit;)
     {
         // check for outstanding cancellation requests
         netdata_thread_testcancel();
-        
         // try to connect
         if((s->replication->not_connected_loops < 3) && !s->replication->connected) {
             replication_attempt_to_connect(s);
-            // Tmp solution to test the thread cleanup process
             s->replication->not_connected_loops++;            
         }
         else {
@@ -552,7 +534,7 @@ void replication_sender_thread_spawn(RRDHOST *host) {
     netdata_mutex_unlock(&host->sender->replication->mutex);
 }
 
-void send_message(struct replication_state *replication, char* message){
+void send_message(REPLICATION_STATE *replication, char* message){
     info("%s: Sending... [%s]", REPLICATION_MSG, message);
     replication_start(replication);
     buffer_sprintf(replication->build, message);
@@ -1731,7 +1713,7 @@ void sender_gap_filling(REPLICATION_STATE *rep_state, GAP *a_gap)
     rrdhost_unlock(host);
 }
 
-// Send RDATA per chart
+// For each chart send the dimension past data in RDATA format
 void sender_chart_gap_filling(RRDSET *st, GAP *a_gap) {
     REPLICATION_STATE *rep_state = st->rrdhost->sender->replication;
     rrdset_rdlock(st);    
@@ -1747,40 +1729,9 @@ void sender_chart_gap_filling(RRDSET *st, GAP *a_gap) {
     rrdset_unlock(st);
 }
 
-// void sender_block_gap_filling(REPLICATION_STATE *rep_state, GAP *a_gap, RRDSET *st) {
-//     RRDHOST *host = rep_state->host;
-
-//     time_t t_delta_start = a_gap->t_window.t_start;
-//     time_t t_delta_first = a_gap->t_window.t_first;
-//     time_t t_delta_end = a_gap->t_window.t_end;
-
-//     int update_every = st->update_every;
-//     unsigned int block_size_in_bytes = RRDENG_BLOCK_SIZE;
-//     unsigned int sample_in_bytes = (unsigned int) sizeof(storage_number);
-
-//     unsigned int num_of_samples_in_memory = block_size_in_bytes/sample_in_bytes;
-//     unsigned int residual_num_of_samples_in_memory = block_size_in_bytes % sample_in_bytes;
-
-//     unsigned int num_of_samples_in_time = (t_delta_end - (t_delta_first + update_every))/update_every;
-//     unsigned int residual_num_of_samples_in_time = (t_delta_end - (t_delta_first + update_every))  % update_every;
-    
-//     storage_number rrddim_sample;
-//     BUFFER *rdata = buffer_create(RRDENG_BLOCK_SIZE);
-//     // cbuffer_new(RRDENG_BLOCK_SIZE/4, RRDENG_BLOCK_SIZE);
-//     buffer_reset(rdata);
-//     unsigned sent_bytes = 0;
-//     unsigned int sent_block_count = 0;
-    
-//     UNUSED(sent_block_count);
-//     UNUSED(sent_bytes);
-//     UNUSED(rrddim_sample);
-//     UNUSED(host);
-// }
-
-
-// Replication FSM logic functions
-
-// Helper and Debug functions
+/***************************
+* Helper and Debug functions
+****************************/ 
 static void print_replication_state(REPLICATION_STATE *state)
 {
     info(

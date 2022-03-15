@@ -749,7 +749,7 @@ PARSER_RC pluginsd_rep_action(void *user, REP_ARG command)
         if(!strcmp("empty", the_gap->status)) {
             info("%s: No GAPs to replicate. Switch off the REPlication thread", REPLICATION_MSG);
             // Send replication off and exit the parser
-            send_message(rep_state, "REP %d", REP_OFF);
+            send_message(rep_state, "REP 1");
             return PARSER_RC_ERROR;
         }
         replication_gap_to_str(the_gap, &rep_msg_cmd, &len);        
