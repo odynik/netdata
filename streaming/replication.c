@@ -1606,7 +1606,7 @@ void sender_fill_gap_nolock(REPLICATION_STATE *rep_state, RRDSET *st, GAP *a_gap
     // replication from the far end if necessary.
     time_t first_t = rrdset_first_entry_t(st);
     time_t st_newest = st->last_updated.tv_sec;
-    time_t window_start;
+    time_t window_start, window_end;
     time_t st_last_sent_sample_delta = st->rrdhost->sender->last_sent_t;
 
     time_t gap_t_delta_start = a_gap->t_window.t_start;
@@ -1620,21 +1620,23 @@ void sender_fill_gap_nolock(REPLICATION_STATE *rep_state, RRDSET *st, GAP *a_gap
     UNUSED(num_of_samples_in_memory);
     UNUSED(t_delta_start);
 
-    if (gap_t_delta_first == 0) {
-        if (st_last_sent_sample_delta)
-            window_start = MAX(st->rrdhost->sender->last_sent_t + st->update_every, first_t);
-        else
-            window_start = st_newest;
-    }
-    else
-        window_start = MAX(gap_t_delta_first, first_t);
+    // if (gap_t_delta_first == 0) {
+    //     if (st_last_sent_sample_delta)
+    //         window_start = MAX(st->rrdhost->sender->last_sent_t + st->update_every, first_t);
+    //     else
+    //         window_start = st_newest;
+    // }
+    // else
+    //     window_start = MAX(gap_t_delta_first, first_t);
 
     
-    // Need to handle the blocks here
-    time_t unsent_points = (gap_t_delta_end - window_start) / st->update_every + 1;
-    if (unsent_points > default_rrdpush_gap_block_size)
-        unsent_points = default_rrdpush_gap_block_size;
-    time_t window_end = MAX((window_start + unsent_points * st->update_every), st_newest);
+    // // Need to handle the blocks here
+    // time_t unsent_points = (gap_t_delta_end - window_start) / st->update_every + 1;
+    // if (unsent_points > default_rrdpush_gap_block_size)
+    //     unsent_points = default_rrdpush_gap_block_size;
+    // time_t window_end = MAX((window_start + unsent_points * st->update_every), st_newest);
+    window_start = t_delta_first + (t_delta_first % st->update_every);
+    window_end = t_delta_end - (t_delta_end % st->update_every);
     
     char gap_uuid_str[UUID_STR_LEN];
     uuid_unparse(a_gap->gap_uuid, gap_uuid_str);
@@ -1653,7 +1655,7 @@ void sender_fill_gap_nolock(REPLICATION_STATE *rep_state, RRDSET *st, GAP *a_gap
         // Send the intersection of this dimension and the time-window on the chart
         time_t rd_start = rrddim_first_entry_t(rd);
         time_t rd_end   = rrddim_last_entry_t(rd) + st->update_every;
-        if (rd_start < window_end && rd_end >= window_start) {
+        if (rd_start <= window_end && rd_end >= window_start) {
 
             time_t rd_oldest = MAX(rd_start, window_start);
             rd_end = MIN(rd_end,   window_end);
