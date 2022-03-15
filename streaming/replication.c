@@ -327,6 +327,10 @@ static void replication_attempt_to_connect(struct sender_state *state)
         // Update the connection state flag
         state->replication->connected = 1;
 
+        // remove the non-blocking flag from the socket
+        if(sock_delnonblock(state->replication->socket) < 0)
+            error("%s %s [receive from [%s]:%s]: cannot remove the non-blocking flag from socket %d", REPLICATION_MSG, state->host->hostname, state->replication->client_ip, state->replication->client_port, state->replication->socket);
+
         // Set file pointer
         state->replication->fp = fdopen(state->replication->socket, "w+");
         if(!state->replication->fp) {
@@ -487,10 +491,6 @@ void *replication_sender_thread(void *ptr) {
     struct sender_state *s = (struct sender_state *) ptr;
     unsigned int rrdpush_replication_enabled = s->replication->enabled;
     info("%s Replication sender thread is starting", REPLICATION_MSG);
-
-    // remove the non-blocking flag from the socket
-    if(sock_delnonblock(s->replication->socket) < 0)
-        error("%s %s [receive from [%s]:%s]: cannot remove the non-blocking flag from socket %d", REPLICATION_MSG, s->host->hostname, s->replication->client_ip, s->replication->client_port, s->replication->socket);
 
    /*
     // convert the socket to a FILE *
@@ -1065,6 +1065,17 @@ void replication_collect_past_metric_init(REPLICATION_STATE *rep_state, char *rr
     dim_past_data->rrdset_id = strdupz(rrdset_id);
     dim_past_data->rrddim_id = strdupz(rrddim_id);
 
+    RRDSET *st = rrdset_find_byname(rep_state->host, dim_past_data->rrdset_id);
+    if(unlikely(!st)) {
+        error("Cannot find chart with name_id '%s' on host '%s'.", dim_past_data->rrdset_id, rep_state->host->hostname);
+        return;
+    }
+    dim_past_data->rd = rrddim_find(st, dim_past_data->rrddim_id);
+    if(unlikely(!dim_past_data->rd)) {
+        error("Cannot find dimension with id '%s' in chart '%s' on host '%s'.", dim_past_data->rrddim_id, dim_past_data->rrdset_id, rep_state->host->hostname);
+        return;
+    }    
+
     info("%s: Collect past metric INIT finished: %s %s\n", REPLICATION_MSG, rrdset_id, rrddim_id);
 }
 
@@ -1074,18 +1085,21 @@ void replication_collect_past_metric(REPLICATION_STATE *rep_state, time_t timest
     if(!page_length)
         rep_state->dim_past_data->start_time = timestamp * USEC_PER_SEC;
     if((page_length + sizeof(number)) < RRDENG_BLOCK_SIZE){
+        if(page_length && rep_state->dim_past_data->rd){
+            time_t current_end_time = rep_state->dim_past_data->end_time / USEC_PER_SEC;
+            time_t update_every = rep_state->dim_past_data->rd->update_every;
+            time_t t_sample_diff  = (timestamp -  current_end_time);
+            if(t_sample_diff > update_every){
+                error("%s: Hard gap was detected. Need to fill it with zeros", REPLICATION_MSG);
+                //index jump to cover the hard gaps in the page(4096)
+                // rep_state->dim_past_data->page_length += ((timestamp -  current_end_time)*sizeof(number));
+                page_length += ((t_sample_diff - update_every)*sizeof(number));
+            }
+        }
         page[page_length / sizeof(number)] = number;
         page_length += sizeof(number);
         rep_state->dim_past_data->page_length = page_length;
         rep_state->dim_past_data->end_time = timestamp * USEC_PER_SEC;
-        if(rep_state->dim_past_data->rd){
-            time_t current_end_time = rep_state->dim_past_data->end_time / USEC_PER_SEC;
-            if((timestamp -  current_end_time) > (time_t) rep_state->dim_past_data->rd->update_every){
-                error("%s: Hard gap was detected. Need to fill it with zeros", REPLICATION_MSG);
-                //Either make a jump in the index of a page(4096)
-                //OR handle the hard gap at least to collect the latest samples.
-            }
-        }        
     }
     info("%s: Collect past metric sample#%d@%ld: %d \n", REPLICATION_MSG, page_length, timestamp, number);
 }
@@ -1615,11 +1629,12 @@ void sender_fill_gap_nolock(REPLICATION_STATE *rep_state, RRDSET *st, GAP *a_gap
     else
         window_start = MAX(gap_t_delta_first, first_t);
 
+    
     // Need to handle the blocks here
     time_t unsent_points = (gap_t_delta_end - window_start) / st->update_every + 1;
     if (unsent_points > default_rrdpush_gap_block_size)
         unsent_points = default_rrdpush_gap_block_size;
-    time_t window_end = window_start + unsent_points * st->update_every;
+    time_t window_end = MAX((window_start + unsent_points * st->update_every), st_newest);
     
     char gap_uuid_str[UUID_STR_LEN];
     uuid_unparse(a_gap->gap_uuid, gap_uuid_str);
