@@ -1067,7 +1067,6 @@ void replication_collect_past_metric(REPLICATION_STATE *rep_state, time_t timest
 void replication_collect_past_metric_done(REPLICATION_STATE *rep_state) {
     info("%s: Collect past metrics DONE: \n", REPLICATION_MSG);
     RRDDIM_PAST_DATA *dim_past_data = rep_state->dim_past_data;
-    print_collected_metric_past_data(dim_past_data, rep_state);
     flush_collected_metric_past_data(dim_past_data, rep_state);
 }
 
@@ -1077,6 +1076,7 @@ void flush_collected_metric_past_data(RRDDIM_PAST_DATA *dim_past_data, REPLICATI
     rrdeng_store_past_metrics_page(dim_past_data, rep_state);
     rrdeng_flush_past_metrics_page(dim_past_data, rep_state);
     rrdeng_store_past_metrics_page_finalize(dim_past_data, rep_state);    
+    // print_collected_metric_past_data(dim_past_data, rep_state);
 };
 
 // Store gap in agent metdata DB(sqlite)
@@ -1173,7 +1173,7 @@ static char *receiver_next_line(struct replication_state *r, int *pos) {
 /* The receiver socket is blocking, perform a single read into a buffer so that we can reassemble lines for parsing.
  */
 static int receiver_read(struct replication_state *r, FILE *fp) {
-    info("%s: RxREAD Top", REPLICATION_MSG);
+    // info("%s: RxREAD Top", REPLICATION_MSG);
 #ifdef ENABLE_HTTPS
     if (r->ssl->conn && !r->ssl->flags) {
         ERR_clear_error();
@@ -1183,7 +1183,7 @@ static int receiver_read(struct replication_state *r, FILE *fp) {
             r->read_len += ret;
             return 0;
         }
-        info("%s: RxREAD After SSLread", REPLICATION_MSG);
+        // info("%s: RxREAD After SSLread", REPLICATION_MSG);
         // Don't treat SSL_ERROR_WANT_READ or SSL_ERROR_WANT_WRITE differently on blocking socket
         u_long err;
         char buf[256];
@@ -1195,11 +1195,11 @@ static int receiver_read(struct replication_state *r, FILE *fp) {
     }
 #endif
     if (!fgets(r->read_buffer, sizeof(r->read_buffer), fp)){
-        info("%s: RxREAD fgets() failed: [%s]", REPLICATION_MSG, r->read_buffer);
+        // info("%s: RxREAD fgets() failed: [%s]", REPLICATION_MSG, r->read_buffer);
         return 1;
     }
     r->read_len = strlen(r->read_buffer);
-    info("%s: RxREAD END sucess", REPLICATION_MSG);
+    // info("%s: RxREAD END sucess", REPLICATION_MSG);
     return 0;
 }
 
