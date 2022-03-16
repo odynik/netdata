@@ -332,7 +332,7 @@ static void replication_attempt_to_connect(struct sender_state *state)
         // Set file pointer
         state->replication->fp = fdopen(state->replication->socket, "w+");
         if(!state->replication->fp) {
-            log_stream_connection(state->replication->client_ip, state->replication->client_port, state->host->rrdpush_send_api_key, state->host->machine_guid, state->host->hostname, "SOCKET CONVERSION TO FD FAILED - SOCKET ERROR");
+            log_replication_connection(state->replication->client_ip, state->replication->client_port, state->host->rrdpush_send_api_key, state->host->machine_guid, state->host->hostname, "SOCKET CONVERSION TO FD FAILED - SOCKET ERROR");
             error("%s %s [receive from [%s]:%s]: failed to get a FILE for FD %d.", REPLICATION_MSG, state->host->hostname, state->replication->client_ip, state->replication->client_port, state->replication->socket);
             close(state->replication->socket);
             fclose(state->replication->fp);
@@ -587,7 +587,7 @@ void *replication_receiver_thread(void *ptr){
 #else
     if(send_timeout(rpt->replication->socket, initial_response, strlen(initial_response), 0, 60) != strlen(initial_response)) {
 #endif
-        log_stream_connection(rpt->replication->client_ip, rpt->replication->client_port, rpt->key, rpt->host->machine_guid, rpt->host->hostname, "REPLICATION CONNECTION FAILED - THIS HOST FAILED TO REPLY");
+        log_replication_connection(rpt->replication->client_ip, rpt->replication->client_port, rpt->key, rpt->host->machine_guid, rpt->host->hostname, "REPLICATION CONNECTION FAILED - THIS HOST FAILED TO REPLY");
         error("%s %s [receive from [%s]:%s]: failed to send replication acknowledgement command.", REPLICATION_MSG, rpt->host->hostname, rpt->replication->client_ip, rpt->replication->client_port);
         close(rpt->replication->socket);
         return 0;
@@ -601,7 +601,7 @@ void *replication_receiver_thread(void *ptr){
     // convert the socket to a FILE *
     FILE *fp = fdopen(rpt->replication->socket, "w+");
     if(!fp) {
-        log_stream_connection(rpt->replication->client_ip, rpt->replication->client_port, rpt->key, rpt->host->machine_guid, rpt->host->hostname, "SOCKET CONVERSION TO FD FAILED - SOCKET ERROR");
+        log_replication_connection(rpt->replication->client_ip, rpt->replication->client_port, rpt->key, rpt->host->machine_guid, rpt->host->hostname, "SOCKET CONVERSION TO FD FAILED - SOCKET ERROR");
         error("%s %s [receive from [%s]:%s]: failed to get a FILE for FD %d.", REPLICATION_MSG, rpt->host->hostname, rpt->replication->client_ip, rpt->replication->client_port, rpt->replication->socket);
         close(rpt->replication->socket);
         return 0;
@@ -609,7 +609,7 @@ void *replication_receiver_thread(void *ptr){
     
     // call the plugins.d processor to receive the metrics
     info("%s %s [receive from [%s]:%s]: filling replication gaps...", REPLICATION_MSG, rpt->host->hostname, rpt->replication->client_ip, rpt->replication->client_port);
-    log_stream_connection(rpt->replication->client_ip, rpt->replication->client_port, rpt->key, rpt->host->machine_guid, rpt->host->hostname, "CONNECTED");
+    log_replication_connection(rpt->replication->client_ip, rpt->replication->client_port, rpt->key, rpt->host->machine_guid, rpt->host->hostname, "CONNECTED");
 
     cd.version = rpt->stream_version;
 
@@ -626,42 +626,17 @@ void *replication_receiver_thread(void *ptr){
     // test_rrdeng_store_past_metric_page(localhost, "system.cpu", "guest");
     // info("%s TEST:<<<<<<<<<<<<<<END TESTING>>>>>>>>>>>>>>>>>>", REPLICATION_MSG);
 
-    // Add here the receiver thread logic
-    // Need a host
-    // Need a PARSER_USER_OBJECT
-    // Need a socket
-    // need flags to deactivate the no necessary keywords
-    // Add here the thread loop
-    // for(;rrdpush_replication_enabled && !netdata_exit;)
-    // {
-    //     // check for outstanding cancellation requests
-    //     netdata_thread_testcancel();      
-
-    //     if(gaps_timeline->queue_size == 0){
-    //         // Send REP off CMD to the child agent.
-    //         break;
-    //     }
-
-        // send GAP uid ts tf te to the child agent        
-        // recv RDATA command from child agent
-    // }    
-
-    // if(!strcmp(the_gap->status, "oncompletion"))
-    //     send_message(rep_state, rep_msg_cmd);
-    //     // queue_pop(host->gaps_timeline->gaps);
-    // send GAP uid ts tf te to the child agent        
-    // recv RDATA command from child agent
-
     // Wait for the sender thread to send REP ON
     size_t count = replication_parser(rpt->replication, &cd, fp);
 
     // On completion of replication - DISCONNECT - clean up the gaps
     remove_gap(host->gaps_timeline->gap_data);
     // On incomplete replication - DISCONNECT - evaluate the gaps that need to be removed
-    log_stream_connection(rpt->client_ip, rpt->client_port, rpt->key, rpt->host->machine_guid, rpt->hostname,
-                          "DISCONNECTED");
-    error("%s %s [receive from [%s]:%s]: disconnected (completed %zu updates).", REPLICATION_MSG, rpt->hostname, rpt->client_ip,
-          rpt->client_port, count);
+    info("~~~1");
+    log_replication_connection(rpt->replication->client_ip, rpt->replication->client_port, rpt->key, rpt->host->machine_guid, rpt->host->hostname, "DISCONNECTED");
+    info("~~~2");
+    error("%s: %s [receive from [%s]:%s]: disconnected (completed %zu updates).", REPLICATION_MSG, rpt->host->hostname, rpt->replication->client_ip, rpt->replication->client_port, count);
+    info("~~~3");
 
     // Use this section to clean a replication sender thread in case of gparent connection.
     // During a shutdown there is cleanup code in rrdhost that will cancel the sender thread
@@ -686,8 +661,11 @@ void *replication_receiver_thread(void *ptr){
 
     info("%s: Cleaning up the replication Rx thread - Replication Parser Finished (completed %zu updates)!", REPLICATION_MSG, count);
     // cleanup
+    info("~~~4");
     freez(rep_msg_cmd);
+    info("~~~5");
     fclose(fp);
+    info("~~~6");
     // Closing thread - clean up any resources allocated here
     netdata_thread_cleanup_pop(1);
     return NULL;   
@@ -758,42 +736,42 @@ int replication_receiver_thread_spawn(struct web_client *w, char *url) {
 
     if(!key || !*key) {
         rrdhost_system_info_free(system_info);
-        log_stream_connection(w->client_ip, w->client_port, (key && *key)?key:"-", (machine_guid && *machine_guid)?machine_guid:"-", (hostname && *hostname)?hostname:"-", "ACCESS DENIED - NO KEY");
+        log_replication_connection(w->client_ip, w->client_port, (key && *key)?key:"-", (machine_guid && *machine_guid)?machine_guid:"-", (hostname && *hostname)?hostname:"-", "ACCESS DENIED - NO KEY");
         error("%s [receive from [%s]:%s]: Replicate request without an API key. Forbidding access.", REPLICATION_MSG, w->client_ip, w->client_port);
         return rrdpush_receiver_permission_denied(w);
     }
 
     if(!hostname || !*hostname) {
         rrdhost_system_info_free(system_info);
-        log_stream_connection(w->client_ip, w->client_port, (key && *key)?key:"-", (machine_guid && *machine_guid)?machine_guid:"-", (hostname && *hostname)?hostname:"-", "ACCESS DENIED - NO HOSTNAME");
+        log_replication_connection(w->client_ip, w->client_port, (key && *key)?key:"-", (machine_guid && *machine_guid)?machine_guid:"-", (hostname && *hostname)?hostname:"-", "ACCESS DENIED - NO HOSTNAME");
         error("%s [receive from [%s]:%s]: Replicate request without a hostname. Forbidding access.", REPLICATION_MSG, w->client_ip, w->client_port);
         return rrdpush_receiver_permission_denied(w);
     }
 
     if(!machine_guid || !*machine_guid) {
         rrdhost_system_info_free(system_info);
-        log_stream_connection(w->client_ip, w->client_port, (key && *key)?key:"-", (machine_guid && *machine_guid)?machine_guid:"-", (hostname && *hostname)?hostname:"-", "ACCESS DENIED - NO MACHINE GUID");
+        log_replication_connection(w->client_ip, w->client_port, (key && *key)?key:"-", (machine_guid && *machine_guid)?machine_guid:"-", (hostname && *hostname)?hostname:"-", "ACCESS DENIED - NO MACHINE GUID");
         error("%s [receive from [%s]:%s]: Replicate request without a machine GUID. Forbidding access.",REPLICATION_MSG, w->client_ip, w->client_port);
         return rrdpush_receiver_permission_denied(w);
     }
 
     if(regenerate_guid(key, buf) == -1) {
         rrdhost_system_info_free(system_info);
-        log_stream_connection(w->client_ip, w->client_port, (key && *key)?key:"-", (machine_guid && *machine_guid)?machine_guid:"-", (hostname && *hostname)?hostname:"-", "ACCESS DENIED - INVALID KEY");
+        log_replication_connection(w->client_ip, w->client_port, (key && *key)?key:"-", (machine_guid && *machine_guid)?machine_guid:"-", (hostname && *hostname)?hostname:"-", "ACCESS DENIED - INVALID KEY");
         error("%s [receive from [%s]:%s]: API key '%s' is not valid GUID (use the command uuidgen to generate one). Forbidding access.", REPLICATION_MSG, w->client_ip, w->client_port, key);
         return rrdpush_receiver_permission_denied(w);
     }
 
     if(regenerate_guid(machine_guid, buf) == -1) {
         rrdhost_system_info_free(system_info);
-        log_stream_connection(w->client_ip, w->client_port, (key && *key)?key:"-", (machine_guid && *machine_guid)?machine_guid:"-", (hostname && *hostname)?hostname:"-", "ACCESS DENIED - INVALID MACHINE GUID");
+        log_replication_connection(w->client_ip, w->client_port, (key && *key)?key:"-", (machine_guid && *machine_guid)?machine_guid:"-", (hostname && *hostname)?hostname:"-", "ACCESS DENIED - INVALID MACHINE GUID");
         error("%s [receive from [%s]:%s]: machine GUID '%s' is not GUID. Forbidding access.", REPLICATION_MSG, w->client_ip, w->client_port, machine_guid);
         return rrdpush_receiver_permission_denied(w);
     }
 
     if(!appconfig_get_boolean(&stream_config, key, "enabled", 0)) {
         rrdhost_system_info_free(system_info);
-        log_stream_connection(w->client_ip, w->client_port, (key && *key)?key:"-", (machine_guid && *machine_guid)?machine_guid:"-", (hostname && *hostname)?hostname:"-", "ACCESS DENIED - KEY NOT ENABLED");
+        log_replication_connection(w->client_ip, w->client_port, (key && *key)?key:"-", (machine_guid && *machine_guid)?machine_guid:"-", (hostname && *hostname)?hostname:"-", "ACCESS DENIED - KEY NOT ENABLED");
         error("%s [receive from [%s]:%s]: API key '%s' is not allowed. Forbidding access.", REPLICATION_MSG, w->client_ip, w->client_port, key);
         return rrdpush_receiver_permission_denied(w);
     }
@@ -804,7 +782,7 @@ int replication_receiver_thread_spawn(struct web_client *w, char *url) {
             if(!simple_pattern_matches(key_allow_from, w->client_ip)) {
                 simple_pattern_free(key_allow_from);
                 rrdhost_system_info_free(system_info);
-                log_stream_connection(w->client_ip, w->client_port, (key && *key)?key:"-", (machine_guid && *machine_guid)?machine_guid:"-", (hostname && *hostname) ? hostname : "-", "ACCESS DENIED - KEY NOT ALLOWED FROM THIS IP");
+                log_replication_connection(w->client_ip, w->client_port, (key && *key)?key:"-", (machine_guid && *machine_guid)?machine_guid:"-", (hostname && *hostname) ? hostname : "-", "ACCESS DENIED - KEY NOT ALLOWED FROM THIS IP");
                 error("%s [receive from [%s]:%s]: API key '%s' is not permitted from this IP. Forbidding access.", REPLICATION_MSG, w->client_ip, w->client_port, key);
                 return rrdpush_receiver_permission_denied(w);
             }
@@ -814,7 +792,7 @@ int replication_receiver_thread_spawn(struct web_client *w, char *url) {
 
     if(!appconfig_get_boolean(&stream_config, machine_guid, "enabled", 1)) {
         rrdhost_system_info_free(system_info);
-        log_stream_connection(w->client_ip, w->client_port, (key && *key)?key:"-", (machine_guid && *machine_guid)?machine_guid:"-", (hostname && *hostname)?hostname:"-", "ACCESS DENIED - MACHINE GUID NOT ENABLED");
+        log_replication_connection(w->client_ip, w->client_port, (key && *key)?key:"-", (machine_guid && *machine_guid)?machine_guid:"-", (hostname && *hostname)?hostname:"-", "ACCESS DENIED - MACHINE GUID NOT ENABLED");
         error("%s [receive from [%s]:%s]: machine GUID '%s' is not allowed. Forbidding access.", REPLICATION_MSG, w->client_ip, w->client_port, machine_guid);
         return rrdpush_receiver_permission_denied(w);
     }
@@ -825,7 +803,7 @@ int replication_receiver_thread_spawn(struct web_client *w, char *url) {
             if(!simple_pattern_matches(machine_allow_from, w->client_ip)) {
                 simple_pattern_free(machine_allow_from);
                 rrdhost_system_info_free(system_info);
-                log_stream_connection(w->client_ip, w->client_port, (key && *key)?key:"-", (machine_guid && *machine_guid)?machine_guid:"-", (hostname && *hostname) ? hostname : "-", "ACCESS DENIED - MACHINE GUID NOT ALLOWED FROM THIS IP");
+                log_replication_connection(w->client_ip, w->client_port, (key && *key)?key:"-", (machine_guid && *machine_guid)?machine_guid:"-", (hostname && *hostname) ? hostname : "-", "ACCESS DENIED - MACHINE GUID NOT ALLOWED FROM THIS IP");
                 error("%s [receive from [%s]:%s]: Machine GUID '%s' is not permitted from this IP. Forbidding access.", REPLICATION_MSG, w->client_ip, w->client_port, machine_guid);
                 return rrdpush_receiver_permission_denied(w);
             }
@@ -872,7 +850,7 @@ int replication_receiver_thread_spawn(struct web_client *w, char *url) {
         host = NULL;
     if(!host) {
             rrd_unlock();
-            log_stream_connection(w->client_ip, w->client_port, key, machine_guid, hostname, "ABORT REPLICATION - HOST DOES NOT EXIST");
+            log_replication_connection(w->client_ip, w->client_port, key, machine_guid, hostname, "ABORT REPLICATION - HOST DOES NOT EXIST");
             infoerr("%s - [received from [%s]:%s]: Host(%s) with machine GUID %s does not exist - Abort replication.", REPLICATION_MSG, w->client_ip, w->client_port, hostname, machine_guid);
             return 409;
     }
@@ -884,7 +862,7 @@ int replication_receiver_thread_spawn(struct web_client *w, char *url) {
         time_t age = now_realtime_sec() - host->receiver->replication->last_msg_t;
         rrdhost_unlock(host);
         rrd_unlock();
-        log_stream_connection(w->client_ip, w->client_port, key, host->machine_guid, host->hostname, "REJECTED - ALREADY CONNECTED");
+        log_replication_connection(w->client_ip, w->client_port, key, host->machine_guid, host->hostname, "REJECTED - ALREADY CONNECTED");
         info("%s %s [receive from [%s]:%s]: multiple connections for same host detected - existing connection is active (within last %ld sec), rejecting new connection.", REPLICATION_MSG, host->hostname, w->client_ip, w->client_port, age);
         // Have not set WEB_CLIENT_FLAG_DONT_CLOSE_SOCKET - caller should clean up
         buffer_flush(w->response.data);
