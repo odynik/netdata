@@ -469,6 +469,10 @@ void log_stream_connection(const char *client_ip, const char *client_port, const
     log_access("STREAM: %d '[%s]:%s' '%s' host '%s' api key '%s' machine guid '%s'", gettid(), client_ip, client_port, msg, host, api_key, machine_guid);
 }
 
+void log_replication_connection(const char *client_ip, const char *client_port, const char *api_key, const char *machine_guid, const char *host, const char *msg) {
+    log_access("REPLICATE: %d '[%s]:%s' '%s' host '%s' api key '%s' machine guid '%s'", gettid(), client_ip, client_port, msg, host, api_key, machine_guid);
+}
+
 
 static void rrdpush_sender_thread_spawn(RRDHOST *host) {
     netdata_mutex_lock(&host->sender->mutex);
