@@ -632,12 +632,8 @@ void *replication_receiver_thread(void *ptr){
     // On completion of replication - DISCONNECT - clean up the gaps
     remove_gap(host->gaps_timeline->gap_data);
     // On incomplete replication - DISCONNECT - evaluate the gaps that need to be removed
-    // print_replication_state(rep_state);
-    info("~~~1");
-    log_replication_connection(rep_state->client_ip, rep_state->client_port, rep_state->key, rep_state->host->machine_guid, rep_state->host->hostname, "DISCONNECTED");
-    info("~~~2");
-    error("%s: %s [receive from [%s]:%s]: disconnected (completed %zu updates).", REPLICATION_MSG, rep_state->host->hostname, rep_state->client_ip, rep_state->client_port, count);
-    info("~~~3");
+    log_replication_connection(rpt->replication->client_ip, rpt->replication->client_port, rpt->key, rpt->host->machine_guid, rpt->host->hostname, "DISCONNECTED");
+    error("%s: %s [receive from [%s]:%s]: disconnected (completed %zu updates).", REPLICATION_MSG, rpt->host->hostname, rpt->replication->client_ip, rpt->replication->client_port, count);
 
     // Use this section to clean a replication sender thread in case of gparent connection.
     // During a shutdown there is cleanup code in rrdhost that will cancel the sender thread
@@ -662,11 +658,8 @@ void *replication_receiver_thread(void *ptr){
 
     info("%s: Cleaning up the replication Rx thread - Replication Parser Finished (completed %zu updates)!", REPLICATION_MSG, count);
     // cleanup
-    info("~~~4");
     freez(rep_msg_cmd);
-    info("~~~5");
     fclose(fp);
-    info("~~~6");
     // Closing thread - clean up any resources allocated here
     netdata_thread_cleanup_pop(1);
     return NULL;   
