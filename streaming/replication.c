@@ -632,11 +632,8 @@ void *replication_receiver_thread(void *ptr){
     // On completion of replication - DISCONNECT - clean up the gaps
     remove_gap(host->gaps_timeline->gap_data);
     // On incomplete replication - DISCONNECT - evaluate the gaps that need to be removed
-    info("~~~1");
     log_replication_connection(rpt->replication->client_ip, rpt->replication->client_port, rpt->key, rpt->host->machine_guid, rpt->host->hostname, "DISCONNECTED");
-    info("~~~2");
     error("%s: %s [receive from [%s]:%s]: disconnected (completed %zu updates).", REPLICATION_MSG, rpt->host->hostname, rpt->replication->client_ip, rpt->replication->client_port, count);
-    info("~~~3");
 
     // Use this section to clean a replication sender thread in case of gparent connection.
     // During a shutdown there is cleanup code in rrdhost that will cancel the sender thread
@@ -661,11 +658,8 @@ void *replication_receiver_thread(void *ptr){
 
     info("%s: Cleaning up the replication Rx thread - Replication Parser Finished (completed %zu updates)!", REPLICATION_MSG, count);
     // cleanup
-    info("~~~4");
     freez(rep_msg_cmd);
-    info("~~~5");
     fclose(fp);
-    info("~~~6");
     // Closing thread - clean up any resources allocated here
     netdata_thread_cleanup_pop(1);
     return NULL;   
@@ -962,16 +956,7 @@ void replication_receiver_thread_cleanup_callback(void *ptr)
             rpt->replication->exited = 1;
             return;
         }
-
-        // Make sure that we detach this thread and don't kill a freshly arriving receiver
-        if (!netdata_exit && rpt->host) {
-            netdata_mutex_lock(&rpt->replication->mutex);
-            if (rpt->host->receiver == rpt){
-                rpt->host->receiver = NULL;
-                }
-            netdata_mutex_unlock(&rpt->replication->mutex);
-        }
-        info("%s %s [receive from [%s]:%s]: receive thread ended (task id %d)", REPLICATION_MSG, rpt->hostname, rpt->replication->client_ip, rpt->replication->client_port, gettid());
+        info("%s %s [receive from [%s]:%s]: receive thread is being ended (task id %d)", REPLICATION_MSG, rpt->hostname, rpt->replication->client_ip, rpt->replication->client_port, gettid());
         replication_state_destroy(&rpt->replication);
         // // On a parent signal also the sender thread sending to a gparent to shutdown. Probably after the parsing. Check also the clean-up functionality in the rrdhost().        
     }
