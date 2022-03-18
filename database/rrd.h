@@ -22,6 +22,8 @@ typedef void *ml_dimension_t;
 typedef struct time_window TIME_WINDOW;
 typedef struct gap GAP;
 typedef struct gaps_queue GAPS;
+// REPlication struct
+typedef struct replication REPLICATION;
 
 // forward declarations
 struct rrddim_volatile;
@@ -843,6 +845,7 @@ struct rrdhost {
     netdata_mutex_t receiver_lock;
     
     GAPS *gaps_timeline;                             // disconnection gaps of a host
+    REPLICATION *replication;                  // replication struct of a host
 
     // ------------------------------------------------------------------------
     // health monitoring options
