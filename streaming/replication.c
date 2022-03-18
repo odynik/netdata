@@ -662,11 +662,8 @@ void *replication_receiver_thread(void *ptr){
 
     info("%s: Cleaning up the replication Rx thread - Replication Parser Finished (completed %zu updates)!", REPLICATION_MSG, count);
     // cleanup
-    info("~~~4");
     freez(rep_msg_cmd);
-    info("~~~5");
     fclose(fp);
-    info("~~~6");
     // Closing thread - clean up any resources allocated here
     netdata_thread_cleanup_pop(1);
     return NULL;   
