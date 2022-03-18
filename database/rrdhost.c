@@ -871,15 +871,20 @@ void rrdhost_free(RRDHOST *host) {
     if (netdata_exit) {
         netdata_mutex_lock(&host->receiver_lock);
         if (host->receiver) {
-            if (!host->receiver->exited)
+            // if(!host->receiver->replication->exited)
+            //     netdata_thread_cancel(host->receiver->replication->thread);
+            if(!host->receiver->exited)
                 netdata_thread_cancel(host->receiver->thread);
             netdata_mutex_unlock(&host->receiver_lock);
             struct receiver_state *rpt = host->receiver;
+            // REPLICATION_STATE *rep_state = host->receiver->replication;
             while (host->receiver && !rpt->exited)
                 sleep_usec(50 * USEC_PER_MS);
             // If the receiver detached from the host then its thread will destroy the state
             if (host->receiver == rpt)
                 destroy_receiver_state(host->receiver);
+            // if(host->receiver->replication == rep_state)
+            //     replication_state_destroy(&host->receiver->replication);
         }
         else
             netdata_mutex_unlock(&host->receiver_lock);

@@ -5,7 +5,7 @@ extern void rrdpush_encode_variable(stream_encoded_t *se, RRDHOST *host);
 extern void rrdpush_clean_encoded(stream_encoded_t *se);
 size_t replication_parser(struct replication_state *rpt, struct plugind *cd, FILE *fp);
 
-static void replication_receiver_thread_cleanup_callback(void *host);
+static void replication_receiver_thread_cleanup_callback(void *ptr);
 static void replication_sender_thread_cleanup_callback(void *ptr);
 static void print_replication_state(REPLICATION_STATE *state);
 static void print_replication_gap(GAP *a_gap);
@@ -17,7 +17,7 @@ static inline void replication_send_chart_definition_nolock(RRDSET *st);
 *********************************/ 
 static void replication_state_init(REPLICATION_STATE *state)
 {
-    info("%s: REPlication State Initilization", REPLICATION_MSG);
+    info("%s: REPlication State Initialization", REPLICATION_MSG);
     memset(state, 0, sizeof(*state));
     state->buffer = cbuffer_new(1024, 1024*1024);
     state->build = buffer_create(1);
@@ -25,8 +25,8 @@ static void replication_state_init(REPLICATION_STATE *state)
 #ifdef ENABLE_HTTPS
     state->ssl = (struct netdata_ssl *)callocz(1, sizeof(struct netdata_ssl));
 #endif
-    state->dim_past_data = callocz(1,sizeof(RRDDIM_PAST_DATA));
-    state->dim_past_data->page = callocz(RRDENG_BLOCK_SIZE, sizeof(char));
+    state->dim_past_data = (RRDDIM_PAST_DATA *)callocz(1, sizeof(RRDDIM_PAST_DATA));
+    state->dim_past_data->page = (void *)callocz(RRDENG_BLOCK_SIZE, sizeof(char));
     netdata_mutex_init(&state->mutex);
 }
 
@@ -84,7 +84,7 @@ void replication_receiver_init(struct receiver_state **a_receiver, struct config
     unsigned int rrdpush_replication_enable = replication_rd_config(receiver, stream_config);
     if(!rrdpush_replication_enable)
     {
-        infoerr("%s:  Could not initialize Rx replication thread. Replication is disabled or not supported!", REPLICATION_MSG);
+        infoerr("%s: Could not initialize Rx replication thread. Replication is disabled or not supported!", REPLICATION_MSG);
         return;
     }
     replication_state_init(receiver->replication);
@@ -495,6 +495,7 @@ void *replication_sender_thread(void *ptr) {
     for(;rrdpush_replication_enabled && !netdata_exit;)
     {
         // check for outstanding cancellation requests
+        // This needs to go into the replication parser.
         netdata_thread_testcancel();
         // try to connect
         if((s->replication->not_connected_loops < 3) && !s->replication->connected) {
@@ -543,11 +544,12 @@ void send_message(REPLICATION_STATE *replication, char* message){
 }
 
 void *replication_receiver_thread(void *ptr){
-    netdata_thread_cleanup_push(replication_receiver_thread_cleanup_callback, ptr);
     struct receiver_state *rpt = (struct receiver_state *)ptr;
-    unsigned int rrdpush_replication_enabled =  rpt->replication->enabled;
-    rpt->replication->exited = 0; //latch down the exited flag on Rx thread start up.
-    // GAPS *gaps_timeline = rpt->replication->gaps_timeline;
+    netdata_thread_cleanup_push(replication_receiver_thread_cleanup_callback, rpt);
+    REPLICATION_STATE *rep_state = rpt->replication;
+    unsigned int rrdpush_replication_enabled =  rep_state->enabled;
+    rep_state->exited = 0; //latch down the exited flag on Rx thread start up.
+    // GAPS *gaps_timeline = rep_state->gaps_timeline;
     //read configuration
     //create pluginds cd object
     struct plugind cd = {
@@ -563,79 +565,78 @@ void *replication_receiver_thread(void *ptr){
     };
 
     // put the client IP and port into the buffers used by plugins.d
-    snprintfz(cd.id,           CONFIG_MAX_NAME,  "%s:%s", rpt->replication->client_ip, rpt->replication->client_port);
-    snprintfz(cd.filename,     FILENAME_MAX,     "%s:%s", rpt->replication->client_ip, rpt->replication->client_port);
-    snprintfz(cd.fullfilename, FILENAME_MAX,     "%s:%s", rpt->replication->client_ip, rpt->replication->client_port);
-    snprintfz(cd.cmd,          PLUGINSD_CMD_MAX, "%s:%s", rpt->replication->client_ip, rpt->replication->client_port);    
+    snprintfz(cd.id,           CONFIG_MAX_NAME,  "%s:%s", rep_state->client_ip, rep_state->client_port);
+    snprintfz(cd.filename,     FILENAME_MAX,     "%s:%s", rep_state->client_ip, rep_state->client_port);
+    snprintfz(cd.fullfilename, FILENAME_MAX,     "%s:%s", rep_state->client_ip, rep_state->client_port);
+    snprintfz(cd.cmd,          PLUGINSD_CMD_MAX, "%s:%s", rep_state->client_ip, rep_state->client_port);    
     // Respond with the REP ack command
-    info("%s %s [receive from [%s]:%s]: initializing replication communication...", REPLICATION_MSG, rpt->host->hostname, rpt->replication->client_ip, rpt->replication->client_port);
+    info("%s %s [receive from [%s]:%s]: initializing replication communication...", REPLICATION_MSG, rpt->host->hostname, rep_state->client_ip, rep_state->client_port);
     char initial_response[HTTP_HEADER_SIZE];
     if (rpt->stream_version >= VERSION_GAP_FILLING) {
-        info("%s %s [receive from [%s]:%s]: Netdata acknowledged replication over stream version %u.", REPLICATION_MSG, rpt->host->hostname, rpt->replication->client_ip, rpt->replication->client_port, rpt->stream_version);
+        info("%s %s [receive from [%s]:%s]: Netdata acknowledged replication over stream version %u.", REPLICATION_MSG, rpt->host->hostname, rep_state->client_ip, rep_state->client_port, rpt->stream_version);
         sprintf(initial_response, "%s", REP_ACK_CMD);
     } 
     else {
-        info("%s [receive from [%s]:%s]: Netdata stream protocol does not support replication.", rpt->host->hostname, rpt->replication->client_ip, rpt->replication->client_port);
+        info("%s [receive from [%s]:%s]: Netdata stream protocol does not support replication.", rpt->host->hostname, rep_state->client_ip, rep_state->client_port);
         sprintf(initial_response, "%s", "REP off");
     }
     // debug(D_REPLICATION, "Initial REPLICATION response to %s: %s", rpt->client_ip, initial_response);
-    info("%s: Initial REPLICATION response to [%s:%s]: %s", REPLICATION_MSG, rpt->replication->client_ip, rpt->replication->client_port, initial_response);
+    info("%s: Initial REPLICATION response to [%s:%s]: %s", REPLICATION_MSG, rep_state->client_ip, rep_state->client_port, initial_response);
 #ifdef ENABLE_HTTPS
-    rpt->host->stream_ssl.conn = rpt->replication->ssl->conn;
-    rpt->host->stream_ssl.flags = rpt->replication->ssl->flags;
-    if(send_timeout(rpt->replication->ssl, rpt->replication->socket, initial_response, strlen(initial_response), 0, 60) != (ssize_t)strlen(initial_response)) {
+    rpt->host->stream_ssl.conn = rep_state->ssl->conn;
+    rpt->host->stream_ssl.flags = rep_state->ssl->flags;
+    if(send_timeout(rep_state->ssl, rep_state->socket, initial_response, strlen(initial_response), 0, 60) != (ssize_t)strlen(initial_response)) {
 #else
-    if(send_timeout(rpt->replication->socket, initial_response, strlen(initial_response), 0, 60) != strlen(initial_response)) {
+    if(send_timeout(rep_state->socket, initial_response, strlen(initial_response), 0, 60) != strlen(initial_response)) {
 #endif
-        log_replication_connection(rpt->replication->client_ip, rpt->replication->client_port, rpt->key, rpt->host->machine_guid, rpt->host->hostname, "REPLICATION CONNECTION FAILED - THIS HOST FAILED TO REPLY");
-        error("%s %s [receive from [%s]:%s]: failed to send replication acknowledgement command.", REPLICATION_MSG, rpt->host->hostname, rpt->replication->client_ip, rpt->replication->client_port);
-        close(rpt->replication->socket);
+        log_replication_connection(rep_state->client_ip, rep_state->client_port, rpt->key, rpt->host->machine_guid, rpt->host->hostname, "REPLICATION CONNECTION FAILED - THIS HOST FAILED TO REPLY");
+        error("%s %s [receive from [%s]:%s]: failed to send replication acknowledgement command.", REPLICATION_MSG, rpt->host->hostname, rep_state->client_ip, rep_state->client_port);
+        close(rep_state->socket);
         return 0;
     }
     // Here is the first proof of connection with the sender thread.
 
     // remove the non-blocking flag from the socket
-    if(sock_delnonblock(rpt->replication->socket) < 0)
-        error("%s %s [receive from [%s]:%s]: cannot remove the non-blocking flag from socket %d", REPLICATION_MSG, rpt->host->hostname, rpt->replication->client_ip, rpt->replication->client_port, rpt->replication->socket);
+    if(sock_delnonblock(rep_state->socket) < 0)
+        error("%s %s [receive from [%s]:%s]: cannot remove the non-blocking flag from socket %d", REPLICATION_MSG, rpt->host->hostname, rep_state->client_ip, rep_state->client_port, rep_state->socket);
 
     // convert the socket to a FILE *
-    FILE *fp = fdopen(rpt->replication->socket, "w+");
+    FILE *fp = fdopen(rep_state->socket, "r");
     if(!fp) {
-        log_replication_connection(rpt->replication->client_ip, rpt->replication->client_port, rpt->key, rpt->host->machine_guid, rpt->host->hostname, "SOCKET CONVERSION TO FD FAILED - SOCKET ERROR");
-        error("%s %s [receive from [%s]:%s]: failed to get a FILE for FD %d.", REPLICATION_MSG, rpt->host->hostname, rpt->replication->client_ip, rpt->replication->client_port, rpt->replication->socket);
-        close(rpt->replication->socket);
+        log_replication_connection(rep_state->client_ip, rep_state->client_port, rpt->key, rpt->host->machine_guid, rpt->host->hostname, "SOCKET CONVERSION TO FD FAILED - SOCKET ERROR");
+        error("%s %s [receive from [%s]:%s]: failed to get a FILE for FD %d.", REPLICATION_MSG, rpt->host->hostname, rep_state->client_ip, rep_state->client_port, rep_state->socket);
+        close(rep_state->socket);
         return 0;
     }
     
     // call the plugins.d processor to receive the metrics
-    info("%s %s [receive from [%s]:%s]: filling replication gaps...", REPLICATION_MSG, rpt->host->hostname, rpt->replication->client_ip, rpt->replication->client_port);
-    log_replication_connection(rpt->replication->client_ip, rpt->replication->client_port, rpt->key, rpt->host->machine_guid, rpt->host->hostname, "CONNECTED");
+    info("%s %s [receive from [%s]:%s]: filling replication gaps...", REPLICATION_MSG, rpt->host->hostname, rep_state->client_ip, rep_state->client_port);
+    log_replication_connection(rep_state->client_ip, rep_state->client_port, rpt->key, rpt->host->machine_guid, rpt->host->hostname, "CONNECTED");
 
     cd.version = rpt->stream_version;
 
     // To be removed
     RRDHOST *host = rpt->host;
-    REPLICATION_STATE *rep_state = rpt->replication;
     GAP *the_gap = host->gaps_timeline->gap_data;
     char *rep_msg_cmd;
     size_t len;
     replication_gap_to_str(the_gap, &rep_msg_cmd, &len);
-    UNUSED(rep_state);
     UNUSED(rrdpush_replication_enabled);
     // info("%s TEST:<<<<<<<<<<<<<<TESTING>>>>>>>>>>>>>>>>>>", REPLICATION_MSG);
     // test_rrdeng_store_past_metric_page(localhost, "system.cpu", "guest");
     // info("%s TEST:<<<<<<<<<<<<<<END TESTING>>>>>>>>>>>>>>>>>>", REPLICATION_MSG);
 
     // Wait for the sender thread to send REP ON
-    size_t count = replication_parser(rpt->replication, &cd, fp);
+    size_t count = replication_parser(rep_state, &cd, fp);
 
     // On completion of replication - DISCONNECT - clean up the gaps
     remove_gap(host->gaps_timeline->gap_data);
     // On incomplete replication - DISCONNECT - evaluate the gaps that need to be removed
+    // print_replication_state(rep_state);
     info("~~~1");
-    log_replication_connection(rpt->replication->client_ip, rpt->replication->client_port, rpt->key, rpt->host->machine_guid, rpt->host->hostname, "DISCONNECTED");
+    log_replication_connection(rep_state->client_ip, rep_state->client_port, rep_state->key, rep_state->host->machine_guid, rep_state->host->hostname, "DISCONNECTED");
     info("~~~2");
-    error("%s: %s [receive from [%s]:%s]: disconnected (completed %zu updates).", REPLICATION_MSG, rpt->host->hostname, rpt->replication->client_ip, rpt->replication->client_port, count);
+    error("%s: %s [receive from [%s]:%s]: disconnected (completed %zu updates).", REPLICATION_MSG, rep_state->host->hostname, rep_state->client_ip, rep_state->client_port, count);
     info("~~~3");
 
     // Use this section to clean a replication sender thread in case of gparent connection.
@@ -842,7 +843,14 @@ int replication_receiver_thread_spawn(struct web_client *w, char *url) {
 
     // What it does: if host doesn't exist prepare the receiver state struct
     // and start the streaming receiver to create it.
-    // What I want:  If the host doesn't exist I should depend on streaming to create it. At this point, streaming should have already call the receiver thread to create the host. So if the host exists we continue with the call to the replication rx thread. If the host doesn't exist and host->receiver is NULL means that there was a problem with host creation during streaming or the REPLICATE command arrived earlier than the respective STREAM command. So do not start the Rx replication thread.The replication Tx thread in child should try to reconnect.
+    // What I want:  If the host doesn't exist I should depend on streaming to create it.
+    // At this point, streaming should have already call the receiver thread to create the host.
+    // So if the host exists we continue with the call to the replication rx thread.
+    // If the host doesn't exist and host->receiver is NULL means that there was a problem
+    // with host creation during streaming or the REPLICATE command arrived earlier than the 
+    // respective STREAM command. So do not start the Rx replication thread.
+    // The replication Tx thread in child should try to reconnect.
+
 
     rrd_rdlock();
     RRDHOST *host = rrdhost_find_by_guid(machine_guid, 0);
@@ -879,6 +887,7 @@ int replication_receiver_thread_spawn(struct web_client *w, char *url) {
     host->receiver->replication->socket = w->ifd;
     host->receiver->replication->client_ip = strdupz(w->client_ip);
     host->receiver->replication->client_port = strdupz(w->client_port);
+    host->receiver->replication->key = strdupz(key);
 #ifdef ENABLE_HTTPS
     host->receiver->replication->ssl->conn = w->ssl.conn;
     host->receiver->replication->ssl->flags = w->ssl.flags;
@@ -950,7 +959,7 @@ static void replication_sender_thread_cleanup_callback(void *ptr) {
 void replication_receiver_thread_cleanup_callback(void *ptr)
 {
     // destroy the replication rx structs - TBD
-    info("%s: Hey you, add something here...I need to cleanup the receiver thread!!! :P", REPLICATION_MSG);
+    info("%s: Cleaning up the REP Rx receiver thread...", REPLICATION_MSG);
 
     static __thread int executed = 0;
     if(!executed) {
@@ -958,22 +967,18 @@ void replication_receiver_thread_cleanup_callback(void *ptr)
         struct receiver_state *rpt = (struct receiver_state *) ptr;
         // If the shutdown sequence has started, and this receiver is still attached to the host then we cannot touch
         // the host pointer as it is unpredictable when the RRDHOST is deleted. Do the cleanup from rrdhost_free().
-        if (netdata_exit && rpt->host) {
+        if (netdata_exit && rpt->replication) {
+            info("%s: REP Rx thread cleanup: Shutdown sequence has started...", REPLICATION_MSG);
             rpt->replication->exited = 1;
             return;
         }
 
         // Make sure that we detach this thread and don't kill a freshly arriving receiver
-        if (!netdata_exit && rpt->host) {
-            netdata_mutex_lock(&rpt->replication->mutex);
-            if (rpt->host->receiver == rpt){
-                rpt->host->receiver = NULL;
-                }
-            netdata_mutex_unlock(&rpt->replication->mutex);
+        if (!netdata_exit && rpt->replication) {
+            info("%s %s [receive from [%s]:%s]: receive thread ended (task id %d)", REPLICATION_MSG, rpt->hostname, rpt->replication->client_ip, rpt->replication->client_port, gettid());
+            replication_state_destroy(&rpt->replication);
         }
-        info("%s %s [receive from [%s]:%s]: receive thread ended (task id %d)", REPLICATION_MSG, rpt->hostname, rpt->replication->client_ip, rpt->replication->client_port, gettid());
-        replication_state_destroy(&rpt->replication);
-        // // On a parent signal also the sender thread sending to a gparent to shutdown. Probably after the parsing. Check also the clean-up functionality in the rrdhost().        
+        // On a parent signal also the sender thread sending to a gparent to shutdown. Probably after the parsing. Check also the clean-up functionality in the rrdhost().        
     }
 }
 
@@ -1021,6 +1026,7 @@ void replication_collect_past_metric_init(REPLICATION_STATE *rep_state, char *rr
         dim_past_data->page_length = 0;
         dim_past_data->start_time = 0;
         dim_past_data->end_time = 0;
+        dim_past_data->rd = NULL;
     }
     dim_past_data->rrdset_id = strdupz(rrdset_id);
     dim_past_data->rrddim_id = strdupz(rrddim_id);
@@ -1042,12 +1048,16 @@ void replication_collect_past_metric_init(REPLICATION_STATE *rep_state, char *rr
 void replication_collect_past_metric(REPLICATION_STATE *rep_state, time_t timestamp, storage_number number) {
     storage_number *page = rep_state->dim_past_data->page;
     uint32_t page_length = rep_state->dim_past_data->page_length;
+    if(!rep_state->dim_past_data->rd){
+        infoerr("%s: Collect past metric: Dimension not found in the host", REPLICATION_MSG);
+        return;
+    }
+    time_t update_every = rep_state->dim_past_data->rd->update_every;
     if(!page_length)
         rep_state->dim_past_data->start_time = timestamp * USEC_PER_SEC;
     if((page_length + sizeof(number)) < RRDENG_BLOCK_SIZE){
         if(page_length && rep_state->dim_past_data->rd){
             time_t current_end_time = rep_state->dim_past_data->end_time / USEC_PER_SEC;
-            time_t update_every = rep_state->dim_past_data->rd->update_every;
             time_t t_sample_diff  = (timestamp -  current_end_time);
             if(t_sample_diff > update_every){
                 error("%s: Hard gap was detected. Need to fill it with zeros", REPLICATION_MSG);
@@ -1061,13 +1071,19 @@ void replication_collect_past_metric(REPLICATION_STATE *rep_state, time_t timest
         rep_state->dim_past_data->page_length = page_length;
         rep_state->dim_past_data->end_time = timestamp * USEC_PER_SEC;
     }
-    info("%s: Collect past metric sample#%d@%ld: %d \n", REPLICATION_MSG, page_length, timestamp, number);
+    info("%s: Collect past metric sample#%d@%ld: "CALCULATED_NUMBER_FORMAT" \n", REPLICATION_MSG, page_length, timestamp, unpack_storage_number(number));
 }
 
 void replication_collect_past_metric_done(REPLICATION_STATE *rep_state) {
     info("%s: Collect past metrics DONE: \n", REPLICATION_MSG);
     RRDDIM_PAST_DATA *dim_past_data = rep_state->dim_past_data;
+    if(!rep_state->dim_past_data->rd){
+        infoerr("%s: Collect past metric: Dimension not found in the host", REPLICATION_MSG);
+        return;
+    }    
+    // netdata_mutex_lock(&rep_state->mutex);
     flush_collected_metric_past_data(dim_past_data, rep_state);
+    // netdata_mutex_unlock(&rep_state->mutex);
 }
 
 void flush_collected_metric_past_data(RRDDIM_PAST_DATA *dim_past_data, REPLICATION_STATE *rep_state){
@@ -1113,7 +1129,7 @@ int load_gap(RRDHOST *host)
     int rc;
     
     // TBR
-    info("%s: LOAD from SQLITE this GAP:", REPLICATION_MSG);
+    // info("%s: LOAD from SQLITE this GAP:", REPLICATION_MSG);
 
     if (unlikely(!db_meta) && default_rrd_memory_mode != RRD_MEMORY_MODE_DBENGINE)
         return SQLITE_ERROR;
