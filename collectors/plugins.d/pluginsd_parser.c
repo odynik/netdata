@@ -821,7 +821,7 @@ PARSER_RC pluginsd_rdata_action(void *user, GAP meta_rx_rdata, int block_id, cha
 PARSER_RC pluginsd_fill_action(void *user, time_t timestamp, storage_number value)
 {
     REPLICATION_STATE *rep_state = ((PARSER_USER_OBJECT *)user)->opaque;
-    info("%s: FILL command - pluginsd_fill_action\n", REPLICATION_MSG);
+    // info("%s: FILL command - pluginsd_fill_action\n", REPLICATION_MSG);
     //rrddim_find
     //call a similar void rrdeng_store_metric_next(RRDDIM *rd, usec_t point_in_time, storage_number number)
     //function to save the fill value in the page
@@ -944,7 +944,7 @@ PARSER_RC pluginsd_fill(char **words, void *user, PLUGINSD_ACTION  *plugins_acti
         goto disable;
     }
 
-    info("%s: FILL %s.%s %ld %d", REPLICATION_MSG, chart_id, dim_id, timestamp, value);
+    // info("%s: FILL %s.%s %ld %d", REPLICATION_MSG, chart_id, dim_id, timestamp, value);
     //Call the replication function to save the parameters.
     if (plugins_action->fill_action) {
         return plugins_action->fill_action((PARSER_USER_OBJECT *) user, timestamp, value);

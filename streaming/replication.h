@@ -52,6 +52,7 @@ typedef struct replication_state {
     time_t last_msg_t;
     char *client_ip;
     char *client_port;
+    char *key;
     FILE *fp;
 #ifdef ENABLE_HTTPS
     struct netdata_ssl *ssl;
