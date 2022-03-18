@@ -185,11 +185,11 @@ size_t is_compressed_data(const char *data, size_t data_size);
 
 // Replication functions definitions
 // Initialization
-extern void replication_sender_init(struct sender_state *sender);
-extern void replication_receiver_init(struct receiver_state **a_receiver, struct config *stream_config);
+extern void replication_sender_init(RRDHOST *host);
+extern void replication_receiver_init(RRDHOST *host, struct config *stream_config, char *key);
 // Threads
-extern void replication_sender_thread_spawn(RRDHOST *host);
 extern int replication_receiver_thread_spawn(struct web_client *w, char *url);
+extern void replication_sender_thread_spawn(RRDHOST *host);
 extern void replication_sender_thread_stop(RRDHOST *host);
 extern void *replication_sender_thread(void *ptr);
 extern void evaluate_gap_onconnection(struct receiver_state *stream_recv);

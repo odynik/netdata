@@ -828,6 +828,7 @@ PARSER_RC pluginsd_fill_action(void *user, time_t timestamp, storage_number valu
 
 PARSER_RC pluginsd_fill_end_action(void *user, int block_id)
 {
+    UNUSED(block_id);
     REPLICATION_STATE *rep_state = (REPLICATION_STATE *)((PARSER_USER_OBJECT *)user)->opaque;
     info("%s: FILLEND command - pluginsd_fill_end_action\n", REPLICATION_MSG);
     // Send REP ACK command

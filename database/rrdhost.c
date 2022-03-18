@@ -439,8 +439,10 @@ RRDHOST *rrdhost_create(const char *hostname,
     // if(default_rrdpush_replication_enabled)
     if(strcmp(host->machine_guid, localhost->machine_guid))
         gaps_init(&host);
-    //Initialization of the Replication Tx thread.
-    replication_sender_init(host->sender);
+    //Initialization of the Replication thread pointers.
+    host->replication = (REPLICATION *)callocz(1, sizeof(REPLICATION));
+    // Initialize the Tx Replication thread
+    replication_sender_init(host);
 
     rrd_hosts_available++;
 
