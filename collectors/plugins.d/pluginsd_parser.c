@@ -729,6 +729,10 @@ PARSER_RC metalog_pluginsd_host(char **words, void *user, PLUGINSD_ACTION  *plug
 PARSER_RC pluginsd_rep_action(void *user, REP_ARG command)
 {
     info("%s: REP command - pluginsd_rep_action\n", REPLICATION_MSG);
+    if(!user || !((PARSER_USER_OBJECT *)user)->host || !((PARSER_USER_OBJECT *)user)->opaque) {
+        infoerr("%s: Parser user object was not set properly - user, host or opaque is NULL - Exiting Parser!");
+        return PARSER_RC_ERROR;
+    }
     RRDHOST *host = ((PARSER_USER_OBJECT *)user)->host;
     REPLICATION_STATE *rep_state = ((PARSER_USER_OBJECT *)user)->opaque;
 
@@ -776,20 +780,15 @@ PARSER_RC pluginsd_rep_action(void *user, REP_ARG command)
 
 PARSER_RC pluginsd_gap_action(void *user, GAP rx_gap)
 {
-    // info("%s: GAP command - pluginsd_gap_action\n", REPLICATION_MSG);
+    info("%s: GAP command - pluginsd_gap_action\n", REPLICATION_MSG);
+    if(!user || !((PARSER_USER_OBJECT *)user)->opaque) {
+        infoerr("%s: Parser user object was not set properly - user, host or opaque is NULL - Exiting Parser!");
+        return PARSER_RC_ERROR;
+    }
     REPLICATION_STATE *rep_state = ((PARSER_USER_OBJECT *)user)->opaque;
-    
     //Check if there is GAP and send GAP command, otherwise send REP OFF command
-    sender_gap_filling(rep_state, &rx_gap);
+    sender_gap_filling(rep_state, rx_gap);
     info("%s: EXITING GAP command - All charts sent\n", REPLICATION_MSG);
-    // char *rdata;
-    // size_t len;
-    // for(int i = 1; i < 10; i++){
-    //     replication_rdata_to_str(&rx_gap, &rdata, &len, i);
-    //     // sprintf (rdata, "RDATA GAPUUID RDATADUMMY_TS RDATADUMMY_TE %d\n", i);
-    //     send_message(rep_state, rdata);
-    //     sleep(1);
-    // }
 
     // return PARSER_RC_OK;
     ((PARSER_USER_OBJECT *)user)->enabled = 0;
@@ -798,6 +797,10 @@ PARSER_RC pluginsd_gap_action(void *user, GAP rx_gap)
 
 PARSER_RC pluginsd_rdata_action(void *user, GAP meta_rx_rdata, int block_id, char *chart_id, char *dim_id)
 {
+    if(!user || !((PARSER_USER_OBJECT *)user)->opaque) {
+        infoerr("%s: Parser user object was not set properly - user, or opaque is NULL - Exiting Parser!");
+        return PARSER_RC_ERROR;
+    }
     REPLICATION_STATE *rep_state = ((PARSER_USER_OBJECT *)user)->opaque;
 
     // info("%s: RDATA command - pluginsd_rdata_action\n", REPLICATION_MSG);
@@ -820,6 +823,10 @@ PARSER_RC pluginsd_rdata_action(void *user, GAP meta_rx_rdata, int block_id, cha
 
 PARSER_RC pluginsd_fill_action(void *user, time_t timestamp, storage_number value)
 {
+    if(!user || !((PARSER_USER_OBJECT *)user)->opaque) {
+        infoerr("%s: Parser user object was not set properly - user, or opaque is NULL - Exiting Parser!");
+        return PARSER_RC_ERROR;
+    }    
     REPLICATION_STATE *rep_state = ((PARSER_USER_OBJECT *)user)->opaque;
     // info("%s: FILL command - pluginsd_fill_action\n", REPLICATION_MSG);
     //rrddim_find

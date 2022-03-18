@@ -202,7 +202,7 @@ extern void replication_state_destroy(REPLICATION_STATE **state);
 extern void rrdset_dump_debug_state(RRDSET *st);
 extern void replication_rdata_to_str(GAP *a_gap, char **rdata_str, size_t *len, int block_id);
 extern void replication_gap_to_str(GAP *a_gap, char **gap_str, size_t *len);
-extern void sender_chart_gap_filling(RRDSET *st, GAP *a_gap);
-extern void sender_gap_filling(REPLICATION_STATE *rep_state, GAP *a_gap);
-extern void sender_fill_gap_nolock(REPLICATION_STATE *rep_state, RRDSET *st, GAP *a_gap);
+extern void sender_chart_gap_filling(RRDSET *st, GAP a_gap);
+extern void sender_gap_filling(REPLICATION_STATE *rep_state, GAP a_gap);
+extern void sender_fill_gap_nolock(REPLICATION_STATE *rep_state, RRDSET *st, GAP a_gap);
 #endif //NETDATA_RRDPUSH_H

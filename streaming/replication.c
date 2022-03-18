@@ -3,7 +3,7 @@
 // TODO: fix the header file to look nice and clean
 extern void rrdpush_encode_variable(stream_encoded_t *se, RRDHOST *host);
 extern void rrdpush_clean_encoded(stream_encoded_t *se);
-size_t replication_parser(struct replication_state *rpt, struct plugind *cd, FILE *fp);
+size_t replication_parser(REPLICATION_STATE *rpt, struct plugind *cd, FILE *fp);
 
 static void replication_receiver_thread_cleanup_callback(void *ptr);
 static void replication_sender_thread_cleanup_callback(void *ptr);
@@ -77,8 +77,6 @@ static unsigned int replication_rd_config(RRDHOST *host, struct config *stream_c
     rep_state->default_port = (int)appconfig_get_number(stream_config, CONFIG_SECTION_STREAM, "default port", 19999);    
     rrdpush_replication_enable = appconfig_get_boolean(stream_config, key, "enable replication", rrdpush_replication_enable);
     rrdpush_replication_enable = appconfig_get_boolean(stream_config, host->machine_guid, "enable replication", rrdpush_replication_enable);
-    // Runtime replication enable status
-    rrdpush_replication_enable = (rrdpush_replication_enable && (host->receiver->stream_version >= VERSION_GAP_FILLING));
     
     info("%s: Configuration applied %u ", REPLICATION_MSG, rrdpush_replication_enable);
     return rrdpush_replication_enable;
@@ -605,7 +603,7 @@ void *replication_receiver_thread(void *ptr){
         error("%s %s [receive from [%s]:%s]: cannot remove the non-blocking flag from socket %d", REPLICATION_MSG, host->hostname, rep_state->client_ip, rep_state->client_port, rep_state->socket);
 
     // convert the socket to a FILE *
-    FILE *fp = fdopen(rep_state->socket, "r");
+    FILE *fp = fdopen(rep_state->socket, "w+");
     if(!fp) {
         log_replication_connection(rep_state->client_ip, rep_state->client_port, rep_state->key, host->machine_guid, host->hostname, "SOCKET CONVERSION TO FD FAILED - SOCKET ERROR");
         error("%s %s [receive from [%s]:%s]: failed to get a FILE for FD %d.", REPLICATION_MSG, host->hostname, rep_state->client_ip, rep_state->client_port, rep_state->socket);
@@ -1210,16 +1208,16 @@ static int receiver_read(struct replication_state *r, FILE *fp) {
     }
 #endif
     if (!fgets(r->read_buffer, sizeof(r->read_buffer), fp)){
-        // info("%s: RxREAD fgets() failed: [%s]", REPLICATION_MSG, r->read_buffer);
+        info("%s: RxREAD fgets() failed: [%s]", REPLICATION_MSG, r->read_buffer);
         return 1;
     }
     r->read_len = strlen(r->read_buffer);
-    // info("%s: RxREAD END sucess", REPLICATION_MSG);
+    info("%s: RxREAD END sucess", REPLICATION_MSG);
     return 0;
 }
 
 // Replication parser & commands
-size_t replication_parser(struct replication_state *rpt, struct plugind *cd, FILE *fp) {
+size_t replication_parser(REPLICATION_STATE *rpt, struct plugind *cd, FILE *fp) {
     size_t result;
     PARSER_USER_OBJECT *user = callocz(1, sizeof(*user));
     //TODO cd?
@@ -1245,14 +1243,6 @@ size_t replication_parser(struct replication_state *rpt, struct plugind *cd, FIL
         return 0;
     }
     
-    // Add keywords related with REPlication
-    // REP on/off/pause/ack
-    // GAP - Gap metdata. Information to describe the gap (window_start/end, uuid, chart/dim_id)
-    // RDATA - gap data transmission
-    // Do I need these two commands in replication?
-    // parser_add_keyword(parser, "TIMESTAMP", pluginsd_suspend_this_action);
-    // parser_add_keyword(parser, "CLAIMED_ID", pluginsd_suspend_this_action);
-
     // These are not necessary for the replication parser. Normally I would suggest to assign an inactive action so the replication won't be able to use other functions that can trigger function execution not related with its tasks.
     // parser->plugins_action->begin_action     = &pluginsd_suspend_this_action;
     // // discuss it with the team
@@ -1474,7 +1464,7 @@ void replication_send_clabels(REPLICATION_STATE *rep_state, RRDSET *st) {
 // Assumes that collector thread has already called sender_start for mutex / buffer state.
 static inline void replication_send_chart_definition_nolock(RRDSET *st) {
     RRDHOST *host = st->rrdhost;
-    REPLICATION_STATE *rep_state = host->sender->replication;
+    REPLICATION_STATE *rep_state = host->replication->tx_replication;
 
     rrdset_flag_set(st, RRDSET_FLAG_UPSTREAM_EXPOSED);
 
@@ -1513,7 +1503,7 @@ static inline void replication_send_chart_definition_nolock(RRDSET *st) {
     );
 
     // send the chart labels
-    if (host->sender->version >= STREAM_VERSION_CLABELS)
+    if (rep_state->stream_version >= STREAM_VERSION_CLABELS)
         replication_send_clabels(rep_state, st);
 
     // send the dimensions
@@ -1555,7 +1545,7 @@ static inline void replication_send_chart_definition_nolock(RRDSET *st) {
 /* start_time is set during an explicit replication request from the far end, or zero if we are pushing the latest
    data from the collector.
 */
-void sender_fill_gap_nolock(REPLICATION_STATE *rep_state, RRDSET *st, GAP *a_gap)
+void sender_fill_gap_nolock(REPLICATION_STATE *rep_state, RRDSET *st, GAP a_gap)
 {
     RRDDIM *rd;
     struct rrddim_query_handle handle;
@@ -1563,9 +1553,9 @@ void sender_fill_gap_nolock(REPLICATION_STATE *rep_state, RRDSET *st, GAP *a_gap
     unsigned int default_rrdpush_gap_block_size = RRDENG_BLOCK_SIZE;
     unsigned int block_id = 0;
 
-    time_t t_delta_start = a_gap->t_window.t_start;
-    time_t t_delta_first = a_gap->t_window.t_first;
-    time_t t_delta_end = a_gap->t_window.t_end;
+    time_t t_delta_start = a_gap.t_window.t_start;
+    time_t t_delta_first = a_gap.t_window.t_first;
+    time_t t_delta_end = a_gap.t_window.t_end;
 
     int update_every = st->update_every;
     unsigned int block_size_in_bytes = RRDENG_BLOCK_SIZE;
@@ -1584,9 +1574,9 @@ void sender_fill_gap_nolock(REPLICATION_STATE *rep_state, RRDSET *st, GAP *a_gap
     time_t window_start, window_end;
     time_t st_last_sent_sample_delta = st->rrdhost->sender->last_sent_t;
 
-    time_t gap_t_delta_start = a_gap->t_window.t_start;
-    time_t gap_t_delta_first = a_gap->t_window.t_first;
-    time_t gap_t_delta_end = a_gap->t_window.t_end;
+    time_t gap_t_delta_start = a_gap.t_window.t_start;
+    time_t gap_t_delta_first = a_gap.t_window.t_first;
+    time_t gap_t_delta_end = a_gap.t_window.t_end;
 
     UNUSED(gap_t_delta_start);
     UNUSED(residual_num_of_samples_in_time);
@@ -1610,11 +1600,13 @@ void sender_fill_gap_nolock(REPLICATION_STATE *rep_state, RRDSET *st, GAP *a_gap
     // if (unsent_points > default_rrdpush_gap_block_size)
     //     unsent_points = default_rrdpush_gap_block_size;
     // time_t window_end = MAX((window_start + unsent_points * st->update_every), st_newest);
-    window_start = t_delta_first + (t_delta_first % st->update_every);
+    window_start = t_delta_start + (t_delta_start % st->update_every);
     window_end = t_delta_end - (t_delta_end % st->update_every);
+    // window_start = t_delta_start - (t_delta_start % st->update_every);
+    // window_end = t_delta_end + (t_delta_end % st->update_every);
     
     char gap_uuid_str[UUID_STR_LEN];
-    uuid_unparse(a_gap->gap_uuid, gap_uuid_str);
+    uuid_unparse(a_gap.gap_uuid, gap_uuid_str);
     // if (gap_t_delta_first == 0)
     //     buffer_sprintf(rep_state->build, "RDATA %s \"%s\" %ld %ld %d\n", gap_uuid_str, st->id, window_start, gap_t_delta_end, block_id);
     // else
@@ -1672,28 +1664,19 @@ void sender_fill_gap_nolock(REPLICATION_STATE *rep_state, RRDSET *st, GAP *a_gap
 
     }
     // buffer_sprintf(rep_state->build, "FILLEND %zu %d\n", num_points, block_id);
-    st->rrdhost->sender->last_sent_t = window_end - st->update_every;
+    // st->rrdhost->sender->last_sent_t = window_end - st->update_every;
     debug(D_REPLICATION, "Send BUFFER(%s): [%s]",rep_state->host->hostname, buffer_tostring(rep_state->build));
 }
 
-void sender_gap_filling(REPLICATION_STATE *rep_state, GAP *a_gap)
+void sender_gap_filling(REPLICATION_STATE *rep_state, GAP a_gap)
 {
+    if(!rep_state){
+        error("%s: Cannot Send GAP replication state is NULL!", REPLICATION_MSG);
+        print_replication_gap(&a_gap);
+        return;
+    }
     RRDSET *st;
     RRDHOST *host = rep_state->host;
-    // time_t t_delta_start = a_gap->t_window.t_start;
-    // time_t t_delta_first = a_gap->t_window.t_first;
-    // time_t t_delta_end = a_gap->t_window.t_end;
-    // storage_number dim_sample;
-    // struct circular_buffer *rdata = cbuffer_new(RRDENG_BLOCK_SIZE/4, RRDENG_BLOCK_SIZE);
-    // unsigned int block_size_in_bytes = RRDENG_BLOCK_SIZE;
-    // unsigned int sample_in_bytes = (unsigned int) sizeof(storage_number);
-
-    // unsigned int num_of_samples_in_memory = block_size_in_bytes/sample_in_bytes;
-    // unsigned int residual_num_of_samples_in_memory = block_size_in_bytes%sample_in_bytes;
-
-    // unsigned int num_of_samples_in_time;
-    // unsigned int residual_num_of_samples_in_time;
-
     // TODO: Probably need to use rrdhost read locks here.
     rrdhost_rdlock(host);
     rrdset_foreach_read(st, host)
@@ -1707,8 +1690,8 @@ void sender_gap_filling(REPLICATION_STATE *rep_state, GAP *a_gap)
 }
 
 // For each chart send the dimension past data in RDATA format
-void sender_chart_gap_filling(RRDSET *st, GAP *a_gap) {
-    REPLICATION_STATE *rep_state = st->rrdhost->sender->replication;
+void sender_chart_gap_filling(RRDSET *st, GAP a_gap) {
+    REPLICATION_STATE *rep_state = st->rrdhost->replication->tx_replication;
     rrdset_rdlock(st);    
     if(unlikely(!should_send_chart_matching(st)))
         return;
