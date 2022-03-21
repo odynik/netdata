@@ -860,7 +860,7 @@ int replication_receiver_thread_spawn(struct web_client *w, char *url) {
     // and the other should be rejected.
     // Verify this code: Host exists and replication is active.
     rrdhost_wrlock(host);
-    if (host->replication->rx_replication != NULL && !host->replication->rx_replication->connected) {
+    if (host->replication->rx_replication != NULL && host->replication->rx_replication->connected) {
         time_t age = now_realtime_sec() - host->replication->rx_replication->last_msg_t;
         rrdhost_unlock(host);
         rrd_unlock();
