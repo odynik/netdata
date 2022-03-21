@@ -633,11 +633,8 @@ void *replication_receiver_thread(void *ptr){
     remove_gap(host->gaps_timeline->gap_data);
     // On incomplete replication - DISCONNECT - evaluate the gaps that need to be removed
     // print_replication_state(rep_state);
-    info("~~~1");
     log_replication_connection(rep_state->client_ip, rep_state->client_port, rep_state->key, host->machine_guid, host->hostname, "DISCONNECTED");
-    info("~~~2");
-    error("%s: %s [receive from [%s]:%s]: disconnected (completed %zu updates).", REPLICATION_MSG, host->hostname, rep_state->client_ip, rep_state->client_port, count);
-    info("~~~3");
+    infoerr("%s: %s [receive from [%s]:%s]: disconnected (completed %zu updates).", REPLICATION_MSG, host->hostname, rep_state->client_ip, rep_state->client_port, count);
 
     // Use this section to clean a replication sender thread in case of gparent connection.
     // During a shutdown there is cleanup code in rrdhost that will cancel the sender thread
@@ -863,7 +860,7 @@ int replication_receiver_thread_spawn(struct web_client *w, char *url) {
     // and the other should be rejected.
     // Verify this code: Host exists and replication is active.
     rrdhost_wrlock(host);
-    if (host->replication->rx_replication != NULL) {
+    if (host->replication->rx_replication != NULL && !host->replication->rx_replication->connected) {
         time_t age = now_realtime_sec() - host->replication->rx_replication->last_msg_t;
         rrdhost_unlock(host);
         rrd_unlock();
