@@ -730,7 +730,7 @@ PARSER_RC pluginsd_rep_action(void *user, REP_ARG command)
 {
     info("%s: REP command - pluginsd_rep_action\n", REPLICATION_MSG);
     if(!user || !((PARSER_USER_OBJECT *)user)->host || !((PARSER_USER_OBJECT *)user)->opaque) {
-        infoerr("%s: Parser user object was not set properly - user, host or opaque is NULL - Exiting Parser!");
+        infoerr("%s: Parser user object was not set properly - user, host or opaque is NULL - Exiting Parser!", REPLICATION_MSG);
         return PARSER_RC_ERROR;
     }
     RRDHOST *host = ((PARSER_USER_OBJECT *)user)->host;
@@ -782,7 +782,7 @@ PARSER_RC pluginsd_gap_action(void *user, GAP rx_gap)
 {
     info("%s: GAP command - pluginsd_gap_action\n", REPLICATION_MSG);
     if(!user || !((PARSER_USER_OBJECT *)user)->opaque) {
-        infoerr("%s: Parser user object was not set properly - user, host or opaque is NULL - Exiting Parser!");
+        infoerr("%s: Parser user object was not set properly - user, host or opaque is NULL - Exiting Parser!", REPLICATION_MSG);
         return PARSER_RC_ERROR;
     }
     REPLICATION_STATE *rep_state = ((PARSER_USER_OBJECT *)user)->opaque;
@@ -798,7 +798,7 @@ PARSER_RC pluginsd_gap_action(void *user, GAP rx_gap)
 PARSER_RC pluginsd_rdata_action(void *user, GAP meta_rx_rdata, int block_id, char *chart_id, char *dim_id)
 {
     if(!user || !((PARSER_USER_OBJECT *)user)->opaque) {
-        infoerr("%s: Parser user object was not set properly - user, or opaque is NULL - Exiting Parser!");
+        infoerr("%s: Parser user object was not set properly - user, or opaque is NULL - Exiting Parser!", REPLICATION_MSG);
         return PARSER_RC_ERROR;
     }
     REPLICATION_STATE *rep_state = ((PARSER_USER_OBJECT *)user)->opaque;
@@ -824,7 +824,7 @@ PARSER_RC pluginsd_rdata_action(void *user, GAP meta_rx_rdata, int block_id, cha
 PARSER_RC pluginsd_fill_action(void *user, time_t timestamp, storage_number value)
 {
     if(!user || !((PARSER_USER_OBJECT *)user)->opaque) {
-        infoerr("%s: Parser user object was not set properly - user, or opaque is NULL - Exiting Parser!");
+        infoerr("%s: Parser user object was not set properly - user, or opaque is NULL - Exiting Parser!", REPLICATION_MSG);
         return PARSER_RC_ERROR;
     }    
     REPLICATION_STATE *rep_state = ((PARSER_USER_OBJECT *)user)->opaque;
@@ -971,11 +971,14 @@ PARSER_RC pluginsd_fill_end(char **words, void *user, PLUGINSD_ACTION  *plugins_
     int numofpoints = strtol(words[1], NULL, 10);
     int block_id = strtol(words[2], NULL, 10);
 
-    UNUSED(numofpoints);
-
     if (unlikely(errno == ERANGE)) {
         error("%s: FILLEND parameters parsing failed for host '%s'. Disabling it.", REPLICATION_MSG, host->hostname);
         goto disable;
+    }
+
+    if(unlikely(numofpoints)) {
+        infoerr("%s: FILLEND Zero #samples - Continue to the next dimension - host '%s'.", REPLICATION_MSG, host->hostname);
+        return PARSER_RC_OK;
     }
 
     //Call the replication function to save the parameters.
