@@ -971,7 +971,7 @@ PARSER_RC pluginsd_fill_end(char **words, void *user, PLUGINSD_ACTION  *plugins_
         goto disable;
     }
 
-    if(unlikely(numofpoints)) {
+    if(unlikely(!numofpoints)) {
         infoerr("%s: FILLEND Zero #samples - Continue to the next dimension - host '%s'.", REPLICATION_MSG, host->hostname);
         return PARSER_RC_OK;
     }
