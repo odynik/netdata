@@ -768,7 +768,7 @@ PARSER_RC pluginsd_rep_action(void *user, REP_ARG command)
         // For now simply return an error to exit
         // return PARSER_RC_ERROR;        
       default:
-        info("%s: REP %d command is unknown!\n", REPLICATION_MSG, command);
+        info("%s: REP %u command is unknown!\n", REPLICATION_MSG, command);
     }
 
     return PARSER_RC_OK;

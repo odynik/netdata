@@ -65,6 +65,7 @@ void replication_sender_init(RRDHOST *host){
 
 static unsigned int replication_rd_config(RRDHOST *host, struct config *stream_config, char *key)
 {
+    UNUSED(key);
     REPLICATION_STATE *rep_state = host->replication->rx_replication;
     info("%s: Reading config Rx for host %s ", REPLICATION_MSG, host->hostname);
     unsigned int rrdpush_replication_enable = default_rrdpush_replication_enabled;
@@ -75,8 +76,7 @@ static unsigned int replication_rd_config(RRDHOST *host, struct config *stream_c
 // #endif    
     rep_state->timeout = (int)appconfig_get_number(stream_config, CONFIG_SECTION_STREAM, "timeout seconds", 60);
     rep_state->default_port = (int)appconfig_get_number(stream_config, CONFIG_SECTION_STREAM, "default port", 19999);    
-    rrdpush_replication_enable = appconfig_get_boolean(stream_config, key, "enable replication", rrdpush_replication_enable);
-    rrdpush_replication_enable = appconfig_get_boolean(stream_config, host->machine_guid, "enable replication", rrdpush_replication_enable);
+    rrdpush_replication_enable = appconfig_get_boolean(stream_config, CONFIG_SECTION_STREAM, "enable replication", rrdpush_replication_enable);
     
     info("%s: Configuration applied %u ", REPLICATION_MSG, rrdpush_replication_enable);
     return rrdpush_replication_enable;
@@ -1067,7 +1067,7 @@ void replication_collect_past_metric(REPLICATION_STATE *rep_state, time_t timest
         rep_state->dim_past_data->page_length = page_length;
         rep_state->dim_past_data->end_time = timestamp * USEC_PER_SEC;
     }
-    info("%s: Collect past metric sample#%d@%ld: "CALCULATED_NUMBER_FORMAT" \n", REPLICATION_MSG, page_length, timestamp, unpack_storage_number(number));
+    info("%s: Collect past metric sample#%u@%ld: "CALCULATED_NUMBER_FORMAT" \n", REPLICATION_MSG, page_length, timestamp, unpack_storage_number(number));
 }
 
 void replication_collect_past_metric_done(REPLICATION_STATE *rep_state) {
@@ -1577,6 +1577,10 @@ void sender_fill_gap_nolock(REPLICATION_STATE *rep_state, RRDSET *st, GAP a_gap)
     time_t gap_t_delta_first = a_gap.t_window.t_first;
     time_t gap_t_delta_end = a_gap.t_window.t_end;
 
+    UNUSED(default_rrdpush_gap_block_size);
+    UNUSED(first_t);
+    UNUSED(st_newest);
+    UNUSED(st_last_sent_sample_delta);
     UNUSED(gap_t_delta_start);
     UNUSED(residual_num_of_samples_in_time);
     UNUSED(num_of_samples_in_time);
@@ -1631,9 +1635,9 @@ void sender_fill_gap_nolock(REPLICATION_STATE *rep_state, RRDSET *st, GAP a_gap)
                   st->id, rd->id, window_start, window_end, rd_oldest, rd_end, handle.start_time, handle.end_time);
             
             if (gap_t_delta_first == 0)
-                buffer_sprintf(rep_state->build, "RDATA %s \"%s\" \"%s\" %ld %ld %d\n", gap_uuid_str, st->id, rd->id, window_start, gap_t_delta_end, block_id);
+                buffer_sprintf(rep_state->build, "RDATA %s \"%s\" \"%s\" %ld %ld %u\n", gap_uuid_str, st->id, rd->id, window_start, gap_t_delta_end, block_id);
             else
-                buffer_sprintf(rep_state->build, "RDATA %s \"%s\" \"%s\" %ld %ld %d\n", gap_uuid_str, st->id, rd->id, gap_t_delta_first, gap_t_delta_end, block_id);
+                buffer_sprintf(rep_state->build, "RDATA %s \"%s\" \"%s\" %ld %ld %u\n", gap_uuid_str, st->id, rd->id, gap_t_delta_first, gap_t_delta_end, block_id);
             
             num_points = 0;
             for (time_t metric_t = rd_oldest; metric_t < rd_end; ) {
@@ -1653,7 +1657,7 @@ void sender_fill_gap_nolock(REPLICATION_STATE *rep_state, RRDSET *st, GAP a_gap)
                     
                 }
             }
-            buffer_sprintf(rep_state->build, "FILLEND %zu %d\n", num_points, block_id);
+            buffer_sprintf(rep_state->build, "FILLEND %zu %u\n", num_points, block_id);
             rd->state->query_ops.finalize(&handle);
         }
         else
@@ -1843,7 +1847,7 @@ void print_collected_metric_past_data(RRDDIM_PAST_DATA *past_data, REPLICATION_S
     storage_number *page = (storage_number *)past_data->page;
     uint32_t len = past_data->page_length / sizeof(storage_number);
     
-    info("%s: Past Samples(%d) [%ld, %ld] for dimension %s\n", REPLICATION_MSG, len, ts, te, rd->id);
+    info("%s: Past Samples(%u) [%ld, %ld] for dimension %s\n", REPLICATION_MSG, len, ts, te, rd->id);
     time_t t = ts;
     for(uint32_t i=0; i < len ; i++){
         info("T: %ld, V: "STORAGE_NUMBER_FORMAT" \n", t, page[i]);
