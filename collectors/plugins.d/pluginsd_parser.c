@@ -741,6 +741,7 @@ PARSER_RC pluginsd_rep_action(void *user, REP_ARG command)
       case REP_OFF:
         info("%s: REP OFF command is received!\n", REPLICATION_MSG);
         // Shutdown the replication thread.
+        rep_state->shutdown = 1;
         // For now simply return an error to exit
         ((PARSER_USER_OBJECT *)user)->enabled = 0;
         return PARSER_RC_ERROR;
