@@ -487,6 +487,7 @@ void *replication_sender_thread(void *ptr) {
     RRDHOST *host = (RRDHOST *)ptr;
     REPLICATION_STATE *rep_state = host->replication->tx_replication;
     unsigned int rrdpush_replication_enabled = rep_state->enabled;
+    rep_state->shutdown = 0;
     info("%s Replication sender thread is starting", REPLICATION_MSG);
 
     // Read the config for sending in replication
