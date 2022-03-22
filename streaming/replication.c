@@ -499,7 +499,8 @@ void *replication_sender_thread(void *ptr) {
         // This needs to go into the replication parser.
         netdata_thread_testcancel();
         // try to connect
-        if((rep_state->not_connected_loops < 3) && !rep_state->connected) {
+        // if((rep_state->not_connected_loops < 3) && !rep_state->connected) {
+        if(!rep_state->connected) {
             replication_attempt_to_connect(host);
             rep_state->not_connected_loops++;            
         }
@@ -1598,10 +1599,10 @@ void sender_fill_gap_nolock(REPLICATION_STATE *rep_state, RRDSET *st, GAP a_gap)
     // if (unsent_points > default_rrdpush_gap_block_size)
     //     unsent_points = default_rrdpush_gap_block_size;
     // time_t window_end = MAX((window_start + unsent_points * st->update_every), st_newest);
-    window_start = t_delta_start + (t_delta_start % st->update_every);
-    window_end = t_delta_end - (t_delta_end % st->update_every);
-    // window_start = t_delta_start - (t_delta_start % st->update_every);
-    // window_end = t_delta_end + (t_delta_end % st->update_every);
+    // window_start = t_delta_start + (t_delta_start % st->update_every);
+    // window_end = t_delta_end - (t_delta_end % st->update_every);
+    window_start = t_delta_start - (t_delta_start % st->update_every);
+    window_end = t_delta_end + (t_delta_end % st->update_every);
     
     char gap_uuid_str[UUID_STR_LEN];
     uuid_unparse(a_gap.gap_uuid, gap_uuid_str);
