@@ -503,7 +503,7 @@ void *replication_sender_thread(void *ptr) {
         // if((rep_state->not_connected_loops < 3) && !rep_state->connected) {
         if(!rep_state->connected) {
             replication_attempt_to_connect(host);
-            rep_state->not_connected_loops++;            
+            rep_state->not_connected_loops++;
         }
         else {
             send_message(rep_state, "REP 2\n");
@@ -599,6 +599,7 @@ void *replication_receiver_thread(void *ptr){
         return 0;
     }
     // Here is the first proof of connection with the sender thread.
+    rep_state->connected = 1;
 
     // remove the non-blocking flag from the socket
     if(sock_delnonblock(rep_state->socket) < 0)
@@ -635,7 +636,7 @@ void *replication_receiver_thread(void *ptr){
     replication_thread_close_socket(rep_state);
     remove_gap(host->gaps_timeline->gap_data);
     // On incomplete replication - DISCONNECT - evaluate the gaps that need to be removed
-    // print_replication_state(rep_state);
+    print_replication_state(rep_state);
     log_replication_connection(rep_state->client_ip, rep_state->client_port, rep_state->key, host->machine_guid, host->hostname, "DISCONNECTED");
     infoerr("%s: %s [receive from [%s]:%s]: disconnected (completed %zu updates).", REPLICATION_MSG, host->hostname, rep_state->client_ip, rep_state->client_port, count);
 
@@ -863,18 +864,16 @@ int replication_receiver_thread_spawn(struct web_client *w, char *url) {
     // and the other should be rejected.
     // Verify this code: Host exists and replication is active.
     rrdhost_wrlock(host);
-    if (host->replication->rx_replication != NULL){
-        if(host->replication->rx_replication->connected){
-            time_t age = now_realtime_sec() - host->replication->rx_replication->last_msg_t;
-            rrdhost_unlock(host);
-            rrd_unlock();
-            log_replication_connection(w->client_ip, w->client_port, key, host->machine_guid, host->hostname, "REJECTED - ALREADY CONNECTED");
-            info("%s %s [receive from [%s]:%s]: multiple connections for same host detected - existing connection is active (within last %ld sec), rejecting new connection.", REPLICATION_MSG, host->hostname, w->client_ip, w->client_port, age);
-            // Have not set WEB_CLIENT_FLAG_DONT_CLOSE_SOCKET - caller should clean up
-            buffer_flush(w->response.data);
-            buffer_strcat(w->response.data, "This GUID is already replicating to this server");
-            return 409;
-        }
+    if (host->replication->rx_replication != NULL && host->replication->rx_replication->spawned) {
+        time_t age = now_realtime_sec() - host->replication->rx_replication->last_msg_t;
+        rrdhost_unlock(host);
+        rrd_unlock();
+        log_replication_connection(w->client_ip, w->client_port, key, host->machine_guid, host->hostname, "REJECTED - ALREADY CONNECTED");
+        info("%s %s [receive from [%s]:%s]: multiple connections for same host detected - existing connection is active (within last %ld sec), rejecting new connection.", REPLICATION_MSG, host->hostname, w->client_ip, w->client_port, age);
+        // Have not set WEB_CLIENT_FLAG_DONT_CLOSE_SOCKET - caller should clean up
+        buffer_flush(w->response.data);
+        buffer_strcat(w->response.data, "This GUID is already replicating to this server");
+        return 409;
     }
     rrdhost_unlock(host);
     rrd_unlock();
@@ -915,6 +914,8 @@ int replication_receiver_thread_spawn(struct web_client *w, char *url) {
 
     if(netdata_thread_create(&host->replication->rx_replication->thread, tag, NETDATA_THREAD_OPTION_DEFAULT, replication_receiver_thread, (void *)host))
         error("Failed to create new REPLICATE receive thread for client.");
+    else
+        host->replication->rx_replication->spawned = 1;
 
     // prevent the caller from closing the streaming socket
     if(web_server_mode == WEB_SERVER_MODE_STATIC_THREADED) {
@@ -976,6 +977,7 @@ void replication_receiver_thread_cleanup_callback(void *ptr)
         if (!netdata_exit && rep_state) {
             info("%s %s [receive from [%s]:%s]: receive thread ended (task id %d)", REPLICATION_MSG, host->hostname, rep_state->client_ip, rep_state->client_port, gettid());
             replication_state_destroy(&rep_state);
+            host->replication->rx_replication = NULL;
         }
         // On a parent signal also the sender thread sending to a gparent to shutdown. Probably after the parsing. Check also the clean-up functionality in the rrdhost().        
     }
@@ -1357,8 +1359,9 @@ void generate_new_gap(struct receiver_state *stream_recv) {
     GAP *newgap = stream_recv->host->gaps_timeline->gap_data;
     uuid_generate(newgap->gap_uuid);
     newgap->host_mguid = strdupz(stream_recv->machine_guid);
-    newgap->t_window.t_start = stream_recv->last_msg_t;
-    newgap->t_window.t_first = rrdhost_last_entry_t(stream_recv->host);
+    newgap->t_window.t_start = now_realtime_sec(); 
+    // newgap->t_window.t_first = rrdhost_last_entry_t(stream_recv->host);
+    newgap->t_window.t_first = stream_recv->last_msg_t;
     newgap->t_window.t_end = 0;
     newgap->status = "oncreate";
     return;
