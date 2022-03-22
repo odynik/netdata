@@ -630,6 +630,7 @@ void *replication_receiver_thread(void *ptr){
     size_t count = replication_parser(rep_state, &cd, fp);
 
     // On completion of replication - DISCONNECT - clean up the gaps
+    replication_thread_close_socket(rep_state);
     remove_gap(host->gaps_timeline->gap_data);
     // On incomplete replication - DISCONNECT - evaluate the gaps that need to be removed
     // print_replication_state(rep_state);
