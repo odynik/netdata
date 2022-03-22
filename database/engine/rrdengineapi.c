@@ -1203,7 +1203,7 @@ static inline void set_page_values(struct rrdeng_page_descr *descr, RRDDIM *rd, 
     char rrddim_id[UUID_STR_LEN];
     uuid_unparse(*descr->id, rrddim_id);
 
-    info("%s TEST: Page Past Samples(%d) [%ld, %ld] for RRDDIM[%s] - %s\n", REPLICATION_MSG, len, ts, te, rd->id, rrddim_id);
+    info("%s TEST: Page Past Samples(%u) [%ld, %ld] for RRDDIM[%s] - %s\n", REPLICATION_MSG, len, ts, te, rd->id, rrddim_id);
     time_t t = ts;
     for(uint32_t i=0; i < len ; i++){
         page[i] = pack_storage_number(value, SN_DEFAULT_FLAGS);
