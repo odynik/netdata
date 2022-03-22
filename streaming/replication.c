@@ -862,16 +862,18 @@ int replication_receiver_thread_spawn(struct web_client *w, char *url) {
     // and the other should be rejected.
     // Verify this code: Host exists and replication is active.
     rrdhost_wrlock(host);
-    if (host->replication->rx_replication != NULL && host->replication->rx_replication->connected) {
-        time_t age = now_realtime_sec() - host->replication->rx_replication->last_msg_t;
-        rrdhost_unlock(host);
-        rrd_unlock();
-        log_replication_connection(w->client_ip, w->client_port, key, host->machine_guid, host->hostname, "REJECTED - ALREADY CONNECTED");
-        info("%s %s [receive from [%s]:%s]: multiple connections for same host detected - existing connection is active (within last %ld sec), rejecting new connection.", REPLICATION_MSG, host->hostname, w->client_ip, w->client_port, age);
-        // Have not set WEB_CLIENT_FLAG_DONT_CLOSE_SOCKET - caller should clean up
-        buffer_flush(w->response.data);
-        buffer_strcat(w->response.data, "This GUID is already replicating to this server");
-        return 409;
+    if (host->replication->rx_replication != NULL){
+        if(host->replication->rx_replication->connected){
+            time_t age = now_realtime_sec() - host->replication->rx_replication->last_msg_t;
+            rrdhost_unlock(host);
+            rrd_unlock();
+            log_replication_connection(w->client_ip, w->client_port, key, host->machine_guid, host->hostname, "REJECTED - ALREADY CONNECTED");
+            info("%s %s [receive from [%s]:%s]: multiple connections for same host detected - existing connection is active (within last %ld sec), rejecting new connection.", REPLICATION_MSG, host->hostname, w->client_ip, w->client_port, age);
+            // Have not set WEB_CLIENT_FLAG_DONT_CLOSE_SOCKET - caller should clean up
+            buffer_flush(w->response.data);
+            buffer_strcat(w->response.data, "This GUID is already replicating to this server");
+            return 409;
+        }
     }
     rrdhost_unlock(host);
     rrd_unlock();
@@ -885,6 +887,7 @@ int replication_receiver_thread_spawn(struct web_client *w, char *url) {
     host->replication->rx_replication->client_port = strdupz(w->client_port);
     host->replication->rx_replication->key = strdupz(key);
     host->replication->rx_replication->stream_version = stream_version;
+    host->replication->rx_replication->connected = 1;
 #ifdef ENABLE_HTTPS
     host->replication->rx_replication->ssl->conn = w->ssl.conn;
     host->replication->rx_replication->ssl->flags = w->ssl.flags;
