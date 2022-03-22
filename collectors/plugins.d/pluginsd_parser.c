@@ -748,8 +748,9 @@ PARSER_RC pluginsd_rep_action(void *user, REP_ARG command)
         //Check if there is GAP and send GAP command, otherwise send REP OFF command 
         if(!strcmp("empty", the_gap->status)) {
             info("%s: No GAPs to replicate. Switch off the REPlication thread", REPLICATION_MSG);
-            // Send replication off and exit the parser
-            send_message(rep_state, "REP 1\n");
+            // Send REP ACK to terminate replication at the Tx side.
+            send_message(rep_state, "REP 4\n");
+            // Exit the Rx parser
             ((PARSER_USER_OBJECT *)user)->enabled = 0;
             return PARSER_RC_ERROR;
         }
@@ -762,11 +763,11 @@ PARSER_RC pluginsd_rep_action(void *user, REP_ARG command)
         return PARSER_RC_OK;
       case REP_ACK:
         info("%s: REP ACK command is received!\n", REPLICATION_MSG);
-        //send_message((REPLICATION_STATE *)user->opaque, "REP ON\n");
-        //Call REP ACK function
-        return PARSER_RC_OK;
-        // For now simply return an error to exit
-        // return PARSER_RC_ERROR;        
+        // REP ACK - A full REP transmission of all the charts
+        // Send REP OFF
+        send_message(rep_state, "REP 1\n");
+        rep_state->shutdown = 1;
+        return PARSER_RC_ERROR;       
       default:
         info("%s: REP %u command is unknown!\n", REPLICATION_MSG, command);
     }
@@ -784,11 +785,13 @@ PARSER_RC pluginsd_gap_action(void *user, GAP rx_gap)
     REPLICATION_STATE *rep_state = ((PARSER_USER_OBJECT *)user)->opaque;
     //Check if there is GAP and send GAP command, otherwise send REP OFF command
     sender_gap_filling(rep_state, rx_gap);
+    info("%s: COMPLETE GAP - Send REP ACK\n", REPLICATION_MSG);
+    send_message(rep_state, "REP 4\n");
     info("%s: EXITING GAP command - All charts sent\n", REPLICATION_MSG);
 
     // return PARSER_RC_OK;
-    ((PARSER_USER_OBJECT *)user)->enabled = 0;
-    return PARSER_RC_ERROR;
+    // ((PARSER_USER_OBJECT *)user)->enabled = 0;
+    return PARSER_RC_OK;
 }
 
 PARSER_RC pluginsd_rdata_action(void *user, GAP meta_rx_rdata, int block_id, char *chart_id, char *dim_id)
@@ -800,20 +803,11 @@ PARSER_RC pluginsd_rdata_action(void *user, GAP meta_rx_rdata, int block_id, cha
     REPLICATION_STATE *rep_state = ((PARSER_USER_OBJECT *)user)->opaque;
 
     // info("%s: RDATA command - pluginsd_rdata_action\n", REPLICATION_MSG);
-    if(!strcmp(meta_rx_rdata.status, "rx_complete")){
-        // Send REP ACK command
-        send_message(rep_state, "REP 4\n");
-        info("%s: REP ACK and RDATA command is sent after block id [%d]!\n", REPLICATION_MSG, block_id);
-    }
-    else
-    {
-        char gap_uuid_str[UUID_STR_LEN];
-        uuid_unparse(meta_rx_rdata.gap_uuid, gap_uuid_str);
-        info("%s: Receiving RDATA block id#%d for gap(%s): %s\n", REPLICATION_MSG, block_id, meta_rx_rdata.status,gap_uuid_str);
-        replication_collect_past_metric_init(rep_state, chart_id, dim_id);
-    }
+    char gap_uuid_str[UUID_STR_LEN];
+    uuid_unparse(meta_rx_rdata.gap_uuid, gap_uuid_str);
+    info("%s: Receiving RDATA block id#%d for gap(%s): %s\n", REPLICATION_MSG, block_id, meta_rx_rdata.status,gap_uuid_str);
+    replication_collect_past_metric_init(rep_state, chart_id, dim_id);
 
-    //Create a page to receive the metrics
     return PARSER_RC_OK;
 }
 
@@ -839,12 +833,8 @@ PARSER_RC pluginsd_fill_end_action(void *user, int block_id)
     UNUSED(block_id);
     REPLICATION_STATE *rep_state = (REPLICATION_STATE *)((PARSER_USER_OBJECT *)user)->opaque;
     info("%s: FILLEND command - pluginsd_fill_end_action\n", REPLICATION_MSG);
-    // Send REP ACK command
-    // send_message(rep_state, "REP 4\n");
-    // info("%s: REP ACK command is sent after block id [%d]!\n", REPLICATION_MSG, block_id);
     replication_collect_past_metric_done(rep_state);
 
-    // Save the data in dbengine
     return PARSER_RC_OK;
 }
 

@@ -512,8 +512,8 @@ void *replication_sender_thread(void *ptr) {
             break;
         }
     }
-    send_message(rep_state, "REP 1\n");
-    info("%s: Send REP OFF to terminate REP thread in parent", REPLICATION_MSG);
+    // send_message(rep_state, "REP 1\n");
+    info("%s: REP OFF received - Terminating Tx REP thread", REPLICATION_MSG);
 
     // Closing thread - clean up any resources allocated here
     netdata_thread_cleanup_pop(1);
@@ -1691,9 +1691,7 @@ void sender_gap_filling(REPLICATION_STATE *rep_state, GAP a_gap)
     rrdhost_rdlock(host);
     rrdset_foreach_read(st, host)
     {
-        // num_of_samples_in_time = (t_delta_end - (t_delta_first + st->update_every)) / st->update_every;
-        // residual_num_of_samples_in_time = (t_delta_end - (t_delta_first + st->update_every)) % st->update_every;
-        // //send RDATA
+        //send RDATA
         sender_chart_gap_filling(st, a_gap);
     }
     rrdhost_unlock(host);
