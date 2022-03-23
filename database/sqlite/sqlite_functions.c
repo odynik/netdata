@@ -2202,16 +2202,12 @@ int sql_load_host_gap(RRDHOST *host)
         return SQLITE_ERROR;
     };
 
-    // info("%s: LOAD from SQLITE: Query arguments", REPLICATION_MSG);
-    // char *host_mguid_str = strdupz(host->gaps_timeline->gap_data->host_mguid);
-    // info("%s: LOAD from SQLITE: Copying mguid...", REPLICATION_MSG);
     rc = sqlite3_bind_text(res, 1, host->machine_guid, -1, SQLITE_STATIC);
     if (unlikely(rc != SQLITE_OK)) {
         error_report("Failed to bind host_id parameter to load gap information");
         goto failed;
     }
 
-    // info("%s: Just before the row process of the query:", REPLICATION_MSG);
     // Load here the gaps to the host->gaps_timeline
     do{
         rc = sqlite3_step(res);
