@@ -742,7 +742,7 @@ PARSER_RC pluginsd_rep_action(void *user, REP_ARG command)
         return PARSER_RC_ERROR;
       case REP_ON:
         info("%s: REP ON command is received!\n", REPLICATION_MSG);
-        GAP *the_gap = host->gaps_timeline->gap_data;
+        GAP *the_gap = (GAP *)host->gaps_timeline->gaps->front->item;
         char *rep_msg_cmd;
         size_t len;
         //Check if there is GAP and send GAP command, otherwise send REP OFF command 
