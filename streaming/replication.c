@@ -1063,9 +1063,11 @@ void replication_collect_past_metric(REPLICATION_STATE *rep_state, time_t timest
             time_t t_sample_diff  = (timestamp -  current_end_time);
             if(t_sample_diff > update_every){
                 error("%s: Hard gap was detected. Need to fill it with zeros", REPLICATION_MSG);
-                //index jump to cover the hard gaps in the page(4096)
-                // rep_state->dim_past_data->page_length += ((timestamp -  current_end_time)*sizeof(number));
                 page_length += ((t_sample_diff - update_every)*sizeof(number));
+                if(page_length > RRDENG_BLOCK_SIZE){
+                    infoerr("%s: Page size is not enough to fill the hard gap.", REPLICATION_MSG);
+                    return;
+                }
             }
         }
         page[page_length / sizeof(number)] = number;
@@ -1556,45 +1558,36 @@ void sender_fill_gap_nolock(REPLICATION_STATE *rep_state, RRDSET *st, GAP a_gap)
     RRDDIM *rd;
     struct rrddim_query_handle handle;
     // Move to stream.conf file
-    unsigned int default_rrdpush_gap_block_size = RRDENG_BLOCK_SIZE;
+    unsigned int block_size_in_bytes = RRDENG_BLOCK_SIZE;
+    unsigned int sample_in_bytes = (unsigned int) sizeof(storage_number);
+    unsigned int default_replication_gap_block_size = block_size_in_bytes/sample_in_bytes; // in samples
+
     unsigned int block_id = 0;
+    int update_every = st->update_every;
 
     time_t t_delta_start = a_gap.t_window.t_start;
     time_t t_delta_first = a_gap.t_window.t_first;
     time_t t_delta_end = a_gap.t_window.t_end;
 
-    int update_every = st->update_every;
-    unsigned int block_size_in_bytes = RRDENG_BLOCK_SIZE;
-    unsigned int sample_in_bytes = (unsigned int) sizeof(storage_number);
-
-    unsigned int num_of_samples_in_memory = block_size_in_bytes/sample_in_bytes;
-    unsigned int residual_num_of_samples_in_memory = block_size_in_bytes % sample_in_bytes;
-
-    unsigned int num_of_samples_in_time = (t_delta_end - (t_delta_first + update_every))/update_every;
-    unsigned int residual_num_of_samples_in_time = (t_delta_end - (t_delta_first + update_every))  % update_every;    
+    unsigned int num_of_samples_in_time = (t_delta_end - t_delta_start)/update_every + 1;
+    unsigned int residual_num_of_samples_in_time = (t_delta_end - (t_delta_start + update_every))  % update_every;
 
     // When the sync is unknown against the far end (last_sent=0), sending the latest sample will trigger a
     // replication from the far end if necessary.
+    time_t window_start, window_end;
     time_t first_t = rrdset_first_entry_t(st);
     time_t st_newest = st->last_updated.tv_sec;
-    time_t window_start, window_end;
     time_t st_last_sent_sample_delta = st->rrdhost->sender->last_sent_t;
 
-    time_t gap_t_delta_start = a_gap.t_window.t_start;
-    time_t gap_t_delta_first = a_gap.t_window.t_first;
-    time_t gap_t_delta_end = a_gap.t_window.t_end;
-
-    UNUSED(default_rrdpush_gap_block_size);
+    // If you don't use them get rid of them
     UNUSED(first_t);
     UNUSED(st_newest);
     UNUSED(st_last_sent_sample_delta);
-    UNUSED(gap_t_delta_start);
     UNUSED(residual_num_of_samples_in_time);
     UNUSED(num_of_samples_in_time);
-    UNUSED(residual_num_of_samples_in_memory);
-    UNUSED(num_of_samples_in_memory);
-    UNUSED(t_delta_start);
+    UNUSED(t_delta_first);
 
+    // Handle zero values in the gap time interval
     // if (gap_t_delta_first == 0) {
     //     if (st_last_sent_sample_delta)
     //         window_start = MAX(st->rrdhost->sender->last_sent_t + st->update_every, first_t);
@@ -1603,24 +1596,29 @@ void sender_fill_gap_nolock(REPLICATION_STATE *rep_state, RRDSET *st, GAP a_gap)
     // }
     // else
     //     window_start = MAX(gap_t_delta_first, first_t);
-
     
-    // // Need to handle the blocks here
-    // time_t unsent_points = (gap_t_delta_end - window_start) / st->update_every + 1;
-    // if (unsent_points > default_rrdpush_gap_block_size)
-    //     unsent_points = default_rrdpush_gap_block_size;
-    // time_t window_end = MAX((window_start + unsent_points * st->update_every), st_newest);
-    // window_start = t_delta_start + (t_delta_start % st->update_every);
-    // window_end = t_delta_end - (t_delta_end % st->update_every);
-    window_start = t_delta_start - (t_delta_start % st->update_every);
+    // Chop the GAP time interval to fit a RRDENG_BLOCK_SIZE(4096)
+    // window_end is more important than window start
     window_end = t_delta_end + (t_delta_end % st->update_every);
+    window_start = t_delta_start - (t_delta_start % st->update_every);
+    size_t replication_points = (t_delta_end - t_delta_start) / st->update_every + 1;
+    if (replication_points > default_replication_gap_block_size){
+        replication_points = default_replication_gap_block_size;
+        window_start = window_end - replication_points * st->update_every;
+    }
     
+    // info(
+    //     "%s: REP GAP timestamps request from MEMORY\nt_d_start: %ld, t_d_end:  %ld \nw_start:  %ld w_end:  %ld \nreplication points: %lu\nupdate_every: %d",
+    //     REPLICATION_MSG,
+    //     t_delta_start,
+    //     t_delta_end,
+    //     window_start,
+    //     window_end,
+    //     replication_points,
+    //     update_every);
+
     char gap_uuid_str[UUID_STR_LEN];
     uuid_unparse(a_gap.gap_uuid, gap_uuid_str);
-    // if (gap_t_delta_first == 0)
-    //     buffer_sprintf(rep_state->build, "RDATA %s \"%s\" %ld %ld %d\n", gap_uuid_str, st->id, window_start, gap_t_delta_end, block_id);
-    // else
-    //     buffer_sprintf(rep_state->build, "RDATA %s \"%s\" %ld %ld %d\n", gap_uuid_str, st->id, gap_t_delta_first, gap_t_delta_end, block_id);
 
     rrdset_dump_debug_state(st);
 
@@ -1641,10 +1639,7 @@ void sender_fill_gap_nolock(REPLICATION_STATE *rep_state, RRDSET *st, GAP a_gap)
             debug(D_REPLICATION, "Fill replication with %s.%s window=%ld-%ld data=%ld-%ld query=%ld-%ld",
                   st->id, rd->id, window_start, window_end, rd_oldest, rd_end, handle.start_time, handle.end_time);
             
-            if (gap_t_delta_first == 0)
-                buffer_sprintf(rep_state->build, "RDATA %s \"%s\" \"%s\" %ld %ld %u\n", gap_uuid_str, st->id, rd->id, window_start, gap_t_delta_end, block_id);
-            else
-                buffer_sprintf(rep_state->build, "RDATA %s \"%s\" \"%s\" %ld %ld %u\n", gap_uuid_str, st->id, rd->id, gap_t_delta_first, gap_t_delta_end, block_id);
+            buffer_sprintf(rep_state->build, "RDATA %s \"%s\" \"%s\" %ld %ld %u\n", gap_uuid_str, st->id, rd->id, window_start, window_end, block_id);
             
             num_points = 0;
             for (time_t metric_t = rd_oldest; metric_t < rd_end; ) {
@@ -1673,8 +1668,6 @@ void sender_fill_gap_nolock(REPLICATION_STATE *rep_state, RRDSET *st, GAP a_gap)
                                  rd->last_collected_time.tv_usec);
 
     }
-    // buffer_sprintf(rep_state->build, "FILLEND %zu %d\n", num_points, block_id);
-    // st->rrdhost->sender->last_sent_t = window_end - st->update_every;
     debug(D_REPLICATION, "Send BUFFER(%s): [%s]",rep_state->host->hostname, buffer_tostring(rep_state->build));
 }
 
