@@ -2178,6 +2178,32 @@ failed:
 };
 
 /*
+ * Delete all gaps from the database
+ */
+int sql_delete_all_gaps(void)
+{
+    static __thread sqlite3_stmt *res = NULL;
+    int rc;
+
+    if (unlikely(!res)) {
+        rc = prepare_statement(db_meta, DELETE_ALL_GAPS, &res);
+        if (rc != SQLITE_OK) {
+            error_report("Failed to prepare statement to delete all gaps");
+            return rc;
+        }
+    }
+
+    rc = sqlite3_step(res);
+    if (unlikely(rc != SQLITE_DONE))
+        error_report("Failed to delete gaps, rc = %d", rc);
+
+    rc = sqlite3_reset(res);
+    if (unlikely(rc != SQLITE_OK))
+        error_report("Failed to reset statement when deleting gaps, rc = %d", rc);
+    return rc;
+}
+
+/*
  * Delete a gap from the database
  */
 int sql_delete_gap(uuid_t *gap_uuid)

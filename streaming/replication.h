@@ -210,6 +210,7 @@ void flush_collected_metric_past_data(RRDDIM_PAST_DATA *dim_past_data, REPLICATI
 void replication_send_clabels(REPLICATION_STATE *rep_state, RRDSET *st);
 int save_gap(GAP *a_gap);
 int remove_gap(GAP *a_gap);
+int remove_all_gaps(void);
 int load_gap(RRDHOST *host);
 
 extern struct config stream_config;
