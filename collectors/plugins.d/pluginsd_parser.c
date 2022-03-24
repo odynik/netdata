@@ -748,7 +748,6 @@ PARSER_RC pluginsd_rep_action(void *user, REP_ARG command)
       case REP_ON:
         info("%s: REP ON command is received!\n", REPLICATION_MSG);
         int num_of_queued_gaps = host->gaps_timeline->gaps->count;
-        // if(!strcmp("empty", host->gaps_timeline->gap_buffer->status)) {
         if(!num_of_queued_gaps) {
             info("%s: No GAPs to replicate. Switch off the REPlication thread", REPLICATION_MSG);
             // Send REP ACK to terminate replication at the Tx side.
