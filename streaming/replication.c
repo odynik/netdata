@@ -640,10 +640,12 @@ void *replication_receiver_thread(void *ptr){
     info("%s: POP REPLICATED GAP", REPLICATION_MSG);
     GAP *the_gap = (GAP *)queue_pop(host->gaps_timeline->gaps);
     info("%s: POP REPLICATED GAP_END", REPLICATION_MSG);
-    // Remove it from the SQLite if it exists
-    remove_gap(the_gap);
-    // Clean the gaps table runtime host GAPS memory
-    reset_gap(the_gap);
+    if(the_gap){
+        // Remove it from the SQLite if it exists
+        remove_gap(the_gap);
+        // Clean the gaps table runtime host GAPS memory
+        reset_gap(the_gap);
+    }
     // On incomplete replication - DISCONNECT - evaluate the gaps that need to be removed
     print_replication_state(rep_state);
     log_replication_connection(rep_state->client_ip, rep_state->client_port, rep_state->key, host->machine_guid, host->hostname, "DISCONNECTED");
@@ -1157,7 +1159,7 @@ GAP* add_gap_data(GAPS *host_queue, GAP *gap) {
     unsigned int index = (q_count + 1) % q_max;
     GAP *gap_in_mem = &host_queue->gap_data[index];
     copy_gap(gap_in_mem, gap);
-    info("%s: Add GAP data at index %d: \n", REPLICATION_MSG, index);
+    info("%s: Add GAP data at index %u: \n", REPLICATION_MSG, index);
     print_replication_gap(gap_in_mem);
     return gap_in_mem;
 }
