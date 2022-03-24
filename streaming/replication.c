@@ -1130,6 +1130,14 @@ int save_gap(GAP *a_gap)
     return rc;
 }
 
+void save_all_gaps(GAPS *gap_timeline){
+    int count = gap_timeline->gaps->count;
+    for(int i = 0; i < count; i++)
+    {
+        save_gap(&gap_timeline->gap_data_table[i]);
+    }
+}
+
 // load gaps from agent metdata db
 int load_gap(RRDHOST *host)
 {
