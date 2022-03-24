@@ -10,6 +10,8 @@ static void replication_sender_thread_cleanup_callback(void *ptr);
 static void print_replication_state(REPLICATION_STATE *state);
 static void print_replication_gap(GAP *a_gap);
 static inline void replication_send_chart_definition_nolock(RRDSET *st);
+GAP* add_gap_data(GAPS *host_queue, GAP *gap);
+void reset_gap(GAP *a_gap);
 // static void replication_gap_to_str(GAP *a_gap, char **gap_str, size_t *len);
 
 /********************************
@@ -637,8 +639,11 @@ void *replication_receiver_thread(void *ptr){
     // Pop out the replicated GAP
     info("%s: POP REPLICATED GAP", REPLICATION_MSG);
     GAP *the_gap = (GAP *)queue_pop(host->gaps_timeline->gaps);
-    info("%s: POP REPLICATED GAP_END", REPLICATION_MSG);    
+    info("%s: POP REPLICATED GAP_END", REPLICATION_MSG);
+    // Remove it from the SQLite if it exists
     remove_gap(the_gap);
+    // Clean the gaps table runtime host GAPS memory
+    reset_gap(the_gap);
     // On incomplete replication - DISCONNECT - evaluate the gaps that need to be removed
     print_replication_state(rep_state);
     log_replication_connection(rep_state->client_ip, rep_state->client_port, rep_state->key, host->machine_guid, host->hostname, "DISCONNECTED");
@@ -1129,6 +1134,33 @@ int save_gap(GAP *a_gap)
 
     return rc;
 }
+// GAPS->gap_data should be GAP gap_data[MAX_QUEUE_SIZE]
+// Operations to combine the queue with the gap_data table
+// int load_gap_data(){}
+void copy_gap(GAP *dst, GAP *src) {
+    uuid_copy(dst->gap_uuid, src->gap_uuid);
+    dst->host_mguid = strdupz(src->host_mguid);
+    dst->t_window.t_start = src->t_window.t_start;
+    dst->t_window.t_first = src->t_window.t_first;
+    dst->t_window.t_end = src->t_window.t_end;
+    dst->status = strdupz(src->status);    
+}
+void reset_gap(GAP *a_gap) {
+    memset(&a_gap->t_window, 0, sizeof(TIME_WINDOW));
+    memset(a_gap, 0, sizeof(GAP));
+}
+
+GAP* add_gap_data(GAPS *host_queue, GAP *gap) {
+    int q_count = host_queue->gaps->count;
+    int q_max = host_queue->gaps->max;
+    // This wrapping index functionality needs more attention
+    unsigned int index = (q_count + 1) % q_max;
+    GAP *gap_in_mem = &host_queue->gap_data[index];
+    copy_gap(gap_in_mem, gap);
+    return gap_in_mem;
+}
+// int pop_gap_data(){}
+// int save_gap_data(GAPS *gaps, GAP *gap) {}
 
 void save_all_gaps(GAPS *gap_timeline){
     int count = gap_timeline->gaps->count;
@@ -1324,15 +1356,15 @@ done:
     return result;
 }
 
-// // GAP creation and processing
-// static GAP gap_init() {
-//     GAP new_gap;
-//     TIME_WINDOW new_tw;
-//     new_gap.t_window = new_tw;
-//     new_gap.status = "oninit";
-//     print_replication_gap(&new_gap);
-//     return new_gap;
-// }
+// GAP creation and processing
+static GAP gap_init() {
+    GAP new_gap;
+    TIME_WINDOW new_tw;
+    new_gap.t_window = new_tw;
+    new_gap.status = "oninit";
+    print_replication_gap(&new_gap);
+    return new_gap;
+}
 
 void gap_destroy(GAP *a_gap) {
     uuid_clear(a_gap->gap_uuid);
@@ -1358,9 +1390,8 @@ void gaps_init(RRDHOST **a_host)
         //Handle this case. Probably shutdown deactivate replication.
         return;
     }
-    host->gaps_timeline->gap_data = (GAP *)callocz(1, sizeof(GAP));
+    host->gaps_timeline->gap_buffer = (GAP *)callocz(1, sizeof(GAP));
     host->gaps_timeline->beginoftime = rrdhost_first_entry_t(host);
-    // host->gaps_timeline->beginoftime = now_realtime_sec();
     if (unlikely(!load_gap(host))) {
         infoerr("%s: No past GAPs to add in the queue.", REPLICATION_MSG);
         return;
@@ -1372,20 +1403,22 @@ void gaps_init(RRDHOST **a_host)
 void gaps_destroy(RRDHOST **a_host) {
     RRDHOST *host = *a_host;
     // Save gaps before destroy
+    // Here need to save all the GAPs in the queue AND
+    // Need to save also the buffer gap
+    // This needs special treatment on loading from SQLlite
     info("%s: DESTROYING GAP for HOST %s", REPLICATION_MSG, host->hostname);
-    if(save_gap(host->gaps_timeline->gap_data))
+    if(save_gap(host->gaps_timeline->gap_buffer))
         error("%s: Cannot save GAP struct in metadata DB.", REPLICATION_MSG);
     queue_free(host->gaps_timeline->gaps);
-    gap_destroy(host->gaps_timeline->gap_data);
+    gap_destroy(host->gaps_timeline->gap_buffer);
     freez(host->gaps_timeline);
 }
 
 void generate_new_gap(struct receiver_state *stream_recv) {
-    GAP *newgap = stream_recv->host->gaps_timeline->gap_data;
+    GAP *newgap = stream_recv->host->gaps_timeline->gap_buffer;
     uuid_generate(newgap->gap_uuid);
     newgap->host_mguid = strdupz(stream_recv->machine_guid);
     newgap->t_window.t_start = now_realtime_sec(); 
-    // newgap->t_window.t_first = rrdhost_last_entry_t(stream_recv->host);
     newgap->t_window.t_first = stream_recv->last_msg_t;
     newgap->t_window.t_end = 0;
     newgap->status = "oncreate";
@@ -1414,6 +1447,8 @@ int verify_new_gap(GAP *new_gap){
     return 0;
 }
 
+// GAP completion at staging buffer
+// GAP addition at the end of the queue
 void evaluate_gap_onconnection(struct receiver_state *stream_recv)
 {
     info("%s: Evaluate GAPs on connection", REPLICATION_MSG);
@@ -1421,30 +1456,33 @@ void evaluate_gap_onconnection(struct receiver_state *stream_recv)
         infoerr("%s: GAP Awareness mechanism is not ready - Continue...", REPLICATION_MSG);
         return;
     }
-    int count = stream_recv->host->gaps_timeline->gaps->count;
-    if(count != 0) {
-        GAP *rear = (GAP *)stream_recv->host->gaps_timeline->gaps->rear->item;
-        // Re-connection
-        if (complete_new_gap(rear)) {
-            error("%s: Broken GAP sequence. GAP status is %s", REPLICATION_MSG, rear->status);
-            // Need to take some action here? Maybe added in the back of the Q? OR Get remove it?
-            GAP *gap_recycled = (GAP *)queue_pop(stream_recv->host->gaps_timeline->gaps);
-            if (queue_push(stream_recv->host->gaps_timeline->gaps, (void *)gap_recycled))
-                infoerr("%s: Broken GAP was recycled. GAP status was %s", REPLICATION_MSG, rear->status);
-            print_replication_gap(rear);
-            return;
-        }
-        info("%s: A new complete GAP was detected", REPLICATION_MSG);
-        // TBR
-        print_replication_gap(rear);
+    GAP *seed_gap = (GAP *)stream_recv->host->gaps_timeline->gap_buffer;
+    // Handle the first connection with empty values here
+    // Re-connection
+    if (complete_new_gap(seed_gap)) {
+        error("%s: Broken GAP sequence. GAP status is %s", REPLICATION_MSG, seed_gap->status);
+        print_replication_gap(seed_gap);
         return;
     }
-    // First connection or no GAPS
     // Handle the retention check here
-    infoerr("%s The GAPs queue is empty", REPLICATION_MSG);
+    info("%s: A new complete GAP was detected", REPLICATION_MSG);
+    // See the buffered gap
+    print_replication_gap(seed_gap);
+    // Save it in the gap buffer table
+    GAP * gap_to_push = add_gap_data(stream_recv->host->gaps_timeline->gaps, seed_gap);
+    //push it in the queue
+    if (!queue_push(stream_recv->host->gaps_timeline->gaps, (void *)gap_to_push)) {
+        infoerr("%s: Couldn't add the GAP in the queue.", REPLICATION_MSG);
+        return;
+    }
+    info("%s: New GAP added in the queue.", REPLICATION_MSG);
+    // Expect that at the end of the queue
+    print_replication_gap((GAP *)stream_recv->host->gaps_timeline->gaps->rear->item);
 }
 
-void evaluate_gap_ondisconnection(struct receiver_state *stream_recv){
+// GAP generation at disconnection
+// staging GAP
+void evaluate_gap_ondisconnection(struct receiver_state *stream_recv) {
     info("%s: Evaluate GAPs on dis-connection", REPLICATION_MSG);
     if (!stream_recv->host->gaps_timeline) {
         infoerr("%s: GAP Awareness mechanism is not ready - Continue...", REPLICATION_MSG);
@@ -1452,12 +1490,7 @@ void evaluate_gap_ondisconnection(struct receiver_state *stream_recv){
     }
     GAPS *the_gaps = stream_recv->host->gaps_timeline;
     generate_new_gap(stream_recv);
-    if(!queue_push(the_gaps->gaps, (void *)the_gaps->gap_data)){
-        error("%s: Cannot insert the new GAP in the queue!", REPLICATION_MSG);
-        print_replication_gap(the_gaps->gap_data);
-        return;
-    }
-    info("%s: New GAP seed was queued!", REPLICATION_MSG);
+    info("%s: New GAP seed was collected in the GAPs buffer!", REPLICATION_MSG);
     print_replication_gap(the_gaps->gap_data);
 }
 
