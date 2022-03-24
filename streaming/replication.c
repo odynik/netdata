@@ -1136,7 +1136,6 @@ int save_gap(GAP *a_gap)
 }
 // GAPS->gap_data should be GAP gap_data[MAX_QUEUE_SIZE]
 // Operations to combine the queue with the gap_data table
-// int load_gap_data(){}
 void copy_gap(GAP *dst, GAP *src) {
     uuid_copy(dst->gap_uuid, src->gap_uuid);
     dst->host_mguid = strdupz(src->host_mguid);
@@ -1145,6 +1144,7 @@ void copy_gap(GAP *dst, GAP *src) {
     dst->t_window.t_end = src->t_window.t_end;
     dst->status = strdupz(src->status);    
 }
+
 void reset_gap(GAP *a_gap) {
     memset(&a_gap->t_window, 0, sizeof(TIME_WINDOW));
     memset(a_gap, 0, sizeof(GAP));
@@ -1157,10 +1157,10 @@ GAP* add_gap_data(GAPS *host_queue, GAP *gap) {
     unsigned int index = (q_count + 1) % q_max;
     GAP *gap_in_mem = &host_queue->gap_data[index];
     copy_gap(gap_in_mem, gap);
+    info("%s: Add GAP data at index %d: \n", REPLICATION_MSG, index);
+    print_replication_gap(gap_in_mem);
     return gap_in_mem;
 }
-// int pop_gap_data(){}
-// int save_gap_data(GAPS *gaps, GAP *gap) {}
 
 int save_all_gaps(GAPS *gap_timeline){
     int count = gap_timeline->gaps->count;
@@ -1420,8 +1420,8 @@ void generate_new_gap(struct receiver_state *stream_recv) {
     GAP *newgap = stream_recv->host->gaps_timeline->gap_buffer;
     uuid_generate(newgap->gap_uuid);
     newgap->host_mguid = strdupz(stream_recv->machine_guid);
-    newgap->t_window.t_start = now_realtime_sec(); 
-    newgap->t_window.t_first = stream_recv->last_msg_t;
+    newgap->t_window.t_start = stream_recv->last_msg_t;
+    newgap->t_window.t_first = now_realtime_sec();
     newgap->t_window.t_end = 0;
     newgap->status = "oncreate";
     return;

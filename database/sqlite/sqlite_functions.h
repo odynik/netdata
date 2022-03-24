@@ -52,7 +52,7 @@ typedef enum db_check_action_type {
     "(?1,?2,?3,?4,?5,?6);"
 
 #define SQL_GET_HOST_GAPS "select g.gap_id, g.host_mguid, g.t_delta_start, g.t_delta_first, g.t_delta_end, g.status from gaps g " \
-"where g.host_mguid = @host_mguid and g.status='oncreate' ORDER BY g.t_delta_start DESC;"
+"where g.host_mguid = @host_mguid ORDER BY g.t_delta_start DESC;"
 #define DELETE_GAP_BY_UUID "delete from gaps where gap_id = @uuid;"
 #define DELETE_ALL_GAPS "delete from gaps;"
 
