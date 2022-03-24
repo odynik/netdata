@@ -747,21 +747,13 @@ PARSER_RC pluginsd_rep_action(void *user, REP_ARG command)
         return PARSER_RC_ERROR;
       case REP_ON:
         info("%s: REP ON command is received!\n", REPLICATION_MSG);
-        int num_of_queued_gaps = host->gaps_timeline->gaps->count;
-        if(!num_of_queued_gaps) {
-            info("%s: No GAPs to replicate. Switch off the REPlication thread", REPLICATION_MSG);
-            // Send REP ACK to terminate replication at the Tx side.
-            send_message(rep_state, "REP 4\n");
+        if (finish_gap_replication(host, rep_state)) {
             // Exit the Rx parser
             ((PARSER_USER_OBJECT *)user)->enabled = 0;
             return PARSER_RC_ERROR;
         }
-        GAP *the_gap = (GAP *)host->gaps_timeline->gaps->front->item;
-        char *rep_msg_cmd;
-        size_t len;
-        replication_gap_to_str(the_gap, &rep_msg_cmd, &len);        
-        send_message(rep_state, rep_msg_cmd);
-        return PARSER_RC_OK;   
+        send_gap_for_replication(host, rep_state);
+        return PARSER_RC_OK;
       case REP_PAUSE:
         info("%s: REP PAUSE command is received!\n", REPLICATION_MSG);
         //Call REP PAUSE function
@@ -769,10 +761,15 @@ PARSER_RC pluginsd_rep_action(void *user, REP_ARG command)
       case REP_ACK:
         info("%s: REP ACK command is received!\n", REPLICATION_MSG);
         // REP ACK - A full REP transmission of all the charts
-        // Send REP OFF
-        send_message(rep_state, "REP 1\n");
-        rep_state->shutdown = 1;
-        return PARSER_RC_ERROR;       
+        // Clear the replicated GAP
+        cleanup_after_gap_replication(host->gaps_timeline);
+        if (finish_gap_replication(host, rep_state)) {
+            // Exit the Rx parser
+            ((PARSER_USER_OBJECT *)user)->enabled = 0;
+            return PARSER_RC_ERROR;
+        }
+        send_gap_for_replication(host, rep_state);
+        return PARSER_RC_OK;       
       default:
         info("%s: REP %u command is unknown!\n", REPLICATION_MSG, command);
     }
