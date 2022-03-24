@@ -1151,6 +1151,23 @@ int load_gap(RRDHOST *host)
     return rc;
 }
 
+//delete all gaps from agent metdata db
+int remove_all_gaps(void)
+{
+    int rc;
+
+    // TBR
+    info("%s: REMOVE in SQLITE all GAPs: ", REPLICATION_MSG);
+
+    if (unlikely(!db_meta) && default_rrd_memory_mode != RRD_MEMORY_MODE_DBENGINE)
+        return 0;
+    rc = sql_delete_all_gaps();
+    if(!rc)
+        info("%s: Delete GAPs from metadata DB", REPLICATION_MSG);
+
+    return rc;
+}
+
 //delete gap from agent metdata db
 int remove_gap(GAP *a_gap)
 {
