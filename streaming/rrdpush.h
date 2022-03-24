@@ -205,4 +205,7 @@ extern void sender_gap_filling(REPLICATION_STATE *rep_state, GAP a_gap);
 extern void sender_fill_gap_nolock(REPLICATION_STATE *rep_state, RRDSET *st, GAP a_gap);
 extern void copy_gap(GAP *dst, GAP *src);
 extern void reset_gap(GAP *a_gap);
+extern void send_gap_for_replication(RRDHOST *host, REPLICATION_STATE *rep_state);
+extern int finish_gap_replication(RRDHOST *host, REPLICATION_STATE *rep_state);
+extern void cleanup_after_gap_replication(GAPS *gaps_timeline);
 #endif //NETDATA_RRDPUSH_H

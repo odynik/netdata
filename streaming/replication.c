@@ -636,17 +636,6 @@ void *replication_receiver_thread(void *ptr){
     // On completion of replication - DISCONNECT - clean up the gaps
     replication_thread_close_socket(rep_state);
 
-    // Finishing REP transmission
-    // Pop out the replicated GAP
-    info("%s: POP REPLICATED GAP", REPLICATION_MSG);
-    GAP *the_gap = (GAP *)queue_pop(host->gaps_timeline->gaps);
-    info("%s: POP REPLICATED GAP_END", REPLICATION_MSG);
-    if(the_gap){
-        // Remove it from the SQLite if it exists
-        remove_gap(the_gap);
-        // Clean the gaps table runtime host GAPS memory
-        reset_gap(the_gap);
-    }
     // On incomplete replication - DISCONNECT - evaluate the gaps that need to be removed
     print_replication_state(rep_state);
     
@@ -681,6 +670,42 @@ void *replication_receiver_thread(void *ptr){
     // Closing thread - clean up any resources allocated here
     netdata_thread_cleanup_pop(1);
     return NULL;   
+}
+
+int finish_gap_replication(RRDHOST *host, REPLICATION_STATE *rep_state){
+    int num_of_queued_gaps = host->gaps_timeline->gaps->count;
+    if(!num_of_queued_gaps) {
+        info("%s: No more GAPs to replicate. Switch off the REPlication thread", REPLICATION_MSG);
+        // Send REP OFF to terminate replication at the Tx side.
+        send_message(rep_state, "REP 1\n");
+        rep_state->shutdown = 1;
+        return 1;
+    }
+    return 0;
+}
+
+void send_gap_for_replication(RRDHOST *host, REPLICATION_STATE *rep_state)
+{
+    GAP *the_gap = (GAP *)host->gaps_timeline->gaps->front->item;
+    char *rep_msg_cmd;
+    size_t len;
+    replication_gap_to_str(the_gap, &rep_msg_cmd, &len);
+    send_message(rep_state, rep_msg_cmd);
+}
+
+void cleanup_after_gap_replication(GAPS *gaps_timeline)
+{
+    info("%s: POP REPLICATED GAP", REPLICATION_MSG);    
+    GAP *the_gap = (GAP *)queue_pop(gaps_timeline->gaps);
+    if (the_gap) {
+        info("%s: Finishing...the replication of the GAP", REPLICATION_MSG);
+        print_replication_gap(the_gap);
+        // Remove it from the SQLite if it exists
+        remove_gap(the_gap);
+        // Clean the gaps table runtime host GAPS memory
+        reset_gap(the_gap);
+    }
+    info("%s: Completed the replication of the GAP", REPLICATION_MSG);
 }
 
 // These should definitions should go to a header file.
