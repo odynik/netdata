@@ -2154,7 +2154,8 @@ int sql_load_host_gap(RRDHOST *host)
     }
 
     // Load here the gaps to the host->gaps_timeline
-    do{
+    // TODO: Need to handle the stpes correctly. Here is will return the last element as empty
+    do {
         rc = sqlite3_step(res);
         switch (rc) {
             case SQLITE_ROW:
@@ -2171,7 +2172,7 @@ int sql_load_host_gap(RRDHOST *host)
                 error("%s: SQLite returned unexpected error code!", REPLICATION_MSG);
                 break;
         }
-    }while(rc == SQLITE_ROW);
+    } while (rc == SQLITE_ROW);
 
 failed:
     if (unlikely(sqlite3_finalize(res) != SQLITE_OK))
@@ -2251,7 +2252,7 @@ void set_host_gap(RRDHOST *host, sqlite3_stmt *res) {
 
     if(!res)
     {
-        host->gaps_timeline->gap_data[count].status = "empty";
+        host->gaps_timeline->gap_buffer->status = "empty";
         infoerr("%s: The GAPs table in the metdata DB seems to be empty for the host %s.", REPLICATION_MSG, host->hostname);
         return;
     }

@@ -1162,12 +1162,14 @@ GAP* add_gap_data(GAPS *host_queue, GAP *gap) {
 // int pop_gap_data(){}
 // int save_gap_data(GAPS *gaps, GAP *gap) {}
 
-void save_all_gaps(GAPS *gap_timeline){
+int save_all_gaps(GAPS *gap_timeline){
     int count = gap_timeline->gaps->count;
+    int rc = 0;
     for(int i = 0; i < count; i++)
     {
-        save_gap(&gap_timeline->gap_data[i]);
+        rc += save_gap(&gap_timeline->gap_data[i]);
     }
+    return rc;
 }
 
 // load gaps from agent metdata db
@@ -1176,12 +1178,8 @@ int load_gap(RRDHOST *host)
     // Load on start up after a shutdown
     int rc;
     
-    // TBR
-    // info("%s: LOAD from SQLITE this GAP:", REPLICATION_MSG);
-
     if (unlikely(!db_meta) && default_rrd_memory_mode != RRD_MEMORY_MODE_DBENGINE)
         return SQLITE_ERROR;
-
     rc = sql_load_host_gap(host);
     int count = host->gaps_timeline->gaps->count;
     for(int i = 0; i < count; i++) {
@@ -1190,7 +1188,6 @@ int load_gap(RRDHOST *host)
     }
     // Load on start up evaluate a crash
     // Update the queue values and let it consume the gaps on runtime
-
     return rc;
 }
 
@@ -1206,7 +1203,7 @@ int remove_all_gaps(void)
         return 0;
     rc = sql_delete_all_gaps();
     if(!rc)
-        info("%s: Delete GAPs from metadata DB", REPLICATION_MSG);
+        info("%s: Delete all GAPs from metadata DB", REPLICATION_MSG);
 
     return rc;
 }
@@ -1402,13 +1399,18 @@ void gaps_init(RRDHOST **a_host)
 
 void gaps_destroy(RRDHOST **a_host) {
     RRDHOST *host = *a_host;
+    //Flush any gaps in SQLite
+    if(remove_all_gaps())
+        error("%s: Cannot delete all GAPs in metadata DB.", REPLICATION_MSG);
     // Save gaps before destroy
     // Here need to save all the GAPs in the queue AND
     // Need to save also the buffer gap
     // This needs special treatment on loading from SQLlite
     info("%s: DESTROYING GAP for HOST %s", REPLICATION_MSG, host->hostname);
+    if(save_all_gaps(host->gaps_timeline))
+        error("%s: Cannot save Queue GAP struct in metadata DB.", REPLICATION_MSG);
     if(save_gap(host->gaps_timeline->gap_buffer))
-        error("%s: Cannot save GAP struct in metadata DB.", REPLICATION_MSG);
+        error("%s: Cannot save GAP BUFFER struct in metadata DB.", REPLICATION_MSG);
     queue_free(host->gaps_timeline->gaps);
     gap_destroy(host->gaps_timeline->gap_buffer);
     freez(host->gaps_timeline);
