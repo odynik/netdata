@@ -2307,16 +2307,18 @@ void set_host_gap(RRDHOST *host, sqlite3_stmt *res) {
 
     if(!res)
     {
-        info(":%s: Exiting loading... with count(%d) \ng_b: %p, \ng_rear: %p, \ng_count: %p", REPLICATION_MSG, count, host->gaps_timeline->gap_buffer, host->gaps_timeline->gaps->front->item, &host->gaps_timeline->gap_data[count]);
         if(count > 0) {
+            info(":%s: Exiting loading... with count(%d) \ng_b: %p, \ng_rear: %p, \ng_count: %p", REPLICATION_MSG, count, host->gaps_timeline->gap_buffer, host->gaps_timeline->gaps->front->item, &host->gaps_timeline->gap_data[count]);
             copy_gap(host->gaps_timeline->gap_buffer, host->gaps_timeline->gaps->front->item);
             reset_gap(host->gaps_timeline->gaps->front->item);
             queue_pop(host->gaps_timeline->gaps);
+            return;
         }
         // host->gaps_timeline->gap_buffer->status = "empty";
         infoerr("%s: The GAPs table in the metdata DB seems to be empty for the host %s.", REPLICATION_MSG, host->hostname);
         return;
     }
+
     info("%s: SETTING HOST SQLITE from query return:", REPLICATION_MSG);
     uuid_copy(host->gaps_timeline->gap_data[count].gap_uuid, sqlite3_column_blob(res, 0));
     host->gaps_timeline->gap_data[count].host_mguid = strdupz((char *) sqlite3_column_text(res, 1));

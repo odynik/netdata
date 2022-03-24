@@ -1441,7 +1441,8 @@ void generate_new_gap(struct receiver_state *stream_recv) {
 }
 
 int complete_new_gap(GAP *potential_gap){
-    if(strcmp("oncreate", potential_gap->status)) {
+    // Handle the first connection with status value NULL
+    if(!potential_gap->status || strcmp("oncreate", potential_gap->status)) {
         error("%s: This GAP cannot be completed. Need to create it first.", REPLICATION_MSG);
         return 1;
     }
@@ -1472,7 +1473,6 @@ void evaluate_gap_onconnection(struct receiver_state *stream_recv)
         return;
     }
     GAP *seed_gap = (GAP *)stream_recv->host->gaps_timeline->gap_buffer;
-    // Handle the first connection with empty values here
     // Re-connection
     if (complete_new_gap(seed_gap)) {
         error("%s: Broken GAP sequence. GAP status is %s", REPLICATION_MSG, seed_gap->status);
@@ -1506,7 +1506,7 @@ void evaluate_gap_ondisconnection(struct receiver_state *stream_recv) {
     GAPS *the_gaps = stream_recv->host->gaps_timeline;
     generate_new_gap(stream_recv);
     info("%s: New GAP seed was collected in the GAPs buffer!", REPLICATION_MSG);
-    print_replication_gap(the_gaps->gap_data);
+    print_replication_gap(the_gaps->gap_buffer);
 }
 
 // FSMs for replication protocol implementation
