@@ -2251,19 +2251,19 @@ void set_host_gap(RRDHOST *host, sqlite3_stmt *res) {
 
     if(!res)
     {
-        host->gaps_timeline->gap_data_table[count].status = "empty";
+        host->gaps_timeline->gap_data[count].status = "empty";
         infoerr("%s: The GAPs table in the metdata DB seems to be empty for the host %s.", REPLICATION_MSG, host->hostname);
         return;
     }
     info("%s: SETTING HOST SQLITE from query return:", REPLICATION_MSG);
-    uuid_copy(host->gaps_timeline->gap_data_table[count].gap_uuid, sqlite3_column_blob(res, 0));
-    host->gaps_timeline->gap_data_table[count].host_mguid = strdupz((char *) sqlite3_column_text(res, 1));
-    host->gaps_timeline->gap_data_table[count].t_window.t_start = (time_t) sqlite3_column_int(res, 2);
-    host->gaps_timeline->gap_data_table[count].t_window.t_first = (time_t) sqlite3_column_int(res, 3);
-    host->gaps_timeline->gap_data_table[count].t_window.t_end = (time_t) sqlite3_column_int(res, 4);
-    host->gaps_timeline->gap_data_table[count].status = strdupz((char *) sqlite3_column_text(res, 5));
+    uuid_copy(host->gaps_timeline->gap_data[count].gap_uuid, sqlite3_column_blob(res, 0));
+    host->gaps_timeline->gap_data[count].host_mguid = strdupz((char *) sqlite3_column_text(res, 1));
+    host->gaps_timeline->gap_data[count].t_window.t_start = (time_t) sqlite3_column_int(res, 2);
+    host->gaps_timeline->gap_data[count].t_window.t_first = (time_t) sqlite3_column_int(res, 3);
+    host->gaps_timeline->gap_data[count].t_window.t_end = (time_t) sqlite3_column_int(res, 4);
+    host->gaps_timeline->gap_data[count].status = strdupz((char *) sqlite3_column_text(res, 5));
 
-    if (!queue_push(host->gaps_timeline->gaps, &host->gaps_timeline->gap_data_table[count])) {
+    if (!queue_push(host->gaps_timeline->gaps, &host->gaps_timeline->gap_data[count])) {
         error("%s: Cannot insert the loaded GAP in the queue!", REPLICATION_MSG);
         return;
     }
