@@ -1725,7 +1725,7 @@ void sender_fill_gap_nolock(REPLICATION_STATE *rep_state, RRDSET *st, GAP a_gap)
             buffer_sprintf(rep_state->build, "RDATA %s \"%s\" \"%s\" %ld %ld %u\n", gap_uuid_str, st->id, rd->id, window_start, window_end, block_id);
             
             num_points = 0;
-            for (time_t metric_t = rd_oldest; metric_t < rd_end; ) {
+            for (time_t metric_t = rd_oldest; metric_t <= rd_end; ) {
 
                 if (rd->state->query_ops.is_finished(&handle)) {
                     debug(D_REPLICATION, "%s.%s query handle finished early @%ld", st->id, rd->id, metric_t);
