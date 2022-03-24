@@ -1143,11 +1143,10 @@ int load_gap(RRDHOST *host)
         return SQLITE_ERROR;
 
     rc = sql_load_host_gap(host);
-    if(rc) {
-        info("%s: Load GAP from metadata DB in host %s", REPLICATION_MSG, host->hostname);
-        print_replication_gap(host->gaps_timeline->gap_data);
-        if(!strcmp(host->gaps_timeline->gap_data->status, "empty"))
-            return 0;
+    int count = host->gaps_timeline->gaps->count;
+    for(int i = 0; i < count; i++) {
+        info("%s: Load %d. of %d GAPs from metadata DB in host %s", REPLICATION_MSG, i, count, host->hostname);
+        print_replication_gap(&host->gaps_timeline->gap_data_table[i]);
     }
     // Load on start up evaluate a crash
     // Update the queue values and let it consume the gaps on runtime
@@ -1358,13 +1357,8 @@ void gaps_init(RRDHOST **a_host)
         infoerr("%s: No past GAPs to add in the queue.", REPLICATION_MSG);
         return;
     }
-    
-    if (!queue_push(host->gaps_timeline->gaps, (void *)host->gaps_timeline->gap_data)) {
-        error("%s: Cannot insert the loaded GAP in the queue!", REPLICATION_MSG);
-        print_replication_gap(host->gaps_timeline->gap_data);
-        return;
-    }
     info("%s: GAPs Initialization/Loading for host %s", REPLICATION_MSG, host->hostname);
+    return;
 }
 
 void gaps_destroy(RRDHOST **a_host) {
