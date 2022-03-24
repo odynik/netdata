@@ -1166,7 +1166,7 @@ void save_all_gaps(GAPS *gap_timeline){
     int count = gap_timeline->gaps->count;
     for(int i = 0; i < count; i++)
     {
-        save_gap(&gap_timeline->gap_data_table[i]);
+        save_gap(&gap_timeline->gap_data[i]);
     }
 }
 
@@ -1186,7 +1186,7 @@ int load_gap(RRDHOST *host)
     int count = host->gaps_timeline->gaps->count;
     for(int i = 0; i < count; i++) {
         info("%s: Load %d. of %d GAPs from metadata DB in host %s", REPLICATION_MSG, i, count, host->hostname);
-        print_replication_gap(&host->gaps_timeline->gap_data_table[i]);
+        print_replication_gap(&host->gaps_timeline->gap_data[i]);
     }
     // Load on start up evaluate a crash
     // Update the queue values and let it consume the gaps on runtime
@@ -1357,14 +1357,14 @@ done:
 }
 
 // GAP creation and processing
-static GAP gap_init() {
-    GAP new_gap;
-    TIME_WINDOW new_tw;
-    new_gap.t_window = new_tw;
-    new_gap.status = "oninit";
-    print_replication_gap(&new_gap);
-    return new_gap;
-}
+// static GAP gap_init() {
+//     GAP new_gap;
+//     TIME_WINDOW new_tw;
+//     new_gap.t_window = new_tw;
+//     new_gap.status = "oninit";
+//     print_replication_gap(&new_gap);
+//     return new_gap;
+// }
 
 void gap_destroy(GAP *a_gap) {
     uuid_clear(a_gap->gap_uuid);
@@ -1474,7 +1474,7 @@ void evaluate_gap_onconnection(struct receiver_state *stream_recv)
     // See the buffered gap
     print_replication_gap(seed_gap);
     // Save it in the gap buffer table
-    GAP * gap_to_push = add_gap_data(stream_recv->host->gaps_timeline->gaps, seed_gap);
+    GAP * gap_to_push = add_gap_data(stream_recv->host->gaps_timeline, seed_gap);
     //push it in the queue
     if (!queue_push(stream_recv->host->gaps_timeline->gaps, (void *)gap_to_push)) {
         infoerr("%s: Couldn't add the GAP in the queue.", REPLICATION_MSG);
