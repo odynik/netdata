@@ -747,11 +747,9 @@ PARSER_RC pluginsd_rep_action(void *user, REP_ARG command)
         return PARSER_RC_ERROR;
       case REP_ON:
         info("%s: REP ON command is received!\n", REPLICATION_MSG);
-        GAP *the_gap = (GAP *)host->gaps_timeline->gaps->front->item;
-        char *rep_msg_cmd;
-        size_t len;
-        //Check if there is GAP and send GAP command, otherwise send REP OFF command 
-        if(!strcmp("empty", the_gap->status)) {
+        int num_of_queued_gaps = host->gaps_timeline->gaps->count;
+        // if(!strcmp("empty", host->gaps_timeline->gap_buffer->status)) {
+        if(!num_of_queued_gaps) {
             info("%s: No GAPs to replicate. Switch off the REPlication thread", REPLICATION_MSG);
             // Send REP ACK to terminate replication at the Tx side.
             send_message(rep_state, "REP 4\n");
@@ -759,6 +757,9 @@ PARSER_RC pluginsd_rep_action(void *user, REP_ARG command)
             ((PARSER_USER_OBJECT *)user)->enabled = 0;
             return PARSER_RC_ERROR;
         }
+        GAP *the_gap = (GAP *)host->gaps_timeline->gaps->front->item;
+        char *rep_msg_cmd;
+        size_t len;
         replication_gap_to_str(the_gap, &rep_msg_cmd, &len);        
         send_message(rep_state, rep_msg_cmd);
         return PARSER_RC_OK;   
