@@ -620,21 +620,25 @@ void *replication_receiver_thread(void *ptr){
 
     cd.version = rep_state->stream_version;
 
-    GAP *the_gap = host->gaps_timeline->gap_data;
-    char *rep_msg_cmd;
-    size_t len;
-    replication_gap_to_str(the_gap, &rep_msg_cmd, &len);
-    UNUSED(rrdpush_replication_enabled);
+    // GAP *the_gap = host->gaps_timeline->gap_data;
+    // char *rep_msg_cmd;
+    // size_t len;
+    // replication_gap_to_str(the_gap, &rep_msg_cmd, &len);
     // info("%s TEST:<<<<<<<<<<<<<<TESTING>>>>>>>>>>>>>>>>>>", REPLICATION_MSG);
     // test_rrdeng_store_past_metric_page(localhost, "system.cpu", "guest");
     // info("%s TEST:<<<<<<<<<<<<<<END TESTING>>>>>>>>>>>>>>>>>>", REPLICATION_MSG);
+    UNUSED(rrdpush_replication_enabled);
 
     // Wait for the sender thread to send REP ON
     size_t count = replication_parser(rep_state, &cd, fp);
 
     // On completion of replication - DISCONNECT - clean up the gaps
     replication_thread_close_socket(rep_state);
-    remove_gap(host->gaps_timeline->gap_data);
+    // Pop out the replicated GAP
+    info("%s: POP REPLICATED GAP", REPLICATION_MSG);
+    GAP *the_gap = (GAP *)queue_pop(host->gaps_timeline->gaps);
+    info("%s: POP REPLICATED GAP_END", REPLICATION_MSG);    
+    remove_gap(the_gap);
     // On incomplete replication - DISCONNECT - evaluate the gaps that need to be removed
     print_replication_state(rep_state);
     log_replication_connection(rep_state->client_ip, rep_state->client_port, rep_state->key, host->machine_guid, host->hostname, "DISCONNECTED");
@@ -663,7 +667,7 @@ void *replication_receiver_thread(void *ptr){
 
     info("%s: Cleaning up the replication Rx thread - Replication Parser Finished (completed %zu updates)!", REPLICATION_MSG, count);
     // cleanup
-    freez(rep_msg_cmd);
+    // freez(rep_msg_cmd);
     fclose(fp);
     // Closing thread - clean up any resources allocated here
     netdata_thread_cleanup_pop(1);
@@ -1299,7 +1303,6 @@ size_t replication_parser(REPLICATION_STATE *rpt, struct plugind *cd, FILE *fp) 
         char *line;
         while ((line = receiver_next_line(rpt, &pos))) {
             info("%s: Rx REP Parser received: %s \n", REPLICATION_MSG, line);
-            //TODO shutdown?
             if (unlikely(netdata_exit || rpt->shutdown || parser_action(parser,  line)))
                 goto done;
         }
@@ -1344,16 +1347,17 @@ void gaps_init(RRDHOST **a_host)
     host->gaps_timeline->gaps = queue_new(REPLICATION_RX_CMD_Q_MAX_SIZE, false);
     if (!host->gaps_timeline->gaps) {
         error("%s Gaps timeline queue could not be created", REPLICATION_MSG);
-        return;
         //Handle this case. Probably shutdown deactivate replication.
+        return;
     }
     host->gaps_timeline->gap_data = (GAP *)callocz(1, sizeof(GAP));
-    // load from agent metdata
-    if (!load_gap(host)) {
-        infoerr("%s: GAPs struct in SQLITE is either empty or failed", REPLICATION_MSG);
+    host->gaps_timeline->beginoftime = rrdhost_first_entry_t(host);
+    // host->gaps_timeline->beginoftime = now_realtime_sec();
+    if (unlikely(!load_gap(host))) {
+        infoerr("%s: No past GAPs to add in the queue.", REPLICATION_MSG);
         return;
     }
-    info("%s: GAPs STRUCT Initialization/Loading", REPLICATION_MSG);
+    info("%s: GAPs Initialization/Loading for host %s", REPLICATION_MSG, host->hostname);
     return;
 }
 
@@ -1410,25 +1414,21 @@ void evaluate_gap_onconnection(struct receiver_state *stream_recv)
         return;
     }
     int count = stream_recv->host->gaps_timeline->gaps->count;
-    // load_gap(stream_recv->host);
-    // print_replication_gap(stream_recv->host->gaps_timeline->gap_data);
     if(count != 0) {
-        GAP *front = (GAP *)stream_recv->host->gaps_timeline->gaps->front->item;
+        GAP *rear = (GAP *)stream_recv->host->gaps_timeline->gaps->rear->item;
         // Re-connection
-        if (complete_new_gap(front)) {
-            error("%s: Broken GAP sequence. GAP status is %s", REPLICATION_MSG, front->status);
+        if (complete_new_gap(rear)) {
+            error("%s: Broken GAP sequence. GAP status is %s", REPLICATION_MSG, rear->status);
             // Need to take some action here? Maybe added in the back of the Q? OR Get remove it?
             GAP *gap_recycled = (GAP *)queue_pop(stream_recv->host->gaps_timeline->gaps);
             if (queue_push(stream_recv->host->gaps_timeline->gaps, (void *)gap_recycled))
-                infoerr("%s: Broken GAP was recycled. GAP status was %s", REPLICATION_MSG, front->status);
-            print_replication_gap(front);
+                infoerr("%s: Broken GAP was recycled. GAP status was %s", REPLICATION_MSG, rear->status);
+            print_replication_gap(rear);
             return;
         }
-        info("%s: A new GAP was detected", REPLICATION_MSG);
-        print_replication_gap(front);
-        //verify it in memory
-        //pop it in the queue - send it for replication
-        // save_gap(front);
+        info("%s: A new complete GAP was detected", REPLICATION_MSG);
+        // TBR
+        print_replication_gap(rear);
         return;
     }
     // First connection or no GAPS
@@ -1454,10 +1454,6 @@ void evaluate_gap_ondisconnection(struct receiver_state *stream_recv){
 }
 
 // FSMs for replication protocol implementation
-// REP on
-// REP off
-// REP pause/continue
-// REP ack
 
 // RDATA functions
 // chart labels
