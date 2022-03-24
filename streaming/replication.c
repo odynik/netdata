@@ -11,7 +11,6 @@ static void print_replication_state(REPLICATION_STATE *state);
 static void print_replication_gap(GAP *a_gap);
 static inline void replication_send_chart_definition_nolock(RRDSET *st);
 GAP* add_gap_data(GAPS *host_queue, GAP *gap);
-void reset_gap(GAP *a_gap);
 // static void replication_gap_to_str(GAP *a_gap, char **gap_str, size_t *len);
 
 /********************************
@@ -636,6 +635,8 @@ void *replication_receiver_thread(void *ptr){
 
     // On completion of replication - DISCONNECT - clean up the gaps
     replication_thread_close_socket(rep_state);
+
+    // Finishing REP transmission
     // Pop out the replicated GAP
     info("%s: POP REPLICATED GAP", REPLICATION_MSG);
     GAP *the_gap = (GAP *)queue_pop(host->gaps_timeline->gaps);
@@ -648,6 +649,7 @@ void *replication_receiver_thread(void *ptr){
     }
     // On incomplete replication - DISCONNECT - evaluate the gaps that need to be removed
     print_replication_state(rep_state);
+    
     log_replication_connection(rep_state->client_ip, rep_state->client_port, rep_state->key, host->machine_guid, host->hostname, "DISCONNECTED");
     infoerr("%s: %s [receive from [%s]:%s]: disconnected (completed %zu updates).", REPLICATION_MSG, host->hostname, rep_state->client_ip, rep_state->client_port, count);
 
@@ -1139,6 +1141,10 @@ int save_gap(GAP *a_gap)
 // GAPS->gap_data should be GAP gap_data[MAX_QUEUE_SIZE]
 // Operations to combine the queue with the gap_data table
 void copy_gap(GAP *dst, GAP *src) {
+    if(!dst || !src) {
+        error("%s: No copy - Args contain NULL pointers: dst*: %p src*: %p", REPLICATION_MSG, dst, src);
+        return;
+    }
     uuid_copy(dst->gap_uuid, src->gap_uuid);
     dst->host_mguid = strdupz(src->host_mguid);
     dst->t_window.t_start = src->t_window.t_start;

@@ -2252,7 +2252,13 @@ void set_host_gap(RRDHOST *host, sqlite3_stmt *res) {
 
     if(!res)
     {
-        host->gaps_timeline->gap_buffer->status = "empty";
+        info(":%s: Exiting loading... with count(%d) \ng_b: %p, \ng_rear: %p, \ng_count: %p", REPLICATION_MSG, count, host->gaps_timeline->gap_buffer, host->gaps_timeline->gaps->front->item, &host->gaps_timeline->gap_data[count]);
+        if(count > 0) {
+            copy_gap(host->gaps_timeline->gap_buffer, host->gaps_timeline->gaps->front->item);
+            reset_gap(host->gaps_timeline->gaps->front->item);
+            queue_pop(host->gaps_timeline->gaps);
+        }
+        // host->gaps_timeline->gap_buffer->status = "empty";
         infoerr("%s: The GAPs table in the metdata DB seems to be empty for the host %s.", REPLICATION_MSG, host->hostname);
         return;
     }
