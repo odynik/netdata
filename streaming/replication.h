@@ -184,6 +184,7 @@ struct gap {
 struct gaps_queue {
     queue_t gaps;   // handles the gap pointers in a queue struct
     GAP *gap_data; // hosting the gap data
+    GAP gap_data_table[REPLICATION_RX_CMD_Q_MAX_SIZE];
     time_t beginoftime; // this should be the timestamp of the first sample in db OR the agents last_timestamp - uptime?
 };
 
