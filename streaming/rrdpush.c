@@ -94,8 +94,8 @@ int rrdpush_init() {
     if (!default_rrdpush_replication_enabled
     || (STREAMING_PROTOCOL_CURRENT_VERSION < VERSION_GAP_FILLING)
     || !default_rrdpush_enabled) {
-        error("%s [send]: Cannot enable Tx replication sender thread - Streaming is disabled.", REPLICATION_MSG);
-        default_rrdpush_replication_enabled = 0;
+        error("%s [send]: Cannot enable replication mechanism - Streaming is disabled.", REPLICATION_MSG);
+        default_rrdpush_replication_enabled = 1;
     }
 
 #ifdef ENABLE_HTTPS
@@ -140,7 +140,7 @@ int rrdpush_init() {
 unsigned int remote_clock_resync_iterations = 60;
 
 
-int should_send_chart_matching(RRDSET *st) {
+static inline int should_send_chart_matching(RRDSET *st) {
     if(unlikely(!rrdset_flag_check(st, RRDSET_FLAG_ENABLED))) {
         rrdset_flag_clear(st, RRDSET_FLAG_UPSTREAM_SEND);
         rrdset_flag_set(st, RRDSET_FLAG_UPSTREAM_IGNORE);
@@ -182,7 +182,7 @@ int configured_as_parent() {
 }
 
 // checks if the current chart definition has been sent
-int need_to_send_chart_definition(RRDSET *st) {
+static inline int need_to_send_chart_definition(RRDSET *st) {
     rrdset_check_rdlock(st);
 
     if(unlikely(!(rrdset_flag_check(st, RRDSET_FLAG_UPSTREAM_EXPOSED))))
@@ -466,10 +466,6 @@ void rrdpush_sender_thread_stop(RRDHOST *host) {
 
 void log_stream_connection(const char *client_ip, const char *client_port, const char *api_key, const char *machine_guid, const char *host, const char *msg) {
     log_access("STREAM: %d '[%s]:%s' '%s' host '%s' api key '%s' machine guid '%s'", gettid(), client_ip, client_port, msg, host, api_key, machine_guid);
-}
-
-void log_replication_connection(const char *client_ip, const char *client_port, const char *api_key, const char *machine_guid, const char *host, const char *msg) {
-    log_access("REPLICATE: %d '[%s]:%s' '%s' host '%s' api key '%s' machine guid '%s'", gettid(), client_ip, client_port, msg, host, api_key, machine_guid);
 }
 
 
