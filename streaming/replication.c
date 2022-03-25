@@ -1666,6 +1666,7 @@ void sender_fill_gap_nolock(REPLICATION_STATE *rep_state, RRDSET *st, GAP a_gap)
     time_t first_t = rrdset_first_entry_t(st);
     time_t st_newest = st->last_updated.tv_sec;
     time_t st_last_sent_sample_delta = st->rrdhost->sender->last_sent_t;
+    time_t newest_connection = st->rrdhost->sender->t_newest_connection;
 
     // If you don't use them get rid of them
     UNUSED(first_t);
@@ -1687,7 +1688,7 @@ void sender_fill_gap_nolock(REPLICATION_STATE *rep_state, RRDSET *st, GAP a_gap)
     
     // Chop the GAP time interval to fit a RRDENG_BLOCK_SIZE(4096)
     // window_end is more important than window start
-    window_end = t_delta_end + (t_delta_end % st->update_every);
+    window_end = MAX((t_delta_end + (t_delta_end % st->update_every)), newest_connection);
     window_start = t_delta_start - (t_delta_start % st->update_every);
     size_t replication_points = (t_delta_end - t_delta_start) / st->update_every + 1;
     if (replication_points > default_replication_gap_block_size){
@@ -1738,14 +1739,14 @@ void sender_fill_gap_nolock(REPLICATION_STATE *rep_state, RRDSET *st, GAP a_gap)
                 }
 
                 storage_number n = rd->state->query_ops.next_metric(&handle, &metric_t);
-                if (n == SN_EMPTY_SLOT)
-                    debug(D_REPLICATION, "%s.%s db empty in valid dimension range @ %ld", st->id, rd->id, metric_t);
-                else {
-                    buffer_sprintf(rep_state->build, "FILL \"%s\" \"%s\" %ld " STORAGE_NUMBER_FORMAT "\n", st->id, rd->id, metric_t, n);
-                    debug(D_REPLICATION, "%s.%s FILL %ld " STORAGE_NUMBER_FORMAT "\n", st->id, rd->id, metric_t, n);
+                // if (n == SN_EMPTY_SLOT)
+                //     debug(D_REPLICATION, "%s.%s db empty in valid dimension range @ %ld", st->id, rd->id, metric_t);
+                // else {
+                buffer_sprintf(rep_state->build, "FILL \"%s\" \"%s\" %ld " STORAGE_NUMBER_FORMAT "\n", st->id, rd->id, metric_t, n);
+                debug(D_REPLICATION, "%s.%s FILL %ld " STORAGE_NUMBER_FORMAT "\n", st->id, rd->id, metric_t, n);
                     num_points++;
                     
-                }
+                // }
             }
             buffer_sprintf(rep_state->build, "FILLEND %zu %u\n", num_points, block_id);
             rd->state->query_ops.finalize(&handle);
@@ -1787,7 +1788,7 @@ void sender_chart_gap_filling(RRDSET *st, GAP a_gap) {
 
     replication_start(rep_state);         // Locks the sender buffer
     if(need_to_send_chart_definition(st))
-        replication_send_chart_definition_nolock(st);        
+        replication_send_chart_definition_nolock(st);
     sender_fill_gap_nolock(rep_state, st, a_gap);
     replication_commit(rep_state);        // Releases the sender buffer
     replication_attempt_to_send(rep_state);
