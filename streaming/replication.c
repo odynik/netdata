@@ -1734,14 +1734,14 @@ void sender_fill_gap_nolock(REPLICATION_STATE *rep_state, RRDSET *st, GAP a_gap)
                 }
 
                 storage_number n = rd->state->query_ops.next_metric(&handle, &metric_t);
-                // if (n == SN_EMPTY_SLOT)
-                //     debug(D_REPLICATION, "%s.%s db empty in valid dimension range @ %ld", st->id, rd->id, metric_t);
-                // else {
+                if (n == SN_EMPTY_SLOT)
+                    debug(D_REPLICATION, "%s.%s db empty in valid dimension range @ %ld", st->id, rd->id, metric_t);
+                else {
                 buffer_sprintf(rep_state->build, "FILL \"%s\" \"%s\" %ld " STORAGE_NUMBER_FORMAT "\n", st->id, rd->id, metric_t, n);
                 debug(D_REPLICATION, "%s.%s FILL %ld " STORAGE_NUMBER_FORMAT "\n", st->id, rd->id, metric_t, n);
                     num_points++;
                     
-                // }
+                }
             }
             buffer_sprintf(rep_state->build, "FILLEND %zu %u\n", num_points, block_id);
             rd->state->query_ops.finalize(&handle);
