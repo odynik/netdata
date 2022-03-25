@@ -213,6 +213,14 @@ static enum cgroups_type cgroups_try_detect_version()
     return CGROUPS_V2;
 }
 
+void set_cgroup_base_path(char *filename, char *path) {
+    if (strncmp(netdata_configured_host_prefix, path, strlen(netdata_configured_host_prefix)) == 0) {
+        snprintfz(filename, FILENAME_MAX, "%s", path);
+    } else {
+        snprintfz(filename, FILENAME_MAX, "%s%s", netdata_configured_host_prefix, path);
+    }
+}
+
 void read_cgroup_plugin_configuration() {
     system_page_size = sysconf(_SC_PAGESIZE);
 
@@ -285,7 +293,7 @@ void read_cgroup_plugin_configuration() {
             s = "/sys/fs/cgroup/cpuacct";
         }
         else s = mi->mount_point;
-        snprintfz(filename, FILENAME_MAX, "%s%s", netdata_configured_host_prefix, s);
+        set_cgroup_base_path(filename, s);
         cgroup_cpuacct_base = config_get("plugin:cgroups", "path to /sys/fs/cgroup/cpuacct", filename);
 
         mi = mountinfo_find_by_filesystem_super_option(root, "cgroup", "cpuset");
@@ -295,7 +303,7 @@ void read_cgroup_plugin_configuration() {
             s = "/sys/fs/cgroup/cpuset";
         }
         else s = mi->mount_point;
-        snprintfz(filename, FILENAME_MAX, "%s%s", netdata_configured_host_prefix, s);
+        set_cgroup_base_path(filename, s);
         cgroup_cpuset_base = config_get("plugin:cgroups", "path to /sys/fs/cgroup/cpuset", filename);
 
         mi = mountinfo_find_by_filesystem_super_option(root, "cgroup", "blkio");
@@ -305,7 +313,7 @@ void read_cgroup_plugin_configuration() {
             s = "/sys/fs/cgroup/blkio";
         }
         else s = mi->mount_point;
-        snprintfz(filename, FILENAME_MAX, "%s%s", netdata_configured_host_prefix, s);
+        set_cgroup_base_path(filename, s);
         cgroup_blkio_base = config_get("plugin:cgroups", "path to /sys/fs/cgroup/blkio", filename);
 
         mi = mountinfo_find_by_filesystem_super_option(root, "cgroup", "memory");
@@ -315,7 +323,7 @@ void read_cgroup_plugin_configuration() {
             s = "/sys/fs/cgroup/memory";
         }
         else s = mi->mount_point;
-        snprintfz(filename, FILENAME_MAX, "%s%s", netdata_configured_host_prefix, s);
+        set_cgroup_base_path(filename, s);
         cgroup_memory_base = config_get("plugin:cgroups", "path to /sys/fs/cgroup/memory", filename);
 
         mi = mountinfo_find_by_filesystem_super_option(root, "cgroup", "devices");
@@ -325,7 +333,7 @@ void read_cgroup_plugin_configuration() {
             s = "/sys/fs/cgroup/devices";
         }
         else s = mi->mount_point;
-        snprintfz(filename, FILENAME_MAX, "%s%s", netdata_configured_host_prefix, s);
+        set_cgroup_base_path(filename, s);
         cgroup_devices_base = config_get("plugin:cgroups", "path to /sys/fs/cgroup/devices", filename);
     }
     else {
@@ -357,7 +365,7 @@ void read_cgroup_plugin_configuration() {
             s = "/sys/fs/cgroup";
         }
         else s = mi->mount_point;
-        snprintfz(filename, FILENAME_MAX, "%s%s", netdata_configured_host_prefix, s);
+        set_cgroup_base_path(filename, s);
         cgroup_unified_base = config_get("plugin:cgroups", "path to unified cgroups", filename);
         debug(D_CGROUP, "using cgroup root: '%s'", cgroup_unified_base);
     }
@@ -395,7 +403,7 @@ void read_cgroup_plugin_configuration() {
                     " !*.user "
                     " !/ "
                     " !/docker "
-                    " !/libvirt "
+                    " !*/libvirt "
                     " !/lxc "
                     " !/lxc/*/* "                          //  #1397 #2649
                     " !/lxc.monitor* "
@@ -1892,69 +1900,118 @@ static inline void update_filenames()
             }
 
             if(unlikely(cgroup_enable_blkio_io && !cg->io_service_bytes.filename)) {
-                snprintfz(filename, FILENAME_MAX, "%s%s/blkio.io_service_bytes", cgroup_blkio_base, cg->id);
-                if(likely(stat(filename, &buf) != -1)) {
+                snprintfz(filename, FILENAME_MAX, "%s%s/blkio.io_service_bytes_recursive", cgroup_blkio_base, cg->id);
+                if (unlikely(stat(filename, &buf) != -1)) {
                     cg->io_service_bytes.filename = strdupz(filename);
                     cg->io_service_bytes.enabled = cgroup_enable_blkio_io;
-                    debug(D_CGROUP, "io_service_bytes filename for cgroup '%s': '%s'", cg->id, cg->io_service_bytes.filename);
+                    debug(D_CGROUP, "blkio.io_service_bytes_recursive filename for cgroup '%s': '%s'", cg->id, cg->io_service_bytes.filename);
+                } else {
+                    debug(D_CGROUP, "blkio.io_service_bytes_recursive file for cgroup '%s': '%s' does not exist.", cg->id, filename);
+                    snprintfz(filename, FILENAME_MAX, "%s%s/blkio.io_service_bytes", cgroup_blkio_base, cg->id);
+                    if (likely(stat(filename, &buf) != -1)) {
+                        cg->io_service_bytes.filename = strdupz(filename);
+                        cg->io_service_bytes.enabled = cgroup_enable_blkio_io;
+                        debug(D_CGROUP, "blkio.io_service_bytes filename for cgroup '%s': '%s'", cg->id, cg->io_service_bytes.filename);
+                    } else {
+                        debug(D_CGROUP, "blkio.io_service_bytes file for cgroup '%s': '%s' does not exist.", cg->id, filename);
+                    }
                 }
-                else
-                    debug(D_CGROUP, "io_service_bytes file for cgroup '%s': '%s' does not exist.", cg->id, filename);
             }
 
-            if(unlikely(cgroup_enable_blkio_ops && !cg->io_serviced.filename)) {
-                snprintfz(filename, FILENAME_MAX, "%s%s/blkio.io_serviced", cgroup_blkio_base, cg->id);
-                if(likely(stat(filename, &buf) != -1)) {
+            if (unlikely(cgroup_enable_blkio_ops && !cg->io_serviced.filename)) {
+                snprintfz(filename, FILENAME_MAX, "%s%s/blkio.io_serviced_recursive", cgroup_blkio_base, cg->id);
+                if (unlikely(stat(filename, &buf) != -1)) {
                     cg->io_serviced.filename = strdupz(filename);
                     cg->io_serviced.enabled = cgroup_enable_blkio_ops;
-                    debug(D_CGROUP, "io_serviced filename for cgroup '%s': '%s'", cg->id, cg->io_serviced.filename);
+                    debug(D_CGROUP, "blkio.io_serviced_recursive filename for cgroup '%s': '%s'", cg->id, cg->io_serviced.filename);
+                } else {
+                    debug(D_CGROUP, "blkio.io_serviced_recursive file for cgroup '%s': '%s' does not exist.", cg->id, filename);
+                    snprintfz(filename, FILENAME_MAX, "%s%s/blkio.io_serviced", cgroup_blkio_base, cg->id);
+                    if (likely(stat(filename, &buf) != -1)) {
+                        cg->io_serviced.filename = strdupz(filename);
+                        cg->io_serviced.enabled = cgroup_enable_blkio_ops;
+                        debug(D_CGROUP, "blkio.io_serviced filename for cgroup '%s': '%s'", cg->id, cg->io_serviced.filename);
+                    } else {
+                        debug(D_CGROUP, "blkio.io_serviced file for cgroup '%s': '%s' does not exist.", cg->id, filename);
+                    }
                 }
-                else
-                    debug(D_CGROUP, "io_serviced file for cgroup '%s': '%s' does not exist.", cg->id, filename);
             }
 
-            if(unlikely(cgroup_enable_blkio_throttle_io && !cg->throttle_io_service_bytes.filename)) {
-                snprintfz(filename, FILENAME_MAX, "%s%s/blkio.throttle.io_service_bytes", cgroup_blkio_base, cg->id);
-                if(likely(stat(filename, &buf) != -1)) {
+            if (unlikely(cgroup_enable_blkio_throttle_io && !cg->throttle_io_service_bytes.filename)) {
+                snprintfz(filename, FILENAME_MAX, "%s%s/blkio.throttle.io_service_bytes_recursive", cgroup_blkio_base, cg->id);
+                if (unlikely(stat(filename, &buf) != -1)) {
                     cg->throttle_io_service_bytes.filename = strdupz(filename);
                     cg->throttle_io_service_bytes.enabled = cgroup_enable_blkio_throttle_io;
-                    debug(D_CGROUP, "throttle_io_service_bytes filename for cgroup '%s': '%s'", cg->id, cg->throttle_io_service_bytes.filename);
+                    debug(D_CGROUP,"blkio.throttle.io_service_bytes_recursive filename for cgroup '%s': '%s'", cg->id, cg->throttle_io_service_bytes.filename);
+                } else {
+                    debug(D_CGROUP, "blkio.throttle.io_service_bytes_recursive file for cgroup '%s': '%s' does not exist.", cg->id, filename);
+                    snprintfz(
+                        filename, FILENAME_MAX, "%s%s/blkio.throttle.io_service_bytes", cgroup_blkio_base, cg->id);
+                    if (likely(stat(filename, &buf) != -1)) {
+                        cg->throttle_io_service_bytes.filename = strdupz(filename);
+                        cg->throttle_io_service_bytes.enabled = cgroup_enable_blkio_throttle_io;
+                        debug(D_CGROUP, "blkio.throttle.io_service_bytes filename for cgroup '%s': '%s'", cg->id, cg->throttle_io_service_bytes.filename);
+                    } else {
+                        debug(D_CGROUP, "blkio.throttle.io_service_bytes file for cgroup '%s': '%s' does not exist.", cg->id, filename);
+                    }
                 }
-                else
-                    debug(D_CGROUP, "throttle_io_service_bytes file for cgroup '%s': '%s' does not exist.", cg->id, filename);
             }
 
-            if(unlikely(cgroup_enable_blkio_throttle_ops && !cg->throttle_io_serviced.filename)) {
-                snprintfz(filename, FILENAME_MAX, "%s%s/blkio.throttle.io_serviced", cgroup_blkio_base, cg->id);
-                if(likely(stat(filename, &buf) != -1)) {
+            if (unlikely(cgroup_enable_blkio_throttle_ops && !cg->throttle_io_serviced.filename)) {
+                snprintfz(filename, FILENAME_MAX, "%s%s/blkio.throttle.io_serviced_recursive", cgroup_blkio_base, cg->id);
+                if (unlikely(stat(filename, &buf) != -1)) {
                     cg->throttle_io_serviced.filename = strdupz(filename);
                     cg->throttle_io_serviced.enabled = cgroup_enable_blkio_throttle_ops;
-                    debug(D_CGROUP, "throttle_io_serviced filename for cgroup '%s': '%s'", cg->id, cg->throttle_io_serviced.filename);
+                    debug(D_CGROUP, "blkio.throttle.io_serviced_recursive filename for cgroup '%s': '%s'", cg->id, cg->throttle_io_serviced.filename);
+                } else {
+                    debug(D_CGROUP, "blkio.throttle.io_serviced_recursive file for cgroup '%s': '%s' does not exist.", cg->id, filename);
+                    snprintfz(filename, FILENAME_MAX, "%s%s/blkio.throttle.io_serviced", cgroup_blkio_base, cg->id);
+                    if (likely(stat(filename, &buf) != -1)) {
+                        cg->throttle_io_serviced.filename = strdupz(filename);
+                        cg->throttle_io_serviced.enabled = cgroup_enable_blkio_throttle_ops;
+                        debug(D_CGROUP, "blkio.throttle.io_serviced filename for cgroup '%s': '%s'", cg->id, cg->throttle_io_serviced.filename);
+                    } else {
+                        debug(D_CGROUP, "blkio.throttle.io_serviced file for cgroup '%s': '%s' does not exist.", cg->id, filename);
+                    }
                 }
-                else
-                    debug(D_CGROUP, "throttle_io_serviced file for cgroup '%s': '%s' does not exist.", cg->id, filename);
             }
 
-            if(unlikely(cgroup_enable_blkio_merged_ops && !cg->io_merged.filename)) {
-                snprintfz(filename, FILENAME_MAX, "%s%s/blkio.io_merged", cgroup_blkio_base, cg->id);
-                if(likely(stat(filename, &buf) != -1)) {
+            if (unlikely(cgroup_enable_blkio_merged_ops && !cg->io_merged.filename)) {
+                snprintfz(filename, FILENAME_MAX, "%s%s/blkio.io_merged_recursive", cgroup_blkio_base, cg->id);
+                if (unlikely(stat(filename, &buf) != -1)) {
                     cg->io_merged.filename = strdupz(filename);
                     cg->io_merged.enabled = cgroup_enable_blkio_merged_ops;
-                    debug(D_CGROUP, "io_merged filename for cgroup '%s': '%s'", cg->id, cg->io_merged.filename);
+                    debug(D_CGROUP, "blkio.io_merged_recursive filename for cgroup '%s': '%s'", cg->id, cg->io_merged.filename);
+                } else {
+                    debug(D_CGROUP, "blkio.io_merged_recursive file for cgroup '%s': '%s' does not exist.", cg->id, filename);
+                    snprintfz(filename, FILENAME_MAX, "%s%s/blkio.io_merged", cgroup_blkio_base, cg->id);
+                    if (likely(stat(filename, &buf) != -1)) {
+                        cg->io_merged.filename = strdupz(filename);
+                        cg->io_merged.enabled = cgroup_enable_blkio_merged_ops;
+                        debug(D_CGROUP, "blkio.io_merged filename for cgroup '%s': '%s'", cg->id, cg->io_merged.filename);
+                    } else {
+                        debug(D_CGROUP, "blkio.io_merged file for cgroup '%s': '%s' does not exist.", cg->id, filename);
+                    }
                 }
-                else
-                    debug(D_CGROUP, "io_merged file for cgroup '%s': '%s' does not exist.", cg->id, filename);
             }
 
-            if(unlikely(cgroup_enable_blkio_queued_ops && !cg->io_queued.filename)) {
-                snprintfz(filename, FILENAME_MAX, "%s%s/blkio.io_queued", cgroup_blkio_base, cg->id);
-                if(likely(stat(filename, &buf) != -1)) {
+            if (unlikely(cgroup_enable_blkio_queued_ops && !cg->io_queued.filename)) {
+                snprintfz(filename, FILENAME_MAX, "%s%s/blkio.io_queued_recursive", cgroup_blkio_base, cg->id);
+                if (unlikely(stat(filename, &buf) != -1)) {
                     cg->io_queued.filename = strdupz(filename);
                     cg->io_queued.enabled = cgroup_enable_blkio_queued_ops;
-                    debug(D_CGROUP, "io_queued filename for cgroup '%s': '%s'", cg->id, cg->io_queued.filename);
+                    debug(D_CGROUP, "blkio.io_queued_recursive filename for cgroup '%s': '%s'", cg->id, cg->io_queued.filename);
+                } else {
+                    debug(D_CGROUP, "blkio.io_queued_recursive file for cgroup '%s': '%s' does not exist.", cg->id, filename);
+                    snprintfz(filename, FILENAME_MAX, "%s%s/blkio.io_queued", cgroup_blkio_base, cg->id);
+                    if (likely(stat(filename, &buf) != -1)) {
+                        cg->io_queued.filename = strdupz(filename);
+                        cg->io_queued.enabled = cgroup_enable_blkio_queued_ops;
+                        debug(D_CGROUP, "blkio.io_queued filename for cgroup '%s': '%s'", cg->id, cg->io_queued.filename);
+                    } else {
+                        debug(D_CGROUP, "blkio.io_queued file for cgroup '%s': '%s' does not exist.", cg->id, filename);
+                    }
                 }
-                else
-                    debug(D_CGROUP, "io_queued file for cgroup '%s': '%s' does not exist.", cg->id, filename);
             }
         }
         else if(likely(cgroup_unified_exist)) {

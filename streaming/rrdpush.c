@@ -42,8 +42,9 @@ struct config stream_config = {
 unsigned int default_rrdpush_enabled = 0;
 unsigned int default_rrdpush_replication_enabled = 1;
 #ifdef ENABLE_COMPRESSION
-unsigned int default_compression_enabled = 0;
+unsigned int default_compression_enabled = 1;
 #endif
+unsigned int default_rrdpush_replication_enabled = 0;
 char *default_rrdpush_destination = NULL;
 char *default_rrdpush_api_key = NULL;
 char *default_rrdpush_send_charts_matching = NULL;
@@ -84,6 +85,9 @@ int rrdpush_init() {
     default_compression_enabled = (unsigned int)appconfig_get_boolean(&stream_config, CONFIG_SECTION_STREAM,
         "enable compression", default_compression_enabled);
 #endif
+    // replication
+    default_rrdpush_replication_enabled = (unsigned int)appconfig_get_boolean(&stream_config, CONFIG_SECTION_STREAM, "enable replication", default_rrdpush_replication_enabled);
+
 
     if(default_rrdpush_enabled && (!default_rrdpush_destination || !*default_rrdpush_destination || !default_rrdpush_api_key || !*default_rrdpush_api_key)) {
         error("STREAM [send]: cannot enable sending thread - information is missing.");

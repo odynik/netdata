@@ -226,9 +226,6 @@ USAGE: ${PROGRAM} [options]
   --install <path>           Install netdata in <path>. Ex. --install /opt will put netdata in /opt/netdata.
   --dont-start-it            Do not (re)start netdata after installation.
   --dont-wait                Run installation in non-interactive mode.
-  --auto-update or -u        Install netdata-updater in cron to automatically check for updates once per day.
-  --auto-update-type         Override the auto-update scheduling mechanism detection, currently supported types
-                             are: systemd, interval, crontab.
   --stable-channel           Use packages from GitHub release pages instead of nightly updates.
                              This results in less frequent updates.
   --nightly-channel          Use most recent nightly updates instead of GitHub releases.
@@ -245,14 +242,14 @@ USAGE: ${PROGRAM} [options]
   --disable-plugin-nfacct    Explicitly disable the nfacct plugin.
   --enable-plugin-xenstat    Enable the xenstat plugin. Default: enable it when libxenstat and libyajl are available.
   --disable-plugin-xenstat   Explicitly disable the xenstat plugin.
-  --enable-backend-kinesis   Enable AWS Kinesis backend. Default: enable it when libaws_cpp_sdk_kinesis and its dependencies
-                             are available.
-  --disable-backend-kinesis  Explicitly disable AWS Kinesis backend.
-  --enable-backend-prometheus-remote-write Enable Prometheus remote write backend. Default: enable it when libprotobuf and
-                             libsnappy are available.
-  --disable-backend-prometheus-remote-write Explicitly disable Prometheus remote write backend.
-  --enable-backend-mongodb   Enable MongoDB backend. Default: enable it when libmongoc is available.
-  --disable-backend-mongodb  Explicitly disable MongoDB backend.
+  --enable-exporting-kinesis Enable AWS Kinesis exporting connector. Default: enable it when libaws_cpp_sdk_kinesis
+                             and its dependencies are available.
+  --disable-exporting-kinesis Explicitly disable AWS Kinesis exporting connector.
+  --enable-exporting-prometheus-remote-write Enable Prometheus remote write exporting connector. Default: enable it
+                             when libprotobuf and libsnappy are available.
+  --disable-exporting-prometheus-remote-write Explicitly disable Prometheus remote write exporting connector.
+  --enable-exporting-mongodb Enable MongoDB exporting connector. Default: enable it when libmongoc is available.
+  --disable-exporting-mongodb Explicitly disable MongoDB exporting connector.
   --enable-exporting-pubsub  Enable Google Cloud PubSub exporting connector. Default: enable it when
                              libgoogle_cloud_cpp_pubsub_protos and its dependencies are available.
   --disable-exporting-pubsub Explicitly disable Google Cloud PubSub exporting connector.
@@ -301,12 +298,11 @@ HEREDOC
 
 DONOTSTART=0
 DONOTWAIT=0
-AUTOUPDATE=0
 NETDATA_PREFIX=
 LIBS_ARE_HERE=0
 NETDATA_ENABLE_ML=""
 NETDATA_CONFIGURE_OPTIONS="${NETDATA_CONFIGURE_OPTIONS-}"
-RELEASE_CHANNEL="nightly" # check .travis/create_artifacts.sh before modifying
+RELEASE_CHANNEL="nightly" # valid values are 'nightly' and 'stable'
 IS_NETDATA_STATIC_BINARY="${IS_NETDATA_STATIC_BINARY:-"no"}"
 while [ -n "${1}" ]; do
   case "${1}" in
@@ -319,19 +315,8 @@ while [ -n "${1}" ]; do
     "--dont-scrub-cflags-even-though-it-may-break-things") DONT_SCRUB_CFLAGS_EVEN_THOUGH_IT_MAY_BREAK_THINGS=1 ;;
     "--dont-start-it") DONOTSTART=1 ;;
     "--dont-wait") DONOTWAIT=1 ;;
-    "--auto-update" | "-u") AUTOUPDATE=1 ;;
-    "--auto-update-type")
-      AUTO_UPDATE_TYPE="$(echo "${2}" | tr '[:upper:]' '[:lower:]')"
-      case "${AUTO_UPDATE_TYPE}" in
-        systemd|interval|crontab)
-          shift 1
-          ;;
-        *)
-          echo "Unrecognized value for --auto-update-type. Valid values are: systemd, interval, crontab"
-          exit 1
-          ;;
-      esac
-      ;;
+    "--auto-update" | "-u") ;;
+    "--auto-update-type") ;;
     "--stable-channel") RELEASE_CHANNEL="stable" ;;
     "--nightly-channel") RELEASE_CHANNEL="nightly" ;;
     "--enable-plugin-freeipmi") NETDATA_CONFIGURE_OPTIONS="$(echo "${NETDATA_CONFIGURE_OPTIONS%--enable-plugin-freeipmi)}" | sed 's/$/ --enable-plugin-freeipmi/g')" ;;
@@ -345,15 +330,20 @@ while [ -n "${1}" ]; do
     "--disable-plugin-nfacct") NETDATA_CONFIGURE_OPTIONS="$(echo "${NETDATA_CONFIGURE_OPTIONS%--disable-plugin-nfacct)}" | sed 's/$/ --disable-plugin-nfacct/g')" ;;
     "--enable-plugin-xenstat") NETDATA_CONFIGURE_OPTIONS="$(echo "${NETDATA_CONFIGURE_OPTIONS%--enable-plugin-xenstat)}" | sed 's/$/ --enable-plugin-xenstat/g')" ;;
     "--disable-plugin-xenstat") NETDATA_CONFIGURE_OPTIONS="$(echo "${NETDATA_CONFIGURE_OPTIONS%--disable-plugin-xenstat)}" | sed 's/$/ --disable-plugin-xenstat/g')" ;;
-    "--enable-backend-kinesis") NETDATA_CONFIGURE_OPTIONS="$(echo "${NETDATA_CONFIGURE_OPTIONS%--enable-backend-kinesis)}" | sed 's/$/ --enable-backend-kinesis/g')" ;;
-    "--disable-backend-kinesis") NETDATA_CONFIGURE_OPTIONS="$(echo "${NETDATA_CONFIGURE_OPTIONS%--disable-backend-kinesis)}" | sed 's/$/ --disable-backend-kinesis/g')" ;;
-    "--enable-backend-prometheus-remote-write") NETDATA_CONFIGURE_OPTIONS="$(echo "${NETDATA_CONFIGURE_OPTIONS%--enable-backend-prometheus-remote-write)}" | sed 's/$/ --enable-backend-prometheus-remote-write/g')" ;;
-    "--disable-backend-prometheus-remote-write")
-      NETDATA_CONFIGURE_OPTIONS="$(echo "${NETDATA_CONFIGURE_OPTIONS%--disable-backend-prometheus-remote-write)}" | sed 's/$/ --disable-backend-prometheus-remote-write/g')"
+    "--enable-exporting-kinesis" | "--enable-backend-kinesis")
+      NETDATA_CONFIGURE_OPTIONS="$(echo "${NETDATA_CONFIGURE_OPTIONS%--enable-exporting-kinesis)}" | sed 's/$/ --enable-exporting-kinesis/g')" ;;
+    "--disable-exporting-kinesis" | "--disable-backend-kinesis")
+      NETDATA_CONFIGURE_OPTIONS="$(echo "${NETDATA_CONFIGURE_OPTIONS%--disable-exporting-kinesis)}" | sed 's/$/ --disable-exporting-kinesis/g')" ;;
+    "--enable-exporting-prometheus-remote-write" | "--enable-backend-prometheus-remote-write")
+      NETDATA_CONFIGURE_OPTIONS="$(echo "${NETDATA_CONFIGURE_OPTIONS%--enable-exporting-prometheus-remote-write)}" | sed 's/$/ --enable-exporting-prometheus-remote-write/g')" ;;
+    "--disable-exporting-prometheus-remote-write" | "--disable-backend-prometheus-remote-write")
+      NETDATA_CONFIGURE_OPTIONS="$(echo "${NETDATA_CONFIGURE_OPTIONS%--disable-exporting-prometheus-remote-write)}" | sed 's/$/ --disable-exporting-prometheus-remote-write/g')"
       NETDATA_DISABLE_PROMETHEUS=1
       ;;
-    "--enable-backend-mongodb") NETDATA_CONFIGURE_OPTIONS="$(echo "${NETDATA_CONFIGURE_OPTIONS%--enable-backend-mongodb)}" | sed 's/$/ --enable-backend-mongodb/g')" ;;
-    "--disable-backend-mongodb") NETDATA_CONFIGURE_OPTIONS="$(echo "${NETDATA_CONFIGURE_OPTIONS%--disable-backend-mongodb)}" | sed 's/$/ --disable-backend-mongodb/g')" ;;
+    "--enable-exporting-mongodb" | "--enable-backend-mongodb")
+      NETDATA_CONFIGURE_OPTIONS="$(echo "${NETDATA_CONFIGURE_OPTIONS%--enable-exporting-mongodb)}" | sed 's/$/ --enable-exporting-mongodb/g')" ;;
+    "--disable-exporting-mongodb" | "--disable-backend-mongodb")
+      NETDATA_CONFIGURE_OPTIONS="$(echo "${NETDATA_CONFIGURE_OPTIONS%--disable-exporting-mongodb)}" | sed 's/$/ --disable-exporting-mongodb/g')" ;;
     "--enable-exporting-pubsub") NETDATA_CONFIGURE_OPTIONS="$(echo "${NETDATA_CONFIGURE_OPTIONS%--enable-exporting-pubsub)}" | sed  's/$/ --enable-exporting-pubsub/g')" ;;
     "--disable-exporting-pubsub") NETDATA_CONFIGURE_OPTIONS="$(echo "${NETDATA_CONFIGURE_OPTIONS%--disable-exporting-pubsub)}" | sed 's/$/ --disable-exporting-pubsub/g')" ;;
     "--enable-lto") NETDATA_CONFIGURE_OPTIONS="$(echo "${NETDATA_CONFIGURE_OPTIONS%--enable-lto)}" | sed 's/$/ --enable-lto/g')" ;;
@@ -701,7 +691,7 @@ bundle_protobuf() {
     "${PROTOBUF_PACKAGE_BASENAME}" \
     "${tmp}" \
     "${NETDATA_LOCAL_TARBALL_VERRIDE_PROTOBUF}"; then
-    if run tar -xf "${tmp}/${PROTOBUF_PACKAGE_BASENAME}" -C "${tmp}" &&
+    if run tar --no-same-owner -xf "${tmp}/${PROTOBUF_PACKAGE_BASENAME}" -C "${tmp}" &&
       build_protobuf "${tmp}/protobuf-${PROTOBUF_PACKAGE_VERSION}" &&
       copy_protobuf "${tmp}/protobuf-${PROTOBUF_PACKAGE_VERSION}" &&
       rm -rf "${tmp}"; then
@@ -786,7 +776,7 @@ bundle_judy() {
     "${JUDY_PACKAGE_BASENAME}" \
     "${tmp}" \
     "${NETDATA_LOCAL_TARBALL_OVERRIDE_JUDY}"; then
-    if run tar -xf "${tmp}/${JUDY_PACKAGE_BASENAME}" -C "${tmp}" &&
+    if run tar --no-same-owner -xf "${tmp}/${JUDY_PACKAGE_BASENAME}" -C "${tmp}" &&
       build_judy "${tmp}/libjudy-${JUDY_PACKAGE_VERSION}" &&
       copy_judy "${tmp}/libjudy-${JUDY_PACKAGE_VERSION}" &&
       rm -rf "${tmp}"; then
@@ -870,7 +860,7 @@ bundle_jsonc() {
     "${JSONC_PACKAGE_BASENAME}" \
     "${tmp}" \
     "${NETDATA_LOCAL_TARBALL_OVERRIDE_JSONC}"; then
-    if run tar -xf "${tmp}/${JSONC_PACKAGE_BASENAME}" -C "${tmp}" &&
+    if run tar --no-same-owner -xf "${tmp}/${JSONC_PACKAGE_BASENAME}" -C "${tmp}" &&
       build_jsonc "${tmp}/json-c-json-c-${JSONC_PACKAGE_VERSION}" &&
       copy_jsonc "${tmp}/json-c-json-c-${JSONC_PACKAGE_VERSION}" &&
       rm -rf "${tmp}"; then
@@ -902,6 +892,37 @@ get_kernel_version() {
   rm -f "${tmpfile}"
 
   printf "%03d%03d%03d" "${maj}" "${min}" "${patch}"
+}
+
+detect_libc() {
+  libc=
+  if ldd --version 2>&1 | grep -q -i glibc; then
+    echo >&2 " Detected GLIBC"
+    libc="glibc"
+  elif ldd --version 2>&1 | grep -q -i 'gnu libc'; then
+    echo >&2 " Detected GLIBC"
+    libc="glibc"
+  elif ldd --version 2>&1 | grep -q -i musl; then
+    echo >&2 " Detected musl"
+    libc="musl"
+  else
+    ls_path=$(command -v ls)
+    if [ -n "${ls_path}" ] ; then
+      cmd=$(ldd "$ls_path" | grep -w libc | cut -d" " -f 3)
+      if bash -c "${cmd}" 2>&1 | grep -q -i "GNU C Library"; then
+        echo >&2 " Detected GLIBC"
+        libc="glibc"    
+      fi    
+    fi    
+  fi
+
+  if [ -z "$libc" ]; then
+    echo >&2 " ERROR: Cannot detect a supported libc on your system!"
+    return 1
+  fi
+
+  echo "${libc}"
+  return 0
 }
 
 rename_libbpf_packaging() {
@@ -936,11 +957,20 @@ copy_libbpf() {
 
   run cp "${1}/usr/${lib_subdir}/libbpf.a" "${target_dir}/libbpf.a" || return 1
   run cp -r "${1}/usr/include" "${target_dir}" || return 1
+  run cp -r "${1}/include/uapi" "${target_dir}/include" || return 1
 }
 
 bundle_libbpf() {
   if { [ -n "${NETDATA_DISABLE_EBPF}" ] && [ ${NETDATA_DISABLE_EBPF} = 1 ]; } || [ "$(uname -s)" != Linux ]; then
     return 0
+  fi
+
+  # When libc is not detected, we do not have necessity to compile libbpf and we should not do download of eBPF programs
+  libc="${EBPF_LIBC:-"$(detect_libc)"}"
+  if [ -z "$libc" ]; then
+      NETDATA_DISABLE_EBPF=1
+      NETDATA_CONFIGURE_OPTIONS="$(echo "${NETDATA_CONFIGURE_OPTIONS%--disable-ebpf)}" | sed 's/$/ --disable-ebpf/g')"
+      return 0
   fi
 
   [ -n "${GITHUB_ACTIONS}" ] && echo "::group::Bundling libbpf."
@@ -959,7 +989,7 @@ bundle_libbpf() {
     "${LIBBPF_PACKAGE_BASENAME}" \
     "${tmp}" \
     "${NETDATA_LOCAL_TARBALL_OVERRIDE_LIBBPF}"; then
-    if run tar -xf "${tmp}/${LIBBPF_PACKAGE_BASENAME}" -C "${tmp}" &&
+    if run tar --no-same-owner -xf "${tmp}/${LIBBPF_PACKAGE_BASENAME}" -C "${tmp}" &&
       build_libbpf "${tmp}/libbpf-${LIBBPF_PACKAGE_VERSION}" &&
       copy_libbpf "${tmp}/libbpf-${LIBBPF_PACKAGE_VERSION}" &&
       rm -rf "${tmp}"; then
@@ -985,6 +1015,59 @@ bundle_libbpf() {
 }
 
 bundle_libbpf
+
+copy_co_re() {
+  cp -R "${1}/includes" "collectors/ebpf.plugin/"
+}
+
+bundle_ebpf_co_re() {
+  if { [ -n "${NETDATA_DISABLE_EBPF}" ] && [ ${NETDATA_DISABLE_EBPF} = 1 ]; } || [ "$(uname -s)" != Linux ]; then
+    return 0
+  fi
+
+  [ -n "${GITHUB_ACTIONS}" ] && echo "::group::Bundling libbpf."
+
+  progress "eBPF CO-RE"
+
+  CORE_PACKAGE_VERSION="$(cat packaging/ebpf-co-re.version)"
+
+  tmp="$(mktemp -d -t netdata-ebpf-co-re-XXXXXX)"
+  CORE_PACKAGE_BASENAME="netdata-ebpf-co-re-glibc-${CORE_PACKAGE_VERSION}.tar.xz"
+
+  if fetch_and_verify "ebpf-co-re" \
+    "https://github.com/netdata/ebpf-co-re/releases/download/${CORE_PACKAGE_VERSION}/${CORE_PACKAGE_BASENAME}" \
+    "${CORE_PACKAGE_BASENAME}" \
+    "${tmp}" \
+    "${NETDATA_LOCAL_TARBALL_OVERRIDE_CORE}"; then
+    if run tar --no-same-owner -xf "${tmp}/${CORE_PACKAGE_BASENAME}" -C "${tmp}" &&
+      copy_co_re "${tmp}" &&
+      rm -rf "${tmp}"; then
+      run_ok "libbpf built and prepared."
+    else
+      run_failed "Failed to get eBPF CO-RE files."
+      if [ -n "${NETDATA_DISABLE_EBPF}" ] && [ ${NETDATA_DISABLE_EBPF} = 0 ]; then
+        exit 1
+      else
+        defer_error_highlighted "Failed to get CO-RE. You will not be able to use eBPF plugin."
+        NETDATA_DISABLE_EBPF=1
+        NETDATA_CONFIGURE_OPTIONS="$(echo "${NETDATA_CONFIGURE_OPTIONS%--disable-ebpf)}" | sed 's/$/ --disable-ebpf/g')"
+      fi
+    fi
+  else
+    run_failed "Unable to fetch sources for libbpf."
+    if [ -n "${NETDATA_DISABLE_EBPF}" ] && [ ${NETDATA_DISABLE_EBPF} = 0 ]; then
+      exit 1
+    else
+      defer_error_highlighted "Unable to fetch sources for eBPF CO-RE. You will not be able to use eBPF plugin."
+      NETDATA_DISABLE_EBPF=1
+      NETDATA_CONFIGURE_OPTIONS="$(echo "${NETDATA_CONFIGURE_OPTIONS%--disable-ebpf)}" | sed 's/$/ --disable-ebpf/g')"
+    fi
+  fi
+
+  [ -n "${GITHUB_ACTIONS}" ] && echo "::endgroup::"
+}
+
+bundle_ebpf_co_re
 
 # -----------------------------------------------------------------------------
 # If we have the dashboard switching logic, make sure we're on the classic
@@ -1205,15 +1288,6 @@ NETDATA_GROUP="$(id -g -n "${NETDATA_USER}")"
 [ -z "${NETDATA_GROUP}" ] && NETDATA_GROUP="${NETDATA_USER}"
 echo >&2 "Netdata user and group is finally set to: ${NETDATA_USER}/${NETDATA_GROUP}"
 
-# the owners of the web files
-NETDATA_WEB_USER="$(config_option "web" "web files owner" "${NETDATA_USER}")"
-NETDATA_WEB_GROUP="${NETDATA_GROUP}"
-if [ "$(id -u)" = "0" ] && [ "${NETDATA_USER}" != "${NETDATA_WEB_USER}" ]; then
-  NETDATA_WEB_GROUP="$(id -g -n "${NETDATA_WEB_USER}")"
-  [ -z "${NETDATA_WEB_GROUP}" ] && NETDATA_WEB_GROUP="${NETDATA_WEB_USER}"
-fi
-NETDATA_WEB_GROUP="$(config_option "web" "web files group" "${NETDATA_WEB_GROUP}")"
-
 # port
 defport=19999
 NETDATA_PORT="$(config_option "web" "default port" ${defport})"
@@ -1233,8 +1307,6 @@ cat << OPTIONSEOF
     Permissions
     - netdata user             : ${NETDATA_USER}
     - netdata group            : ${NETDATA_GROUP}
-    - web files user           : ${NETDATA_WEB_USER}
-    - web files group          : ${NETDATA_WEB_GROUP}
     - root user                : ${ROOT_USER}
 
     Directories
@@ -1279,7 +1351,6 @@ if [ ! -d "${NETDATA_WEB_DIR}" ]; then
   echo >&2 "Creating directory '${NETDATA_WEB_DIR}'"
   run mkdir -p "${NETDATA_WEB_DIR}" || exit 1
 fi
-run chown -R "${NETDATA_WEB_USER}:${NETDATA_WEB_GROUP}" "${NETDATA_WEB_DIR}"
 run find "${NETDATA_WEB_DIR}" -type f -exec chmod 0664 {} \;
 run find "${NETDATA_WEB_DIR}" -type d -exec chmod 0775 {} \;
 
@@ -1539,10 +1610,10 @@ install_go() {
   # Install new files
   run rm -rf "${NETDATA_STOCK_CONFIG_DIR}/go.d"
   run rm -rf "${NETDATA_STOCK_CONFIG_DIR}/go.d.conf"
-  run tar -xf "${tmp}/config.tar.gz" -C "${NETDATA_STOCK_CONFIG_DIR}/"
+  run tar --no-same-owner -xf "${tmp}/config.tar.gz" -C "${NETDATA_STOCK_CONFIG_DIR}/"
   run chown -R "${ROOT_USER}:${ROOT_GROUP}" "${NETDATA_STOCK_CONFIG_DIR}"
 
-  run tar -xf "${tmp}/${GO_PACKAGE_BASENAME}"
+  run tar --no-same-owner -xf "${tmp}/${GO_PACKAGE_BASENAME}"
   run mv "${GO_PACKAGE_BASENAME%.tar.gz}" "${NETDATA_PREFIX}/usr/libexec/netdata/plugins.d/go.d.plugin"
   if [ "$(id -u)" -eq 0 ]; then
     run chown "root:${NETDATA_GROUP}" "${NETDATA_PREFIX}/usr/libexec/netdata/plugins.d/go.d.plugin"
@@ -1554,25 +1625,6 @@ install_go() {
 }
 
 install_go
-
-detect_libc() {
-  libc=
-  if ldd --version 2>&1 | grep -q -i glibc; then
-    echo >&2 " Detected GLIBC"
-    libc="glibc"
-  elif ldd --version 2>&1 | grep -q -i 'gnu libc'; then
-    echo >&2 " Detected GLIBC"
-    libc="glibc"
-  elif ldd --version 2>&1 | grep -q -i musl; then
-    echo >&2 " Detected musl"
-    libc="musl"
-  else
-    echo >&2 " ERROR: Cannot detect a supported libc on your system!"
-    return 1
-  fi
-  echo "${libc}"
-  return 0
-}
 
 should_install_ebpf() {
   if [ "${NETDATA_DISABLE_EBPF:=0}" -eq 1 ]; then
@@ -1671,7 +1723,7 @@ install_ebpf() {
   fi
 
   echo >&2 " Extracting ${EBPF_TARBALL} ..."
-  tar -xf "${tmp}/${EBPF_TARBALL}" -C "${tmp}"
+  tar --no-same-owner -xf "${tmp}/${EBPF_TARBALL}" -C "${tmp}"
 
   # chown everything to root:netdata before we start copying out of our package
   run chown -R root:netdata "${tmp}"
@@ -1887,13 +1939,6 @@ echo >&2
 progress "Installing (but not enabling) the netdata updater tool"
 cleanup_old_netdata_updater || run_failed "Cannot cleanup old netdata updater tool."
 install_netdata_updater || run_failed "Cannot install netdata updater tool."
-
-progress "Check if we must enable/disable the netdata updater tool"
-if [ "${AUTOUPDATE}" = "1" ]; then
-  enable_netdata_updater "${AUTO_UPDATE_TYPE}" || run_failed "Cannot enable netdata updater tool"
-else
-  disable_netdata_updater || run_failed "Cannot disable netdata updater tool"
-fi
 
 # -----------------------------------------------------------------------------
 progress "Wrap up environment set up"

@@ -238,6 +238,8 @@ extern int ebpf_enable_tracepoint(ebpf_tracepoint_t *tp);
 extern int ebpf_disable_tracepoint(ebpf_tracepoint_t *tp);
 extern uint32_t ebpf_enable_tracepoints(ebpf_tracepoint_t *tps);
 
+extern void ebpf_pid_file(char *filename, size_t length);
+
 #define EBPF_PROGRAMS_SECTION "ebpf programs"
 
 #define EBPF_COMMON_DIMENSION_PERCENTAGE "%"
@@ -264,6 +266,7 @@ extern pthread_mutex_t mutex_cgroup_shm;
 extern size_t all_pids_count;
 extern uint32_t finalized_threads;
 extern ebpf_plugin_stats_t plugin_statistics;
+extern struct btf *default_btf;
 
 // Socket functions and variables
 // Common functions

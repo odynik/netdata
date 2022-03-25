@@ -22,6 +22,7 @@
 // #define STREAMING_PROTOCOL_CURRENT_VERSION (uint32_t)(STREAM_VERSION_CLABELS)
 #define STREAMING_PROTOCOL_CURRENT_VERSION (uint32_t)(VERSION_GAP_FILLING)
 #endif  //ENABLE_COMPRESSION
+// #define STREAMING_PROTOCOL_CURRENT_VERSION (uint32_t)(VERSION_GAP_FILLING)
 
 #define STREAMING_PROTOCOL_VERSION "1.1"
 #define START_STREAMING_PROMPT "Hit me baby, push them over..."
@@ -91,6 +92,7 @@ struct sender_state {
     size_t sent_bytes_on_this_connection;
     size_t send_attempts;
     time_t last_sent_t;
+    time_t t_newest_connection;
     size_t not_connected_loops;
     // Metrics are collected asynchronously by collector threads calling rrdset_done_push(). This can also trigger
     // the lazy creation of the sender thread - both cases (buffer access and thread creation) are guarded here.
@@ -106,6 +108,8 @@ struct sender_state {
     unsigned int rrdpush_compression;
     struct compressor_state *compressor;
 #endif
+    // Replication status
+    REPLICATION_STATE *replication;
 };
 
 struct receiver_state {
@@ -132,8 +136,6 @@ struct receiver_state {
     time_t last_msg_t;
     char read_buffer[1024];     // Need to allow RRD_ID_LENGTH_MAX * 4 + the other fields
     int read_len;
-    unsigned int shutdown:1;    // Tell the thread to exit
-    unsigned int exited;      // Indicates that the thread has exited  (NOT A BITFIELD!)
 #ifdef ENABLE_HTTPS
     struct netdata_ssl ssl;
 #endif
@@ -143,6 +145,10 @@ struct receiver_state {
     unsigned int rrdpush_compression;
     struct decompressor_state *decompressor;
 #endif
+    unsigned int shutdown:1;    // Tell the thread to exit
+    unsigned int exited;      // Indicates that the thread has exited  (NOT A BITFIELD!)
+    // Replication status
+    REPLICATION_STATE *replication;
 };
 
 
@@ -151,6 +157,7 @@ extern unsigned int default_rrdpush_replication_enabled;
 #ifdef ENABLE_COMPRESSION
 extern unsigned int default_compression_enabled;
 #endif
+extern unsigned int default_rrdpush_replication_enabled;
 extern char *default_rrdpush_destination;
 extern char *default_rrdpush_api_key;
 extern char *default_rrdpush_send_charts_matching;
@@ -182,7 +189,6 @@ struct compressor_state *create_compressor();
 struct decompressor_state *create_decompressor();
 size_t is_compressed_data(const char *data, size_t data_size);
 #endif
-
 // Replication functions definitions
 // Initialization
 extern void replication_sender_init(RRDHOST *host);

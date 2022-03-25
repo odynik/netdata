@@ -190,8 +190,6 @@ int rrdset_set_name(RRDSET *st, const char *name) {
 
     rrdset_flag_clear(st, RRDSET_FLAG_EXPORTING_SEND);
     rrdset_flag_clear(st, RRDSET_FLAG_EXPORTING_IGNORE);
-    rrdset_flag_clear(st, RRDSET_FLAG_BACKEND_SEND);
-    rrdset_flag_clear(st, RRDSET_FLAG_BACKEND_IGNORE);
     rrdset_flag_clear(st, RRDSET_FLAG_UPSTREAM_SEND);
     rrdset_flag_clear(st, RRDSET_FLAG_UPSTREAM_IGNORE);
     rrdset_flag_clear(st, RRDSET_FLAG_UPSTREAM_EXPOSED);
@@ -847,8 +845,11 @@ RRDSET *rrdset_create_custom(
     st->type       = strdupz(type);
 
     st->state = callocz(1, sizeof(*st->state));
+
     st->family = family ? strdupz(family) : strdupz(st->type);
     json_fix_string(st->family);
+
+    st->state->is_ar_chart = strcmp(st->id, ML_ANOMALY_RATES_CHART_ID) == 0;
 
     st->units = units ? strdupz(units) : strdupz("");
     json_fix_string(st->units);
@@ -869,8 +870,6 @@ RRDSET *rrdset_create_custom(
     rrdset_flag_clear(st, RRDSET_FLAG_OBSOLETE);
     rrdset_flag_clear(st, RRDSET_FLAG_EXPORTING_SEND);
     rrdset_flag_clear(st, RRDSET_FLAG_EXPORTING_IGNORE);
-    rrdset_flag_clear(st, RRDSET_FLAG_BACKEND_SEND);
-    rrdset_flag_clear(st, RRDSET_FLAG_BACKEND_IGNORE);
     rrdset_flag_clear(st, RRDSET_FLAG_UPSTREAM_SEND);
     rrdset_flag_clear(st, RRDSET_FLAG_UPSTREAM_IGNORE);
     rrdset_flag_clear(st, RRDSET_FLAG_UPSTREAM_EXPOSED);
@@ -1395,9 +1394,9 @@ void rrdset_done(RRDSET *st) {
     rrdset_rdlock(st);
 
 #ifdef ENABLE_ACLK
-    if (unlikely(!rrdset_flag_check(st, RRDSET_FLAG_ACLK))) {
-        if (st->counter_done >= RRDSET_MINIMUM_LIVE_COUNT && st->dimensions) {
-            if (likely(!queue_chart_to_aclk(st)))
+    if (likely(!st->state->is_ar_chart)) {
+        if (unlikely(!rrdset_flag_check(st, RRDSET_FLAG_ACLK))) {
+            if (likely(st->dimensions && st->counter_done && !queue_chart_to_aclk(st)))
                 rrdset_flag_set(st, RRDSET_FLAG_ACLK);
         }
     }
@@ -1825,8 +1824,10 @@ after_second_database_work:
             continue;
 
 #if defined(ENABLE_ACLK) && defined(ENABLE_NEW_CLOUD_PROTOCOL)
+    if (likely(!st->state->is_ar_chart)) {
         if (!rrddim_flag_check(rd, RRDDIM_FLAG_HIDDEN)) {
-            int live = ((mark - rd->last_collected_time.tv_sec) < (RRDSET_MINIMUM_LIVE_COUNT * rd->update_every));
+            int live = ((mark - rd->last_collected_time.tv_sec) <
+                 MAX(RRDSET_MINIMUM_LIVE_MULTIPLIER * rd->update_every, rrdset_free_obsolete_time));
             if (unlikely(live != rd->state->aclk_live_status)) {
                 if (likely(rrdset_flag_check(st, RRDSET_FLAG_ACLK))) {
                     if (likely(!queue_dimension_to_aclk(rd))) {
@@ -1836,6 +1837,7 @@ after_second_database_work:
                 }
             }
         }
+    }
 #endif
         if(unlikely(!rd->updated))
             continue;
@@ -1936,6 +1938,9 @@ after_second_database_work:
                             delete_dimension_uuid(&rd->state->metric_uuid);
                         } else {
                             /* Do not delete this dimension */
+#if defined(ENABLE_ACLK) && defined(ENABLE_NEW_CLOUD_PROTOCOL)
+                            aclk_send_dimension_update(rd);
+#endif
                             last = rd;
                             rd = rd->next;
                             continue;

@@ -447,15 +447,6 @@ static void backwards_compatible_config() {
 
     config_move(CONFIG_SECTION_GLOBAL, "web compression level",
                 CONFIG_SECTION_WEB,    "gzip compression level");
-
-    config_move(CONFIG_SECTION_GLOBAL, "web files owner",
-                CONFIG_SECTION_WEB,    "web files owner");
-
-    config_move(CONFIG_SECTION_GLOBAL, "web files group",
-                CONFIG_SECTION_WEB,    "web files group");
-
-    config_move(CONFIG_SECTION_BACKEND, "opentsdb host tags",
-                CONFIG_SECTION_BACKEND, "host tags");
 }
 
 static void get_netdata_configured_variables() {
@@ -1214,11 +1205,6 @@ int main(int argc, char **argv) {
 
     info("netdata started on pid %d.", getpid());
 
-    // IMPORTANT: these have to run once, while single threaded
-    // but after we have switched user
-    web_files_uid();
-    web_files_gid();
-
     netdata_threads_init_after_fork((size_t)config_get_number(CONFIG_SECTION_GLOBAL, "pthread stack size", (long)default_stacksize));
 
     // initialize internal registry
@@ -1327,12 +1313,6 @@ int main(int argc, char **argv) {
     snprintfz(filename, FILENAME_MAX, "%s/.aclk_report_sent", netdata_configured_varlib_dir);
     if (netdata_anonymous_statistics_enabled > 0 && access(filename, F_OK)) { // -1 -> not initialized
         send_statistics("ACLK_DISABLED", "-", "-");
-#ifdef ACLK_NO_LWS
-        send_statistics("BUILD_FAIL_LWS", "-", "-");
-#endif
-#ifdef ACLK_NO_LIBMOSQ
-        send_statistics("BUILD_FAIL_MOSQ", "-", "-");
-#endif
         int fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC, 444);
         if (fd == -1)
             error("Cannot create file '%s'. Please fix this.", filename);

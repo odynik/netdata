@@ -27,7 +27,6 @@ dist_healthconfig_DATA = \
     health.d/adaptec_raid.conf \
     health.d/anomalies.conf \
     health.d/apcupsd.conf \
-    health.d/backend.conf \
     health.d/bcache.conf \
     health.d/beanstalkd.conf \
     health.d/bind_rndc.conf \
@@ -65,6 +64,7 @@ dist_healthconfig_DATA = \
     health.d/mysql.conf \
     health.d/net.conf \
     health.d/netfilter.conf \
+    health.d/nut.conf \
     health.d/pihole.conf \
     health.d/portcheck.conf \
     health.d/processes.conf \
