@@ -1728,7 +1728,7 @@ time_t rrdhost_last_entry_t(RRDHOST *h) {
 time_t rrdhost_first_entry_t(RRDHOST *h) {
     rrdhost_rdlock(h);
     RRDSET *st;
-    time_t result = 0;
+    time_t result = LONG_MAX;
     rrdset_foreach_read(st, h) {
         time_t st_first = rrdset_first_entry_t(st);
         if (st_first < result)

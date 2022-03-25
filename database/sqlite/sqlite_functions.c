@@ -2116,7 +2116,7 @@ int sql_store_gap(
     int t_delta_end,
     char *status)
 {
-    static __thread sqlite3_stmt *res = NULL;
+    sqlite3_stmt *res = NULL;
     int rc, param = 0;
 
     if (unlikely(!db_meta)) {
@@ -2240,7 +2240,7 @@ failed:
  */
 int sql_delete_all_gaps(void)
 {
-    static __thread sqlite3_stmt *res = NULL;
+    sqlite3_stmt *res = NULL;
     int rc;
 
     if (unlikely(!res)) {
@@ -2266,7 +2266,7 @@ int sql_delete_all_gaps(void)
  */
 int sql_delete_gap(uuid_t *gap_uuid)
 {
-    static __thread sqlite3_stmt *res = NULL;
+    sqlite3_stmt *res = NULL;
     int rc;
 
 #ifdef NETDATA_INTERNAL_CHECKS
