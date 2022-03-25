@@ -22,7 +22,7 @@
 // #define STREAMING_PROTOCOL_CURRENT_VERSION (uint32_t)(STREAM_VERSION_CLABELS)
 #define STREAMING_PROTOCOL_CURRENT_VERSION (uint32_t)(VERSION_GAP_FILLING)
 #endif  //ENABLE_COMPRESSION
-#define STREAMING_PROTOCOL_CURRENT_VERSION (uint32_t)(VERSION_GAP_FILLING)
+// #define STREAMING_PROTOCOL_CURRENT_VERSION (uint32_t)(VERSION_GAP_FILLING)
 
 #define STREAMING_PROTOCOL_VERSION "1.1"
 #define START_STREAMING_PROMPT "Hit me baby, push them over..."
@@ -195,8 +195,6 @@ extern void replication_sender_thread_stop(RRDHOST *host);
 extern void *replication_sender_thread(void *ptr);
 extern void evaluate_gap_onconnection(struct receiver_state *stream_recv);
 extern void evaluate_gap_ondisconnection(struct receiver_state *stream_recv);
-extern void gaps_init(RRDHOST *host);
-extern void gaps_destroy(RRDHOST *host);
 extern void gaps_init(RRDHOST **a_host);
 extern void gaps_destroy(RRDHOST **a_host);
 extern void replication_state_destroy(REPLICATION_STATE **state);
