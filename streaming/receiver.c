@@ -586,7 +586,8 @@ static int rrdpush_receive(struct receiver_state *rpt)
         if(rpt->stream_version >= STREAM_VERSION_COMPRESSION){
 #ifdef ENABLE_COMPRESSION
             if(!rpt->rrdpush_compression)
-                rpt->stream_version = STREAM_VERSION_CLABELS;
+                rpt->stream_version = VERSION_GAP_FILLING;
+                // rpt->stream_version = STREAM_VERSION_CLABELS;
 #else
             if(STREAMING_PROTOCOL_CURRENT_VERSION < rpt->stream_version) {
                 rpt->stream_version =  STREAMING_PROTOCOL_CURRENT_VERSION;               
@@ -698,7 +699,7 @@ static int rrdpush_receive(struct receiver_state *rpt)
         }
         rrdhost_unlock(rpt->host);
         if (rpt->host->receiver == rpt) {
-            replication_sender_thread_stop(rpt->host);
+            // replication_sender_thread_stop(rpt->host);
             rrdpush_sender_thread_stop(rpt->host);
         }
         netdata_mutex_unlock(&rpt->host->receiver_lock);

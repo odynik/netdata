@@ -31,6 +31,17 @@
 #define PLUGINSD_KEYWORD_REP_PAUSE "PAUSE"
 #define PLUGINSD_KEYWORD_GAP "GAP"
 #define PLUGINSD_KEYWORD_RDATA "RDATA"
+#define PLUGINSD_KEYWORD_FILL "FILL"
+#define PLUGINSD_KEYWORD_FILLEND "FILLEND"
+// REP command with arguments 
+// on, off, pause/continue, ack
+typedef enum rep_arg {
+    REP_ARG_ERROR = 0,
+    REP_OFF = 1,
+    REP_ON = 2,
+    REP_PAUSE = 3,
+    REP_ACK = 4
+} REP_ARG;
 
 
 #define PLUGINSD_LINE_MAX 1024

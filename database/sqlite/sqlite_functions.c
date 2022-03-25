@@ -2128,7 +2128,7 @@ bind_fail:
 }
 
 /*
- * Store a gap in the database
+ * Load a gap from the SQLite DB
  */
 int sql_load_host_gap(RRDHOST *host)
 {
@@ -2147,30 +2147,64 @@ int sql_load_host_gap(RRDHOST *host)
         return SQLITE_ERROR;
     };
 
-    // uuid_t host_mguid_blob;
-    // uuid_parse(host->gaps_timeline->gap_data->host_mguid, host_mguid_blob);
-    char *host_mguid_str = host->gaps_timeline->gap_data->host_mguid;
-    rc = sqlite3_bind_blob(res, 1, &host_mguid_str, sizeof(*host_mguid_str), SQLITE_STATIC);
+    rc = sqlite3_bind_text(res, 1, host->machine_guid, -1, SQLITE_STATIC);
     if (unlikely(rc != SQLITE_OK)) {
         error_report("Failed to bind host_id parameter to load gap information");
         goto failed;
     }
 
     // Load here the gaps to the host->gaps_timeline
-    rc = sqlite3_step(res);
-    if (likely(rc == SQLITE_ROW)) {
-        if (likely(sqlite3_column_bytes(res, 0) == sizeof(uuid_t))) {
-            set_host_gap(host, res);
+    // TODO: Need to handle the stpes correctly. Here is will return the last element as empty
+    do {
+        rc = sqlite3_step(res);
+        switch (rc) {
+            case SQLITE_ROW:
+                if (likely(sqlite3_column_bytes(res, 0) == sizeof(uuid_t))) {
+                    set_host_gap(host, res);
+                    info("%s: Setting host latest gap completed!", REPLICATION_MSG);
+                }
+                break;
+            case SQLITE_DONE:
+                set_host_gap(host, NULL);
+                info("%s: SQLite completed with NO ROWs!", REPLICATION_MSG);
+                break;
+            default:
+                error("%s: SQLite returned unexpected error code!", REPLICATION_MSG);
+                break;
         }
-        else
-            set_host_gap(host, NULL);
-    }
+    } while (rc == SQLITE_ROW);
 
 failed:
     if (unlikely(sqlite3_finalize(res) != SQLITE_OK))
         error_report("Failed to finalize the prepared statement when loading all gaps information");
     return rc;
 };
+
+/*
+ * Delete all gaps from the database
+ */
+int sql_delete_all_gaps(void)
+{
+    static __thread sqlite3_stmt *res = NULL;
+    int rc;
+
+    if (unlikely(!res)) {
+        rc = prepare_statement(db_meta, DELETE_ALL_GAPS, &res);
+        if (rc != SQLITE_OK) {
+            error_report("Failed to prepare statement to delete all gaps");
+            return rc;
+        }
+    }
+
+    rc = sqlite3_step(res);
+    if (unlikely(rc != SQLITE_DONE))
+        error_report("Failed to delete gaps, rc = %d", rc);
+
+    rc = sqlite3_reset(res);
+    if (unlikely(rc != SQLITE_OK))
+        error_report("Failed to reset statement when deleting gaps, rc = %d", rc);
+    return rc;
+}
 
 /*
  * Delete a gap from the database
@@ -2213,16 +2247,33 @@ bind_fail:
  * Set the host GAP struct from the metdata database
  */
 void set_host_gap(RRDHOST *host, sqlite3_stmt *res) {
+    int count = host->gaps_timeline->gaps->count;
+    info("%s: SET HOST SQLITE %d GAPs:", REPLICATION_MSG, count);
+
     if(!res)
     {
-        host->gaps_timeline->gap_data->status = "empty";
+        if(count > 0) {
+            info(":%s: Exiting loading... with count(%d) \ng_b: %p, \ng_rear: %p, \ng_count: %p", REPLICATION_MSG, count, host->gaps_timeline->gap_buffer, host->gaps_timeline->gaps->front->item, &host->gaps_timeline->gap_data[count]);
+            copy_gap(host->gaps_timeline->gap_buffer, host->gaps_timeline->gaps->front->item);
+            reset_gap(host->gaps_timeline->gaps->front->item);
+            queue_pop(host->gaps_timeline->gaps);
+            return;
+        }
+        // host->gaps_timeline->gap_buffer->status = "empty";
         infoerr("%s: The GAPs table in the metdata DB seems to be empty for the host %s.", REPLICATION_MSG, host->hostname);
         return;
     }
-    uuid_copy(host->gaps_timeline->gap_data->gap_uuid, sqlite3_column_blob(res, 0));
-    host->gaps_timeline->gap_data->host_mguid = (char *) sqlite3_column_text(res, 1);
-    host->gaps_timeline->gap_data->t_window.t_start = (int) sqlite3_column_int(res, 2);
-    host->gaps_timeline->gap_data->t_window.t_first = (int) sqlite3_column_int(res, 3); 
-    host->gaps_timeline->gap_data->t_window.t_end = (int) sqlite3_column_int(res, 4);
-    host->gaps_timeline->gap_data->status = (char *) sqlite3_column_text(res, 5);
+
+    info("%s: SETTING HOST SQLITE from query return:", REPLICATION_MSG);
+    uuid_copy(host->gaps_timeline->gap_data[count].gap_uuid, sqlite3_column_blob(res, 0));
+    host->gaps_timeline->gap_data[count].host_mguid = strdupz((char *) sqlite3_column_text(res, 1));
+    host->gaps_timeline->gap_data[count].t_window.t_start = (time_t) sqlite3_column_int(res, 2);
+    host->gaps_timeline->gap_data[count].t_window.t_first = (time_t) sqlite3_column_int(res, 3);
+    host->gaps_timeline->gap_data[count].t_window.t_end = (time_t) sqlite3_column_int(res, 4);
+    host->gaps_timeline->gap_data[count].status = strdupz((char *) sqlite3_column_text(res, 5));
+
+    if (!queue_push(host->gaps_timeline->gaps, &host->gaps_timeline->gap_data[count])) {
+        error("%s: Cannot insert the loaded GAP in the queue!", REPLICATION_MSG);
+        return;
+    }
 }

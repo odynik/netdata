@@ -420,7 +420,8 @@ static int rrdpush_sender_thread_connect_to_parent(RRDHOST *host, int default_po
     else {
         //parent does not support compression or has compression disabled
         debug(D_STREAM, "Stream is uncompressed! One of the agents (%s <-> %s) does not support compression OR compression is disabled.", s->connected_to, s->host->hostname);
-        s->version = STREAM_VERSION_CLABELS;
+        // s->version = STREAM_VERSION_CLABELS;
+        s->version = VERSION_GAP_FILLING;
     }        
 #endif  //ENABLE_COMPRESSION
 
@@ -447,6 +448,7 @@ static void attempt_to_connect(struct sender_state *state)
 
     if(rrdpush_sender_thread_connect_to_parent(state->host, state->default_port, state->timeout, state)) {
         state->last_sent_t = now_monotonic_sec();
+        state->t_newest_connection = now_monotonic_sec();
 
         // reset the buffer, to properly send charts and metrics
         rrdpush_sender_thread_data_flush(state->host);
@@ -464,8 +466,8 @@ static void attempt_to_connect(struct sender_state *state)
         state->host->rrdpush_sender_connected = 1;
 
         // Start replication sender thread (Tx).
-        info("%s Replication is %s", REPLICATION_MSG, (state->replication->enabled ? "enabled" : "disabled"));
-        if(state->replication->enabled)
+        info("%s Replication is %s", REPLICATION_MSG, (state->host->replication->tx_replication->enabled ? "enabled" : "disabled"));
+        if(state->host->replication->tx_replication->enabled && !state->host->replication->tx_replication->spawned)
             replication_sender_thread_spawn(state->host);
     }
     else {
