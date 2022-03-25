@@ -43,7 +43,9 @@ unsigned int default_rrdpush_enabled = 0;
 #ifdef ENABLE_COMPRESSION
 unsigned int default_compression_enabled = 1;
 #endif
+#ifdef  ENABLE_REPLICATION
 unsigned int default_rrdpush_replication_enabled = 0;
+#endif  //ENABLE_REPLICATION
 char *default_rrdpush_destination = NULL;
 char *default_rrdpush_api_key = NULL;
 char *default_rrdpush_send_charts_matching = NULL;
@@ -77,29 +79,28 @@ int rrdpush_init() {
     default_rrdpush_api_key     = appconfig_get(&stream_config, CONFIG_SECTION_STREAM, "api key", "");
     default_rrdpush_send_charts_matching      = appconfig_get(&stream_config, CONFIG_SECTION_STREAM, "send charts matching", "*");
     rrdhost_free_orphan_time    = config_get_number(CONFIG_SECTION_GLOBAL, "cleanup orphan hosts after seconds", rrdhost_free_orphan_time);
-    // replication
-    default_rrdpush_replication_enabled = (unsigned int)appconfig_get_boolean(&stream_config, CONFIG_SECTION_STREAM, "enable replication", default_rrdpush_replication_enabled);
 
 #ifdef ENABLE_COMPRESSION
     default_compression_enabled = (unsigned int)appconfig_get_boolean(&stream_config, CONFIG_SECTION_STREAM,
         "enable compression", default_compression_enabled);
 #endif
-    // replication
-    default_rrdpush_replication_enabled = (unsigned int)appconfig_get_boolean(&stream_config, CONFIG_SECTION_STREAM, "enable replication", default_rrdpush_replication_enabled);
-
 
     if(default_rrdpush_enabled && (!default_rrdpush_destination || !*default_rrdpush_destination || !default_rrdpush_api_key || !*default_rrdpush_api_key)) {
         error("STREAM [send]: cannot enable sending thread - information is missing.");
         default_rrdpush_enabled = 0;
     }
 
-    // Replication
+#ifdef ENABLE_REPLICATION
+    // replication
+    default_rrdpush_replication_enabled = (unsigned int)appconfig_get_boolean(&stream_config, CONFIG_SECTION_STREAM, "enable replication", default_rrdpush_replication_enabled);
+    
     if (!default_rrdpush_replication_enabled
     || (STREAMING_PROTOCOL_CURRENT_VERSION < VERSION_GAP_FILLING)
     || !default_rrdpush_enabled) {
         error("%s [send]: Cannot enable Tx replication sender thread - Streaming is disabled.", REPLICATION_MSG);
         default_rrdpush_replication_enabled = 0;
     }
+#endif  //ENABLE_REPLICATION
 
 #ifdef ENABLE_HTTPS
     if (netdata_use_ssl_on_stream == NETDATA_SSL_OPTIONAL) {
@@ -470,11 +471,11 @@ void rrdpush_sender_thread_stop(RRDHOST *host) {
 void log_stream_connection(const char *client_ip, const char *client_port, const char *api_key, const char *machine_guid, const char *host, const char *msg) {
     log_access("STREAM: %d '[%s]:%s' '%s' host '%s' api key '%s' machine guid '%s'", gettid(), client_ip, client_port, msg, host, api_key, machine_guid);
 }
-
+#ifdef ENABLE_REPLICATION
 void log_replication_connection(const char *client_ip, const char *client_port, const char *api_key, const char *machine_guid, const char *host, const char *msg) {
     log_access("REPLICATE: %d '[%s]:%s' '%s' host '%s' api key '%s' machine guid '%s'", gettid(), client_ip, client_port, msg, host, api_key, machine_guid);
 }
-
+#endif //ENABLE_REPLICATION
 
 static void rrdpush_sender_thread_spawn(RRDHOST *host) {
     netdata_mutex_lock(&host->sender->mutex);

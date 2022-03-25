@@ -23,6 +23,8 @@
 #define PLUGINSD_KEYWORD_CONTEXT "CONTEXT"
 #define PLUGINSD_KEYWORD_TOMBSTONE "TOMBSTONE"
 #define PLUGINSD_KEYWORD_HOST "HOST"
+
+#ifdef  ENABLE_REPLICATION
 //Replication keywords
 #define PLUGINSD_KEYWORD_REP "REP"
 #define PLUGINSD_KEYWORD_REP_ON "ON"
@@ -42,6 +44,8 @@ typedef enum rep_arg {
     REP_PAUSE = 3,
     REP_ACK = 4
 } REP_ARG;
+#endif  //ENABLE_REPLICATION
+
 
 
 #define PLUGINSD_LINE_MAX 1024

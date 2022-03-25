@@ -7,7 +7,9 @@
 #include "libnetdata/libnetdata.h"
 #include "web/server/web_client.h"
 #include "daemon/common.h"
+#ifdef  ENABLE_REPLICATION
 #include "streaming/replication.h"
+#endif  //ENABLE_REPLICATION
 
 #define CONNECTED_TO_SIZE 100
 
@@ -22,7 +24,10 @@
 // #define STREAMING_PROTOCOL_CURRENT_VERSION (uint32_t)(STREAM_VERSION_CLABELS)
 #define STREAMING_PROTOCOL_CURRENT_VERSION (uint32_t)(VERSION_GAP_FILLING)
 #endif  //ENABLE_COMPRESSION
+
+#ifdef  ENABLE_REPLICATION
 // #define STREAMING_PROTOCOL_CURRENT_VERSION (uint32_t)(VERSION_GAP_FILLING)
+#endif  //ENABLE_REPLICATION
 
 #define STREAMING_PROTOCOL_VERSION "1.1"
 #define START_STREAMING_PROMPT "Hit me baby, push them over..."
@@ -145,7 +150,9 @@ struct receiver_state {
 
 
 extern unsigned int default_rrdpush_enabled;
+#ifdef  ENABLE_REPLICATION
 extern unsigned int default_rrdpush_replication_enabled;
+#endif  //ENABLE_REPLICATION
 #ifdef ENABLE_COMPRESSION
 extern unsigned int default_compression_enabled;
 #endif
@@ -170,7 +177,9 @@ extern void rrdpush_sender_thread_stop(RRDHOST *host);
 
 extern void rrdpush_sender_send_this_host_variable_now(RRDHOST *host, RRDVAR *rv);
 extern void log_stream_connection(const char *client_ip, const char *client_port, const char *api_key, const char *machine_guid, const char *host, const char *msg);
+#ifdef  ENABLE_REPLICATION
 extern void log_replication_connection(const char *client_ip, const char *client_port, const char *api_key, const char *machine_guid, const char *host, const char *msg);
+#endif  //ENABLE_REPLICATION
 
 extern int should_send_chart_matching(RRDSET *st);
 extern int need_to_send_chart_definition(RRDSET *st);
@@ -180,6 +189,7 @@ struct compressor_state *create_compressor();
 struct decompressor_state *create_decompressor();
 size_t is_compressed_data(const char *data, size_t data_size);
 #endif
+#ifdef  ENABLE_REPLICATION
 // Replication functions definitions
 // Initialization
 extern void replication_sender_init(RRDHOST *host);
@@ -205,4 +215,6 @@ extern void reset_gap(GAP *a_gap);
 extern void send_gap_for_replication(RRDHOST *host, REPLICATION_STATE *rep_state);
 extern int finish_gap_replication(RRDHOST *host, REPLICATION_STATE *rep_state);
 extern void cleanup_after_gap_replication(GAPS *gaps_timeline);
+#endif  //ENABLE_REPLICATION
+
 #endif //NETDATA_RRDPUSH_H

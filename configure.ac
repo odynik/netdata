@@ -161,6 +161,12 @@ AC_ARG_ENABLE(
     [enable_compression="detect"]
 )
 AC_ARG_ENABLE(
+    [replication],
+    [AS_HELP_STRING([--enable-replication], [Enable data replication for gap filling@<:@default autodetect@:>@])],
+    ,
+    [enable_replication="detect"]
+)
+AC_ARG_ENABLE(
     [dbengine],
     [AS_HELP_STRING([--disable-dbengine], [disable netdata dbengine @<:@default autodetect@:>@])],
     ,
@@ -526,6 +532,9 @@ fi
 AC_MSG_RESULT([${enable_https}])
 AM_CONDITIONAL([ENABLE_HTTPS], [test "${enable_https}" = "yes"])
 
+# -----------------------------------------------------------------------------
+# Stream Compression
+
 AC_MSG_CHECKING([if netdata compression should be used])
 if test "${enable_compression}" != "no"; then
     if test "${LZ4_LIBS_FAST}"; then
@@ -556,6 +565,23 @@ else
 fi
 AC_MSG_RESULT([${enable_compression}])
 AM_CONDITIONAL([ENABLE_COMPRESSION], [test "${enable_compression}" = "yes"])
+
+# -----------------------------------------------------------------------------
+# Stream REPlication
+test "${enable_replication}" = "yes" -a -z "${SSL_LIBS}" && \
+    AC_MSG_ERROR([OpenSSL required for REPLICATION but not found. Try installing 'libssl-dev' or 'openssl-devel'.])
+
+AC_MSG_CHECKING([if netdata stream replication should be used])
+if test "${enable_replication}" != "no" -a "${SSL_LIBS}"; then
+    enable_replication = "yes"
+    AC_DEFINE([ENABLE_REPLICATION], [1], [netdata stream REPlication usability])
+    OPTIONAL_SSL_CFLAGS="${SSL_CFLAGS}"
+    OPTIONAL_SSL_LIBS="${SSL_LIBS}"
+else
+    enable_replication = "no"
+fi
+AC_MSG_RESULT([${enable_replication}])
+AM_CONDITIONAL([ENABLE_REPLICATION], [test "${enable_replication}" = "yes"])
 
 # -----------------------------------------------------------------------------
 # JSON-C

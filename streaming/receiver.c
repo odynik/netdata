@@ -455,15 +455,7 @@ static int rrdpush_receive(struct receiver_state *rpt)
 #endif  //ENABLE_COMPRESSION
 
     (void)appconfig_set_default(&stream_config, rpt->machine_guid, "host tags", (rpt->tags)?rpt->tags:"");
-    
-    //To be removed.
-    // Read configuration - Initialize any gap awareness struct
-    // gaps initialization - Apply configuration
-    // rpt->gaps_timeline = gaps_init();
-    // if(!rpt->gaps_timeline){
-    //     error("%s: Failed to create GAP timeline - GAP Awarness is not supported", REPLICATION_MSG);
-    // }
-   
+      
     if (strcmp(rpt->machine_guid, localhost->machine_guid) == 0) {
         log_stream_connection(rpt->client_ip, rpt->client_port, rpt->key, rpt->machine_guid, rpt->hostname, "DENIED - ATTEMPT TO RECEIVE METRICS FROM MACHINE_GUID IDENTICAL TO PARENT");
         error("STREAM %s [receive from %s:%s]: denied to receive metrics, machine GUID [%s] is my own. Did you copy the parent/proxy machine GUID to a child?", rpt->hostname, rpt->client_ip, rpt->client_port, rpt->machine_guid);
@@ -616,10 +608,12 @@ static int rrdpush_receive(struct receiver_state *rpt)
         close(rpt->fd);
         return 0;
     }
+    
+#ifdef ENABLE_REPLICATION
     // Here is the first proof of connection with the sender thread.
     // rpt->last_msg_t = now_realtime_sec();
     evaluate_gap_onconnection(rpt);
-
+#endif
     // remove the non-blocking flag from the socket
     if(sock_delnonblock(rpt->fd) < 0)
         error("STREAM %s [receive from [%s]:%s]: cannot remove the non-blocking flag from socket %d", rpt->host->hostname, rpt->client_ip, rpt->client_port, rpt->fd);
@@ -684,7 +678,9 @@ static int rrdpush_receive(struct receiver_state *rpt)
         aclk_host_state_update(rpt->host, 0);
 #endif
 
+#ifdef ENABLE_REPLICATION
     evaluate_gap_ondisconnection(rpt);
+#endif
 
     // During a shutdown there is cleanup code in rrdhost that will cancel the sender thread
     if (!netdata_exit && rpt->host) {
@@ -706,7 +702,8 @@ static int rrdpush_receive(struct receiver_state *rpt)
         rrd_unlock();
     }
 
-    info("%s: Cleaning up the receiver thread after disconnection!", REPLICATION_MSG);
+    // REPLICATION TO BE REMOVED
+    info("Cleaning up the receiver thread after disconnection!");
     // cleanup
     fclose(fp);
     return (int)count;
