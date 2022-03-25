@@ -435,14 +435,17 @@ RRDHOST *rrdhost_create(const char *hostname,
     );
     
     // ------------------------------------------------------------------------
-    //GAPs struct initialization only for child hosts
-    // if(default_rrdpush_replication_enabled)
-    if(strcmp(host->machine_guid, localhost->machine_guid))
-        gaps_init(&host);
-    //Initialization of the Replication thread pointers.
-    host->replication = (REPLICATION *)callocz(1, sizeof(REPLICATION));
-    // Initialize the Tx Replication thread
-    replication_sender_init(host);
+    //GAPs struct initialization
+    host->gaps_timeline = (GAPS *)callocz(1, sizeof(GAPS));
+    gaps_init(host);
+    if (!host->gaps_timeline) {
+        error(
+            "%s: Failed to create GAP timeline - GAP Awarness is not supported for host %s",
+            REPLICATION_MSG,
+            host->hostname);
+    }
+    //Initialization of the Replication Tx thread.
+    replication_sender_init(host->sender);
 
     rrd_hosts_available++;
 
@@ -873,26 +876,21 @@ void rrdhost_free(RRDHOST *host) {
     if (netdata_exit) {
         netdata_mutex_lock(&host->receiver_lock);
         if (host->receiver) {
-            // if(!host->receiver->replication->exited)
-            //     netdata_thread_cancel(host->receiver->replication->thread);
-            if(!host->receiver->exited)
+            if (!host->receiver->exited)
                 netdata_thread_cancel(host->receiver->thread);
             netdata_mutex_unlock(&host->receiver_lock);
             struct receiver_state *rpt = host->receiver;
-            // REPLICATION_STATE *rep_state = host->receiver->replication;
             while (host->receiver && !rpt->exited)
                 sleep_usec(50 * USEC_PER_MS);
             // If the receiver detached from the host then its thread will destroy the state
             if (host->receiver == rpt)
                 destroy_receiver_state(host->receiver);
-            // if(host->receiver->replication == rep_state)
-            //     replication_state_destroy(&host->receiver->replication);
         }
         else
             netdata_mutex_unlock(&host->receiver_lock);
     }
-    if(strcmp(host->machine_guid, localhost->machine_guid))
-        gaps_destroy(&host);
+    gaps_destroy(host);
+    freez(host->gaps_timeline);
     
     rrdhost_wrlock(host);   // lock this RRDHOST
 

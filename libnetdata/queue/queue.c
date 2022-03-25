@@ -18,10 +18,6 @@ int queue_push(queue_t q, void* i)
 	}
 	pthread_mutex_lock(&q->lock);
 	while(q->count == q->max){
-		if(q->blocked == 0){
-			pthread_mutex_unlock(&q->lock);
-			return 0;
-		}
 		pthread_cond_wait(&q->condf, &q->lock);
 	}
 	temp->item = i;
@@ -34,10 +30,9 @@ int queue_push(queue_t q, void* i)
 		q->front = temp;
 	}
 	q->rear = temp;
-	q->count++;
-
-	pthread_mutex_unlock(&q->lock);
+    	q->count++; 
 	pthread_cond_signal(&q->conde);
+	pthread_mutex_unlock(&q->lock);
 	return 1;
 }
 
@@ -54,10 +49,6 @@ void* queue_pop(queue_t q)
 	pthread_mutex_lock(&q->lock);
 	while(q->count == 0)
 	{
-		if(q->blocked == 0){
-			pthread_mutex_unlock(&q->lock);
-			return temp;
-		}
 		pthread_cond_wait(&q->conde, &q->lock);
 	}
 	
@@ -69,10 +60,9 @@ void* queue_pop(queue_t q)
 		q->rear=NULL;
 	} 
 	q->count--;
-
-	pthread_mutex_unlock(&q->lock);
 	pthread_cond_signal(&q->condf);
-	return temp;
+	pthread_mutex_unlock(&q->lock);
+	return temp;						
 }
 
 /*
@@ -81,13 +71,12 @@ void* queue_pop(queue_t q)
  * @Return
  *      Returns the queue if it is created successfully, otherwise NULL
  */
-queue_t queue_new(int max, int blocked){
+queue_t queue_new(int max){
 	queue_t q = NULL;
 	q = (queue_t) malloc(sizeof(struct queue_s));	
 	q->front = NULL;			
 	q->rear = NULL;
 	q->max = max;
-	q->blocked = blocked;
 	q->count = 0;
 	q->conde = (pthread_cond_t)PTHREAD_COND_INITIALIZER;
 	q->condf = (pthread_cond_t)PTHREAD_COND_INITIALIZER;
