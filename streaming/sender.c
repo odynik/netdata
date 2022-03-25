@@ -448,6 +448,7 @@ static void attempt_to_connect(struct sender_state *state)
 
     if(rrdpush_sender_thread_connect_to_parent(state->host, state->default_port, state->timeout, state)) {
         state->last_sent_t = now_monotonic_sec();
+        state->t_newest_connection = now_monotonic_sec();
 
         // reset the buffer, to properly send charts and metrics
         rrdpush_sender_thread_data_flush(state->host);
