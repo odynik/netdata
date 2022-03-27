@@ -7,9 +7,6 @@
 #include "libnetdata/libnetdata.h"
 #include "web/server/web_client.h"
 #include "daemon/common.h"
-#ifdef  ENABLE_REPLICATION
-#include "streaming/replication.h"
-#endif  //ENABLE_REPLICATION
 
 #define CONNECTED_TO_SIZE 100
 
@@ -178,7 +175,9 @@ extern void rrdpush_sender_thread_stop(RRDHOST *host);
 extern void rrdpush_sender_send_this_host_variable_now(RRDHOST *host, RRDVAR *rv);
 extern void log_stream_connection(const char *client_ip, const char *client_port, const char *api_key, const char *machine_guid, const char *host, const char *msg);
 #ifdef  ENABLE_REPLICATION
-extern void log_replication_connection(const char *client_ip, const char *client_port, const char *api_key, const char *machine_guid, const char *host, const char *msg);
+void log_replication_connection(const char *client_ip, const char *client_port, const char *api_key, const char *machine_guid, const char *host, const char *msg);
+extern void evaluate_gap_onconnection(struct receiver_state *stream_recv);
+extern void evaluate_gap_ondisconnection(struct receiver_state *stream_recv);
 #endif  //ENABLE_REPLICATION
 
 extern int should_send_chart_matching(RRDSET *st);
@@ -189,32 +188,5 @@ struct compressor_state *create_compressor();
 struct decompressor_state *create_decompressor();
 size_t is_compressed_data(const char *data, size_t data_size);
 #endif
-#ifdef  ENABLE_REPLICATION
-// Replication functions definitions
-// Initialization
-extern void replication_sender_init(RRDHOST *host);
-extern void replication_receiver_init(RRDHOST *host, struct config *stream_config, char *key);
-// Threads
-extern int replication_receiver_thread_spawn(struct web_client *w, char *url);
-extern void replication_sender_thread_spawn(RRDHOST *host);
-extern void replication_sender_thread_stop(RRDHOST *host);
-extern void *replication_sender_thread(void *ptr);
-extern void evaluate_gap_onconnection(struct receiver_state *stream_recv);
-extern void evaluate_gap_ondisconnection(struct receiver_state *stream_recv);
-extern void gaps_init(RRDHOST **a_host);
-extern void gaps_destroy(RRDHOST **a_host);
-extern void replication_state_destroy(REPLICATION_STATE **state);
-extern void rrdset_dump_debug_state(RRDSET *st);
-extern void replication_rdata_to_str(GAP *a_gap, char **rdata_str, size_t *len, int block_id);
-extern void replication_gap_to_str(GAP *a_gap, char **gap_str, size_t *len);
-extern void sender_chart_gap_filling(RRDSET *st, GAP a_gap);
-extern void sender_gap_filling(REPLICATION_STATE *rep_state, GAP a_gap);
-extern void sender_fill_gap_nolock(REPLICATION_STATE *rep_state, RRDSET *st, GAP a_gap);
-extern void copy_gap(GAP *dst, GAP *src);
-extern void reset_gap(GAP *a_gap);
-extern void send_gap_for_replication(RRDHOST *host, REPLICATION_STATE *rep_state);
-extern int finish_gap_replication(RRDHOST *host, REPLICATION_STATE *rep_state);
-extern void cleanup_after_gap_replication(GAPS *gaps_timeline);
-#endif  //ENABLE_REPLICATION
 
 #endif //NETDATA_RRDPUSH_H

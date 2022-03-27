@@ -13,7 +13,6 @@ static void print_replication_state(REPLICATION_STATE *state);
 static void print_replication_gap(GAP *a_gap);
 static inline void replication_send_chart_definition_nolock(RRDSET *st);
 GAP* add_gap_data(GAPS *host_queue, GAP *gap);
-// static void replication_gap_to_str(GAP *a_gap, char **gap_str, size_t *len);
 
 /********************************
 * Thread Initialization functions

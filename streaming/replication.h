@@ -1,5 +1,7 @@
-// #include "libnetdata/libnetdata.h"
 #ifdef  ENABLE_REPLICATION
+
+#ifndef NETDATA_REPLICATION_H
+#define NETDATA_REPLICATION_H 1
 
 //definitions
 #define REPLICATION_MSG "REPLICATION_STREAM"
@@ -16,6 +18,7 @@
 typedef struct gap GAP;
 typedef struct time_window TIME_WINDOW;
 typedef struct gaps_queue GAPS;
+typedef struct replication REPLICATION;
 typedef struct rrddim_past_data RRDDIM_PAST_DATA;
 typedef struct replication_state REPLICATION_STATE;
 // typedef struct tx_replication_state Tx_REPLICATION_STATE;
@@ -216,6 +219,33 @@ int remove_gap(GAP *a_gap);
 int remove_all_gaps(void);
 int load_gap(RRDHOST *host);
 
+void replication_state_destroy(REPLICATION_STATE **state);
+// This func can be removed or activate it only on debugging.
+// TODO: avoid duplicates
+void rrdset_dump_debug_state(RRDSET *st);
+void replication_rdata_to_str(GAP *a_gap, char **rdata_str, size_t *len, int block_id);
+void replication_gap_to_str(GAP *a_gap, char **gap_str, size_t *len);
+void sender_chart_gap_filling(RRDSET *st, GAP a_gap);
+void sender_gap_filling(REPLICATION_STATE *rep_state, GAP a_gap);
+void sender_fill_gap_nolock(REPLICATION_STATE *rep_state, RRDSET *st, GAP a_gap);
+void copy_gap(GAP *dst, GAP *src);
+void reset_gap(GAP *a_gap);
+void send_gap_for_replication(RRDHOST *host, REPLICATION_STATE *rep_state);
+int finish_gap_replication(RRDHOST *host, REPLICATION_STATE *rep_state);
+void cleanup_after_gap_replication(GAPS *gaps_timeline);
+
+// Replication functions definitions
+// Initialization
+void replication_sender_init(RRDHOST *host);
+void replication_receiver_init(RRDHOST *host, struct config *stream_config, char *key);
+// Threads
+int replication_receiver_thread_spawn(struct web_client *w, char *url);
+void replication_sender_thread_spawn(RRDHOST *host);
+void replication_sender_thread_stop(RRDHOST *host);
+void *replication_sender_thread(void *ptr);
+void gaps_init(RRDHOST **a_host);
+void gaps_destroy(RRDHOST **a_host);
+
 extern struct config stream_config;
 extern int netdata_use_ssl_on_stream;
 
@@ -225,4 +255,5 @@ extern void rrdeng_store_past_metrics_page(RRDDIM_PAST_DATA *dim_past_data, REPL
 extern void rrdeng_flush_past_metrics_page(RRDDIM_PAST_DATA *dim_past_data, REPLICATION_STATE *rep_state);
 extern void rrdeng_store_past_metrics_page_finalize(RRDDIM_PAST_DATA *dim_past_data, REPLICATION_STATE *rep_state);
 
+#endif /* NETDATA_REPLICATION_H */
 #endif  //ENABLE_REPLICATION

@@ -568,17 +568,15 @@ AM_CONDITIONAL([ENABLE_COMPRESSION], [test "${enable_compression}" = "yes"])
 
 # -----------------------------------------------------------------------------
 # Stream REPlication
-test "${enable_replication}" = "yes" -a -z "${SSL_LIBS}" && \
-    AC_MSG_ERROR([OpenSSL required for REPLICATION but not found. Try installing 'libssl-dev' or 'openssl-devel'.])
 
 AC_MSG_CHECKING([if netdata stream replication should be used])
 if test "${enable_replication}" != "no" -a "${SSL_LIBS}"; then
-    enable_replication = "yes"
+    enable_replication="yes"
     AC_DEFINE([ENABLE_REPLICATION], [1], [netdata stream REPlication usability])
     OPTIONAL_SSL_CFLAGS="${SSL_CFLAGS}"
     OPTIONAL_SSL_LIBS="${SSL_LIBS}"
 else
-    enable_replication = "no"
+    enable_replication="no"
 fi
 AC_MSG_RESULT([${enable_replication}])
 AM_CONDITIONAL([ENABLE_REPLICATION], [test "${enable_replication}" = "yes"])
