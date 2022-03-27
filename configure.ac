@@ -571,10 +571,21 @@ AM_CONDITIONAL([ENABLE_COMPRESSION], [test "${enable_compression}" = "yes"])
 
 AC_MSG_CHECKING([if netdata stream replication should be used])
 if test "${enable_replication}" != "no" -a "${SSL_LIBS}"; then
-    enable_replication="yes"
-    AC_DEFINE([ENABLE_REPLICATION], [1], [netdata stream REPlication usability])
-    OPTIONAL_SSL_CFLAGS="${SSL_CFLAGS}"
-    OPTIONAL_SSL_LIBS="${SSL_LIBS}"
+    if test "${enable_dbengine}" == "yes"; then
+        if test "${enable_https}" == "yes"; then
+            enable_replication="yes"
+            AC_DEFINE([ENABLE_REPLICATION], [1], [netdata stream REPlication usability])
+        else
+            enable_replication="no"
+        fi
+    else
+        enable_replication="no"
+    fi
+    # Check is https is enabled and if dbengine is enabled...otherwise deactivate replication 
+    # AS_IF([test "${enable_replication}" != "no"], [],
+    #  [test "${enable_dbengine}" != "no"], [enable_replication="yes"],
+    #  [test "${enable_https}" != "no"], [enable_replication="yes"],
+    #  [enable_replication="no"])
 else
     enable_replication="no"
 fi
