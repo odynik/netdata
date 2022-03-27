@@ -26,7 +26,7 @@ static inline void deactivate_compression(struct sender_state *s)
     error("STREAM_COMPRESSION: Deactivating compression to avoid stream corruption");
     default_compression_enabled = 0;
     s->rrdpush_compression = 0;
-    s->version = STREAM_VERSION_CLABELS;
+    // s->version = STREAM_VERSION_CLABELS;
     error("STREAM_COMPRESSION %s [send to %s]: Restarting connection without compression", s->host->hostname, s->connected_to);
     rrdpush_sender_thread_close_socket(s->host);
 }
@@ -275,7 +275,8 @@ static int rrdpush_sender_thread_connect_to_parent(RRDHOST *host, int default_po
 // Negotiate stream VERSION_CLABELS if stream compression is not supported
 s->rrdpush_compression = (default_compression_enabled && (s->version >= STREAM_VERSION_COMPRESSION));
 if(!s->rrdpush_compression)
-    s->version = STREAM_VERSION_CLABELS;
+    s->version = STREAMING_PROTOCOL_CURRENT_VERSION;
+    // s->version = STREAM_VERSION_CLABELS;
 #endif  //ENABLE_COMPRESSION
 
     /* TODO: During the implementation of #7265 switch the set of variables to HOST_* and CONTAINER_* if the
@@ -448,7 +449,7 @@ if(!s->rrdpush_compression)
         debug(D_STREAM, "Stream is uncompressed! One of the agents (%s <-> %s) does not support compression OR compression is disabled.", s->connected_to, s->host->hostname);
         infoerr("Stream is uncompressed! One of the agents (%s <-> %s) does not support compression OR compression is disabled.", s->connected_to, s->host->hostname);
         // s->version = STREAM_VERSION_CLABELS;
-        s->version = VERSION_GAP_FILLING;
+        s->version = STREAMING_PROTOCOL_CURRENT_VERSION;
     }        
 #endif  //ENABLE_COMPRESSION
 
@@ -723,7 +724,7 @@ void *rrdpush_sender_thread(void *ptr) {
             s->buffer->read = 0;
             s->buffer->write = 0;
             attempt_to_connect(s);
-            // if (s->version >= VERSION_GAP_FILLING) {
+            // if (s->version >= STREAM_VERSION_GAP_FILLING) {
             //     time_t now = now_realtime_sec();
             //     sender_start(s);
             //     buffer_sprintf(s->build, "TIMESTAMP %ld", now);

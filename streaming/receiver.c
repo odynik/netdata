@@ -65,7 +65,7 @@ PARSER_RC streaming_timestamp(char **words, void *user, PLUGINSD_ACTION *plugins
     time_t remote_time = 0;
     RRDHOST *host = ((PARSER_USER_OBJECT *)user)->host;
     struct plugind *cd = ((PARSER_USER_OBJECT *)user)->cd;
-    if (cd->version < VERSION_GAP_FILLING ) {
+    if (cd->version < STREAM_VERSION_GAP_FILLING ) {
         error("STREAM %s from %s: Child negotiated version %u but sent TIMESTAMP!", host->hostname, cd->cmd,
                cd->version);
         return PARSER_RC_OK;    // Ignore error and continue stream
@@ -578,7 +578,7 @@ static int rrdpush_receive(struct receiver_state *rpt)
         if(rpt->stream_version >= STREAM_VERSION_COMPRESSION){
 #ifdef ENABLE_COMPRESSION
             if(!rpt->rrdpush_compression)
-                rpt->stream_version = VERSION_GAP_FILLING;
+                rpt->stream_version = STREAM_VERSION_GAP_FILLING;
                 // rpt->stream_version = STREAM_VERSION_CLABELS;
 #else
             if(STREAMING_PROTOCOL_CURRENT_VERSION < rpt->stream_version) {

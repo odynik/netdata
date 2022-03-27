@@ -578,7 +578,7 @@ void *replication_receiver_thread(void *ptr){
     // Respond with the REP ack command
     info("%s %s [receive from [%s]:%s]: initializing replication communication...", REPLICATION_MSG, host->hostname, rep_state->client_ip, rep_state->client_port);
     char initial_response[HTTP_HEADER_SIZE];
-    if (rep_state->stream_version >= VERSION_GAP_FILLING) {
+    if (rep_state->stream_version >= STREAM_VERSION_GAP_FILLING) {
         info("%s %s [receive from [%s]:%s]: Netdata acknowledged replication over stream version %u.", REPLICATION_MSG, host->hostname, rep_state->client_ip, rep_state->client_port, rep_state->stream_version);
         sprintf(initial_response, "%s", REP_ACK_CMD);
     } 

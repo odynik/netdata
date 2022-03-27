@@ -95,7 +95,7 @@ int rrdpush_init() {
     default_rrdpush_replication_enabled = (unsigned int)appconfig_get_boolean(&stream_config, CONFIG_SECTION_STREAM, "enable replication", default_rrdpush_replication_enabled);
     
     if (!default_rrdpush_replication_enabled
-    || (STREAMING_PROTOCOL_CURRENT_VERSION < VERSION_GAP_FILLING)
+    || (STREAMING_PROTOCOL_CURRENT_VERSION < STREAM_VERSION_GAP_FILLING)
     || !default_rrdpush_enabled) {
         error("%s [send]: Cannot enable Tx replication sender thread - Streaming is disabled.", REPLICATION_MSG);
         default_rrdpush_replication_enabled = 0;
@@ -308,7 +308,7 @@ static inline void rrdpush_send_chart_definition_nolock(RRDSET *st) {
 static inline void rrdpush_send_chart_metrics_nolock(RRDSET *st, struct sender_state *s) {
     RRDHOST *host = st->rrdhost;
     buffer_sprintf(host->sender->build, "BEGIN \"%s\" %llu", st->id, (st->last_collected_time.tv_sec > st->upstream_resync_time)?st->usec_since_last_update:0);
-    if (s->version >= VERSION_GAP_FILLING)
+    if (s->version >= STREAM_VERSION_GAP_FILLING)
         buffer_sprintf(host->sender->build, " %"PRId64"\n", (int64_t)st->last_collected_time.tv_sec);
     else
         buffer_strcat(host->sender->build, "\n");
