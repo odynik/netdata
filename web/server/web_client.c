@@ -110,10 +110,12 @@ void web_client_request_done(struct web_client *w) {
             case WEB_CLIENT_MODE_STREAM:
                 mode = "STREAM";
                 break;
-            
+
+#ifdef  ENABLE_REPLICATION
             case WEB_CLIENT_MODE_REPLICATE:
                 mode = "REPLICATE";
-                break;                
+                break;    
+#endif  //ENABLE_REPLICATION                        
 
             case WEB_CLIENT_MODE_NORMAL:
                 mode = "DATA";
@@ -847,7 +849,9 @@ static inline char *web_client_valid_method(struct web_client *w, char *s) {
         }
 #endif
 
+#ifdef  ENABLE_REPLICATION
         w->mode = WEB_CLIENT_MODE_REPLICATE;
+#endif  //ENABLE_REPLICATION
     }    
     else {
         s = NULL;
@@ -1052,8 +1056,15 @@ static inline HTTP_VALIDATION http_request_validate(struct web_client *w) {
                 // TODO -- ideally we we should avoid copying buffers around
                 strncpyz(w->last_url, w->decoded_url, NETDATA_WEB_REQUEST_URL_SIZE);
 #ifdef ENABLE_HTTPS
-                if ( (!web_client_check_unix(w)) && (netdata_srv_ctx) ) {
-                    if ((w->ssl.conn) && ((w->ssl.flags & NETDATA_SSL_NO_HANDSHAKE) && (web_client_is_using_ssl_force(w) || web_client_is_using_ssl_default(w)) && ((w->mode != WEB_CLIENT_MODE_STREAM)||(w->mode != WEB_CLIENT_MODE_REPLICATE)))  ) {
+                if ((!web_client_check_unix(w)) && (netdata_srv_ctx)) {
+                    if ((w->ssl.conn) &&
+                        ((w->ssl.flags & NETDATA_SSL_NO_HANDSHAKE) &&
+                         (web_client_is_using_ssl_force(w) || web_client_is_using_ssl_default(w)) &&
+                         (w->mode != WEB_CLIENT_MODE_STREAM 
+#ifdef  ENABLE_REPLICATION
+                        || w->mode != WEB_CLIENT_MODE_REPLICATE
+#endif  //ENABLE_REPLICATION                         
+                         ))) {
                         w->header_parse_tries = 0;
                         w->header_parse_last_size = 0;
                         // The client will be redirected for Netdata and we are preserving the original request.
@@ -1073,8 +1084,14 @@ static inline HTTP_VALIDATION http_request_validate(struct web_client *w) {
             }
 
             // another header line
-            s = http_header_parse(w, s,
-                    ((w->mode == WEB_CLIENT_MODE_STREAM)||(w->mode == WEB_CLIENT_MODE_REPLICATE)) // parse user agent
+            s = http_header_parse(
+                w,
+                s,
+                (w->mode == WEB_CLIENT_MODE_STREAM
+#ifdef  ENABLE_REPLICATION
+                || w->mode == WEB_CLIENT_MODE_REPLICATE
+#endif  //ENABLE_REPLICATION                
+                ) // parse user agent
             );
         }
     }
@@ -1504,6 +1521,7 @@ void web_client_process_request(struct web_client *w) {
     switch(http_request_validate(w)) {
         case HTTP_VALIDATION_OK:
             switch(w->mode) {
+#ifdef  ENABLE_REPLICATION
                 case WEB_CLIENT_MODE_REPLICATE:
                     // Check initialization of the w->acl = 0x11f
                     if(unlikely(!web_client_can_access_replication(w))) {
@@ -1513,7 +1531,7 @@ void web_client_process_request(struct web_client *w) {
                     // add here the receiver thread spawn
                     w->response.code = replication_receiver_thread_spawn(w, w->decoded_url);
                     return;                
-
+#endif  //ENABLE_REPLICATION               
                 case WEB_CLIENT_MODE_STREAM:
                     if(unlikely(!web_client_can_access_stream(w))) {
                         web_client_permission_denied(w);
@@ -1522,7 +1540,7 @@ void web_client_process_request(struct web_client *w) {
 
                     w->response.code = rrdpush_receiver_thread_spawn(w, w->decoded_url);
                     return;
-
+ 
                 case WEB_CLIENT_MODE_OPTIONS:
                     if(unlikely(
                             !web_client_can_access_dashboard(w) &&
@@ -1623,9 +1641,11 @@ void web_client_process_request(struct web_client *w) {
     else web_client_disable_wait_send(w);
 
     switch(w->mode) {
+#ifdef  ENABLE_REPLICATION
         case WEB_CLIENT_MODE_REPLICATE:
             debug(D_WEB_CLIENT, "%llu: REPLICATE done.", w->id);
             break;
+#endif  //ENABLE_REPLICATION
 
         case WEB_CLIENT_MODE_STREAM:
             debug(D_WEB_CLIENT, "%llu: STREAM done.", w->id);
