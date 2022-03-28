@@ -239,9 +239,9 @@ static void enable_supported_stream_features(struct sender_state *s) {
         default_compression_enabled = 1;
 #elif !defined(ENABLE_COMPRESSION) && defined(ENABLE_REPLICATION)
     if(s->version < STREAM_VERSION_GAP_FILLING)
-        default_compression_enabled = 0;
+        default_rrdpush_replication_enabled = 0;
     else
-        default_compression_enabled = 1;
+        default_rrdpush_replication_enabled = 1;
 #endif
 
 #ifdef ENABLE_COMPRESSION
