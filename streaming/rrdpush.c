@@ -495,7 +495,7 @@ static uint32_t negotiating_stream_version(uint32_t host, uint32_t incoming)
     return MIN(host, incoming);
 #elif defined(ENABLE_COMPRESSION) && !defined(ENABLE_REPLICATION)
     // compression supported and replication not supported
-    return MIN(host, incoming)
+    return MIN(host, incoming);
 #elif !defined(ENABLE_COMPRESSION) && defined(ENABLE_REPLICATION)
     // compression not supported and replication supported
     if(incoming == STREAM_VERSION_COMPRESSION) {

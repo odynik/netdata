@@ -242,6 +242,8 @@ static void enable_supported_stream_features(struct sender_state *s) {
         default_rrdpush_replication_enabled = 0;
     else
         default_rrdpush_replication_enabled = 1;
+#else
+    UNUSED(s);
 #endif
 
 #ifdef ENABLE_COMPRESSION
