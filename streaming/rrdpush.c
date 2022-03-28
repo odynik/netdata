@@ -90,18 +90,6 @@ int rrdpush_init() {
         default_rrdpush_enabled = 0;
     }
 
-#ifdef ENABLE_REPLICATION
-    // replication
-    default_rrdpush_replication_enabled = (unsigned int)appconfig_get_boolean(&stream_config, CONFIG_SECTION_STREAM, "enable replication", default_rrdpush_replication_enabled);
-    
-    if (!default_rrdpush_replication_enabled
-    || (STREAMING_PROTOCOL_CURRENT_VERSION < STREAM_VERSION_GAP_FILLING)
-    || !default_rrdpush_enabled) {
-        error("%s [send]: Cannot enable Tx replication sender thread - Streaming is disabled.", REPLICATION_MSG);
-        default_rrdpush_replication_enabled = 0;
-    }
-#endif  //ENABLE_REPLICATION
-
 #ifdef ENABLE_HTTPS
     if (netdata_use_ssl_on_stream == NETDATA_SSL_OPTIONAL) {
         if (default_rrdpush_destination){
@@ -125,6 +113,15 @@ int rrdpush_init() {
     netdata_ssl_ca_path = appconfig_get(&stream_config, CONFIG_SECTION_STREAM, "CApath", "/etc/ssl/certs/");
     netdata_ssl_ca_file = appconfig_get(&stream_config, CONFIG_SECTION_STREAM, "CAfile", "/etc/ssl/certs/certs.pem");
 #endif
+
+#ifdef ENABLE_REPLICATION
+    default_rrdpush_replication_enabled = (unsigned int)appconfig_get_boolean(&stream_config, CONFIG_SECTION_STREAM, "enable replication", default_rrdpush_replication_enabled);
+    
+    if (!default_rrdpush_replication_enabled || !default_rrdpush_enabled) {
+        error("%s [send]: Stream Replication is disabled. Check replication and streaming settings in stream.conf.", REPLICATION_MSG);
+        default_rrdpush_replication_enabled = 0;
+    }
+#endif  //ENABLE_REPLICATION
 
     return default_rrdpush_enabled;
 }
@@ -492,6 +489,26 @@ static void rrdpush_sender_thread_spawn(RRDHOST *host) {
     netdata_mutex_unlock(&host->sender->mutex);
 }
 
+static uint32_t negotiating_stream_version(uint32_t host, uint32_t incoming)
+{  
+#if !defined(ENABLE_COMPRESSION) && !defined(ENABLE_REPLICATION)
+    return MIN(host, incoming);
+#elif defined(ENABLE_COMPRESSION) && !defined(ENABLE_REPLICATION)
+    // compression supported and replication not supported
+    return MIN(host, incoming)
+#elif !defined(ENABLE_COMPRESSION) && defined(ENABLE_REPLICATION)
+    // compression not supported and replication supported
+    if(incoming == STREAM_VERSION_COMPRESSION) {
+        default_rrdpush_replication_enabled = 1;
+        return STREAM_VERSION_CLABELS;
+    }
+    else
+        return MIN(incoming, host);
+#else
+    return MIN(host, incoming);
+#endif
+}
+
 int rrdpush_receiver_permission_denied(struct web_client *w) {
     // we always respond with the same message and error code
     // to prevent an attacker from gaining info about the error
@@ -554,8 +571,11 @@ int rrdpush_receiver_thread_spawn(struct web_client *w, char *url) {
             system_info->ml_enabled = strtoul(value, NULL, 0);
         else if(!strcmp(name, "tags"))
             tags = value;
-        else if(!strcmp(name, "ver"))
-            stream_version = MIN((uint32_t) strtoul(value, NULL, 0), STREAMING_PROTOCOL_CURRENT_VERSION);
+        else if(!strcmp(name, "ver")) {
+            // stream_version = MIN((uint32_t) strtoul(value, NULL, 0), STREAMING_PROTOCOL_CURRENT_VERSION);
+            stream_version = negotiating_stream_version(STREAMING_PROTOCOL_CURRENT_VERSION, (uint32_t) strtoul(value, NULL, 0));
+        }
+            
         else {
             // An old Netdata child does not have a compatible streaming protocol, map to something sane.
             if (!strcmp(name, "NETDATA_SYSTEM_OS_NAME"))

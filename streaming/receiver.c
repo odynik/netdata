@@ -399,7 +399,6 @@ done:
     return result;
 }
 
-
 static int rrdpush_receive(struct receiver_state *rpt)
 {
     int history = default_rrd_history_entries;

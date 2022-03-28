@@ -211,6 +211,65 @@ static inline long int parse_stream_version(RRDHOST *host, char *http)
     return stream_version;
 }
 
+static void enable_supported_stream_features(struct sender_state *s) {
+#if defined(ENABLE_COMPRESSION) && defined(ENABLE_REPLICATION)
+    switch (s->version)
+    {
+        case STREAM_VERSION_GAP_FILL_N_COMPRESSION:
+            default_compression_enabled = 1;
+            default_rrdpush_replication_enabled = 1;
+            break;
+        case STREAM_VERSION_GAP_FILLING:
+            default_compression_enabled = 0;
+            default_rrdpush_replication_enabled = 1;
+            break;
+        case STREAM_VERSION_COMPRESSION:
+            default_compression_enabled = 1;
+            default_rrdpush_replication_enabled = 0;
+            break;
+        default:
+            default_compression_enabled = 0;
+            default_rrdpush_replication_enabled = 0;
+            break;
+    }
+#elif defined(ENABLE_COMPRESSION) && !defined(ENABLE_REPLICATION)
+    if(s->version < STREAM_VERSION_COMPRESSION)
+        default_compression_enabled = 0;
+    else
+        default_compression_enabled = 1;
+#elif !defined(ENABLE_COMPRESSION) && defined(ENABLE_REPLICATION)
+    if(s->version < STREAM_VERSION_GAP_FILLING)
+        default_compression_enabled = 0;
+    else
+        default_compression_enabled = 1;
+#endif
+
+#ifdef ENABLE_COMPRESSION
+    s->rrdpush_compression = (s->rrdpush_compression && default_compression_enabled);
+    if(s->rrdpush_compression)
+    {
+        // parent supports compression
+        if(s->compressor)
+            s->compressor->reset(s->compressor);
+    }
+    else {
+        //parent does not support compression or has compression disabled
+        debug(D_STREAM, "Stream is uncompressed! One of the agents (%s <-> %s) does not support compression OR compression is disabled.", s->connected_to, s->host->hostname);
+        infoerr("Stream is uncompressed! One of the agents (%s <-> %s) does not support compression OR compression is disabled.", s->connected_to, s->host->hostname);
+    }        
+#endif  //ENABLE_COMPRESSION
+
+#ifdef  ENABLE_REPLICATION
+    if(s->host->replication->tx_replication){
+        s->host->replication->tx_replication->enabled = (s->host->replication->tx_replication->enabled && default_rrdpush_replication_enabled);
+        if(s->host->replication->tx_replication->enabled) {
+            debug(D_REPLICATION, "Stream Replication is not supported in this communication! One of the agents (%s <-> %s) does not support replication.", s->connected_to, s->host->hostname);
+            infoerr("Stream Replication is not supported in this communication! One of the agents (%s <-> %s) does not support replication.", s->connected_to, s->host->hostname);
+        }
+    }
+#endif  //ENABLE_REPLICATION
+}
+
 static int rrdpush_sender_thread_connect_to_parent(RRDHOST *host, int default_port, int timeout,
     struct sender_state *s) {
 
@@ -430,22 +489,8 @@ s->rrdpush_compression = (default_compression_enabled && (s->version >= STREAM_V
         return 0;
     }
     s->version = version;
-
-#ifdef ENABLE_COMPRESSION
-    s->rrdpush_compression = (s->rrdpush_compression && (s->version >= STREAM_VERSION_COMPRESSION));
-    if(s->rrdpush_compression)
-    {
-        // parent supports compression
-        if(s->compressor)
-            s->compressor->reset(s->compressor);
-    }
-    else {
-        //parent does not support compression or has compression disabled
-        debug(D_STREAM, "Stream is uncompressed! One of the agents (%s <-> %s) does not support compression OR compression is disabled.", s->connected_to, s->host->hostname);
-        infoerr("Stream is uncompressed! One of the agents (%s <-> %s) does not support compression OR compression is disabled.", s->connected_to, s->host->hostname);
-    }        
-#endif  //ENABLE_COMPRESSION
-
+    // Manage stream features based on strema versioning
+    enable_supported_stream_features(s);
 
     info("STREAM %s [send to %s]: established communication with a parent using protocol version %d - ready to send metrics..."
          , host->hostname

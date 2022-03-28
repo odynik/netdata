@@ -435,7 +435,6 @@ RRDHOST *rrdhost_create(const char *hostname,
 #ifdef  ENABLE_REPLICATION
     // ------------------------------------------------------------------------
     //GAPs struct initialization only for child hosts
-    // if(default_rrdpush_replication_enabled)
     if(strcmp(host->machine_guid, localhost->machine_guid))
         gaps_init(&host);
     //Initialization of the Replication thread pointers.
