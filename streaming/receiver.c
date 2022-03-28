@@ -598,8 +598,7 @@ static int rrdpush_receive(struct receiver_state *rpt)
     }
     
 #ifdef ENABLE_REPLICATION
-    // Here is the first proof of connection with the sender thread.
-    // rpt->last_msg_t = now_realtime_sec();
+    // Guard it with rx_replication->enabled
     evaluate_gap_onconnection(rpt);
 #endif
     // remove the non-blocking flag from the socket
@@ -667,6 +666,7 @@ static int rrdpush_receive(struct receiver_state *rpt)
 #endif
 
 #ifdef ENABLE_REPLICATION
+    // Guard it with rx_replication->enabled
     evaluate_gap_ondisconnection(rpt);
 #endif
 

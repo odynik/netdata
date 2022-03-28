@@ -755,10 +755,6 @@ PARSER_RC pluginsd_rep_action(void *user, REP_ARG command)
         }
         send_gap_for_replication(host, rep_state);
         return PARSER_RC_OK;
-      case REP_PAUSE:
-        info("%s: REP PAUSE command is received!\n", REPLICATION_MSG);
-        //Call REP PAUSE function
-        return PARSER_RC_OK;
       case REP_ACK:
         info("%s: REP ACK command is received!\n", REPLICATION_MSG);
         // REP ACK - A full REP transmission of all the charts
@@ -789,7 +785,7 @@ PARSER_RC pluginsd_gap_action(void *user, GAP rx_gap)
     //Check if there is GAP and send GAP command, otherwise send REP OFF command
     sender_gap_filling(rep_state, rx_gap);
     info("%s: COMPLETE GAP - Send REP ACK\n", REPLICATION_MSG);
-    send_message(rep_state, "REP 4\n");
+    send_message(rep_state, "REP 3\n");
     info("%s: EXITING GAP command - All charts sent\n", REPLICATION_MSG);
 
     // return PARSER_RC_OK;

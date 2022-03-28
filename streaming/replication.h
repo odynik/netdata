@@ -6,7 +6,6 @@
 //definitions
 #define REPLICATION_MSG "REPLICATION_STREAM"
 #define REPLICATE_CMD "REPLICATE"
-#define REP_CMD "REP"
 #define REP_ACK_CMD "REP ACK"
 
 // RDATA command with arguments TBD?? BEGIN SET END
