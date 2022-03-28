@@ -262,7 +262,7 @@ static void enable_supported_stream_features(struct sender_state *s) {
 #ifdef  ENABLE_REPLICATION
     if(s->host->replication->tx_replication){
         s->host->replication->tx_replication->enabled = (s->host->replication->tx_replication->enabled && default_rrdpush_replication_enabled);
-        if(s->host->replication->tx_replication->enabled) {
+        if(!s->host->replication->tx_replication->enabled) {
             debug(D_REPLICATION, "Stream Replication is not supported in this communication! One of the agents (%s <-> %s) does not support replication.", s->connected_to, s->host->hostname);
             infoerr("Stream Replication is not supported in this communication! One of the agents (%s <-> %s) does not support replication.", s->connected_to, s->host->hostname);
         }
