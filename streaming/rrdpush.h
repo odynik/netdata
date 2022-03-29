@@ -130,8 +130,6 @@ struct receiver_state {
     time_t last_msg_t;
     char read_buffer[1024];     // Need to allow RRD_ID_LENGTH_MAX * 4 + the other fields
     int read_len;
-    unsigned int shutdown:1;    // Tell the thread to exit
-    unsigned int exited;      // Indicates that the thread has exited  (NOT A BITFIELD!)
 #ifdef ENABLE_HTTPS
     struct netdata_ssl ssl;
 #endif
@@ -139,6 +137,8 @@ struct receiver_state {
     unsigned int rrdpush_compression;
     struct decompressor_state *decompressor;
 #endif
+    unsigned int shutdown:1;    // Tell the thread to exit
+    unsigned int exited;      // Indicates that the thread has exited  (NOT A BITFIELD!)
 };
 
 

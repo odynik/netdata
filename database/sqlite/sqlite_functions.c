@@ -2174,7 +2174,6 @@ failed:
     return;
 };
 
-
 /*
  * Store a gap in the database
  */

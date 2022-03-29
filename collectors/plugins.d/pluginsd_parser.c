@@ -815,7 +815,6 @@ PARSER_RC pluginsd_fill_end_action(void *user, int block_id)
 {
     UNUSED(block_id);
     REPLICATION_STATE *rep_state = (REPLICATION_STATE *)((PARSER_USER_OBJECT *)user)->opaque;
-
     replication_collect_past_metric_done(rep_state);
 
     return PARSER_RC_OK;
