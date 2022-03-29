@@ -88,8 +88,10 @@ SIMPLE_PATTERN *web_allow_mgmt_from = NULL;
 int             web_allow_mgmt_dns;
 SIMPLE_PATTERN *web_allow_streaming_from = NULL;
 int             web_allow_streaming_dns;
+#ifdef  ENABLE_REPLICATION
 SIMPLE_PATTERN *web_allow_replication_from = NULL;
 int             web_allow_replication_dns;
+#endif
 SIMPLE_PATTERN *web_allow_netdataconf_from = NULL;
 int             web_allow_netdataconf_dns;
 

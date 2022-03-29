@@ -963,7 +963,6 @@ disable:
 //     // return PARSER_RC_ERROR;
 // }
 
-
 inline size_t pluginsd_process(RRDHOST *host, struct plugind *cd, FILE *fp, int trust_durations)
 {
     int enabled = cd->enabled;
