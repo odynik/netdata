@@ -122,5 +122,5 @@ extern int sql_load_host_gap(RRDHOST *host);
 extern int sql_delete_gap(uuid_t *gap_uuid);
 extern int sql_delete_all_gaps(void);
 extern void set_host_gap(RRDHOST *host, sqlite3_stmt *res);
-#endif  //ENABLE_REPLICATION
+#endif
 #endif //NETDATA_SQLITE_FUNCTIONS_H
