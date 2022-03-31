@@ -216,15 +216,15 @@ static void enable_supported_stream_features(struct sender_state *s) {
     switch (s->version)
     {
         case STREAM_VERSION_GAP_FILL_N_COMPRESSION:
-            default_compression_enabled = 1;
-            default_rrdpush_replication_enabled = 1;
+            default_compression_enabled = (default_compression_enabled && 1);
+            default_rrdpush_replication_enabled = (default_rrdpush_replication_enabled && 1);
             break;
         case STREAM_VERSION_GAP_FILLING:
             default_compression_enabled = 0;
-            default_rrdpush_replication_enabled = 1;
+            default_rrdpush_replication_enabled = (default_rrdpush_replication_enabled && 1);
             break;
         case STREAM_VERSION_COMPRESSION:
-            default_compression_enabled = 1;
+            default_compression_enabled = (default_compression_enabled && 1);
             default_rrdpush_replication_enabled = 0;
             break;
         default:
