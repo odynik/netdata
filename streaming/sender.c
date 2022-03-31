@@ -513,8 +513,8 @@ static void attempt_to_connect(struct sender_state *state)
     state->send_attempts = 0;
 
     if(rrdpush_sender_thread_connect_to_parent(state->host, state->default_port, state->timeout, state)) {
-        state->last_sent_t = now_monotonic_sec();
-        state->t_newest_connection = now_monotonic_sec();
+        state->last_sent_t = now_realtime_sec();
+        state->t_newest_connection = 0;
 
         // reset the buffer, to properly send charts and metrics
         rrdpush_sender_thread_data_flush(state->host);
@@ -581,6 +581,8 @@ void attempt_to_send(struct sender_state *s) {
         s->sent_bytes += ret;
         debug(D_STREAM, "STREAM %s [send to %s]: Sent %zd bytes", s->host->hostname, s->connected_to, ret);
         s->last_sent_t = now_monotonic_sec();
+        if(!s->t_newest_connection)
+            s->t_newest_connection = now_realtime_sec();
     }
     else if (ret == -1 && (errno == EAGAIN || errno == EINTR || errno == EWOULDBLOCK))
         debug(D_STREAM, "STREAM %s [send to %s]: unavailable after polling POLLOUT", s->host->hostname,

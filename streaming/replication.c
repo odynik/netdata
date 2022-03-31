@@ -1563,23 +1563,25 @@ void sender_fill_gap_nolock(REPLICATION_STATE *rep_state, RRDSET *st, GAP a_gap)
    
     // Chop the GAP time interval to fit a RRDENG_BLOCK_SIZE(4096)
     // window_end is more important than window start
-    window_end = MAX((t_delta_end + (t_delta_end % update_every)), newest_connection);
+    window_end = MAX((t_delta_end + (update_every - (t_delta_end % update_every))), newest_connection);
     window_start = t_delta_start - (t_delta_start % update_every);
     size_t replication_points = (t_delta_end - t_delta_start) / update_every + 1;
     if (replication_points > default_replication_gap_block_size){
         replication_points = default_replication_gap_block_size;
         window_start = window_end - replication_points * update_every;
     }
-    
-    // debug(D_REPLICATION
-    //     "%s: REP GAP timestamps request from MEMORY\nt_d_start: %ld, t_d_end:  %ld \nw_start:  %ld w_end:  %ld \nreplication points: %lu\nupdate_every: %d",
-    //     REPLICATION_MSG,
-    //     t_delta_start,
-    //     t_delta_end,
-    //     window_start,
-    //     window_end,
-    //     replication_points,
-    //     update_every);
+
+    debug(
+        D_REPLICATION,
+        "%s: REP GAP timestamps request from MEMORY\nt_d_start: %ld, t_d_end:  %ld \nw_start:  %ld w_end:  %ld \nreplication points: %lu\nnewest_connection: %ld\nupdate_every: %d",
+        REPLICATION_MSG,
+        t_delta_start,
+        t_delta_end,
+        window_start,
+        window_end,
+        replication_points,
+        newest_connection,
+        update_every);
 
     char gap_uuid_str[UUID_STR_LEN];
     uuid_unparse(a_gap.gap_uuid, gap_uuid_str);
@@ -1595,19 +1597,50 @@ void sender_fill_gap_nolock(REPLICATION_STATE *rep_state, RRDSET *st, GAP a_gap)
         // Send the intersection of this dimension and the time-window on the chart
         time_t rd_start = rrddim_first_entry_t(rd);
         time_t rd_end   = rrddim_last_entry_t(rd) + update_every;
+        // debug(D_REPLICATION, "REP Dimension variables %s.%s: counter=%zu counter_done=%zu current_entry=%ld usec_since_last=%llu last_updated=%ld.%ld"
+        //                      " last_collected=%ld.%ld collected_total=%lld last_collected_total=%lld",
+        //                      rd->rrdset->id, rd->id, rd->rrdset->counter, rd->rrdset->counter_done, rd->rrdset->current_entry, st->usec_since_last_update,
+        //                      st->last_updated.tv_sec, st->last_updated.tv_usec,
+        //                      st->last_collected_time.tv_sec, st->last_collected_time.tv_usec,
+        //                      st->collected_total, st->last_collected_total);
+        netdata_rwlock_rdlock(&st->rrdset_rwlock);
         if (rd_start <= window_end && rd_end >= window_start) {
 
             time_t rd_oldest = MAX(rd_start, window_start);
             rd_end = MIN(rd_end,   window_end);
+            size_t dim_collected_samples = rd->collections_counter;
+            size_t gap_samples = (window_end - window_start)/update_every + 1;
+            time_t last_t_collected_sample = rd->last_collected_time.tv_sec;
+            time_t first_t_collected_sample = last_t_collected_sample - (dim_collected_samples * update_every);
+            size_t gap_left_samples = (rd_oldest - first_t_collected_sample)/update_every;
+            time_t left_t_gap_sample = (first_t_collected_sample - first_t_collected_sample%update_every) + gap_left_samples*update_every;
+            time_t rigth_t_gap_sample = (left_t_gap_sample + (gap_samples + 1)*update_every);
 
-            rd->state->query_ops.init(rd, &handle, rd_oldest, rd_end);
-            debug(D_REPLICATION, "Fill replication with %s.%s window=%ld-%ld data=%ld-%ld query=%ld-%ld",
-                  st->id, rd->id, window_start, window_end, rd_oldest, rd_end, handle.start_time, handle.end_time);
-            
+
+            // rd->state->query_ops.init(rd, &handle, rd_oldest, rd_end);
+            rd->state->query_ops.init(rd, &handle, left_t_gap_sample, rigth_t_gap_sample);
+            time_t first_sample_of_new_conn =
+                (time_t)(rd->last_collected_time.tv_sec - ((rd->rrdset->current_entry + ABS((int)(rd->rrdset->counter_done - rd->rrdset->counter)) + 1) * rd->update_every));
+            debug(
+                D_REPLICATION,
+                "Fill replication with %s.%s last_coll=%ld entries=%ld col_total:%lu tmpstamp:%ld window=%ld-%ld data=%ld-%ld query=%ld-%ld",
+                st->id,
+                rd->id,
+                rd->last_collected_time.tv_sec,
+                rd->rrdset->current_entry,
+                rd->collections_counter,
+                first_sample_of_new_conn,
+                window_start,
+                window_end,
+                rd_start,
+                rrddim_last_entry_t(rd),
+                handle.start_time,
+                handle.end_time);
+
             buffer_sprintf(rep_state->build, "RDATA %s \"%s\" \"%s\" %ld %ld %u\n", gap_uuid_str, st->id, rd->id, window_start, window_end, block_id);
             
             num_points = 0;
-            for (time_t metric_t = rd_oldest; metric_t <= rd_end; ) {
+            for (time_t metric_t = left_t_gap_sample; metric_t <= rigth_t_gap_sample; ) {
 
                 if (rd->state->query_ops.is_finished(&handle)) {
                     debug(D_REPLICATION, "%s.%s query handle finished early @%ld", st->id, rd->id, metric_t);
