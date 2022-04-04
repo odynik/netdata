@@ -56,8 +56,8 @@ void replication_sender_init(RRDHOST *host){
     host->replication->tx_replication->host = host;
     host->replication->tx_replication->enabled = default_rrdpush_replication_enabled;
 #ifdef ENABLE_HTTPS
-    host->replication->tx_replication->ssl.conn = host->ssl.conn;
-    host->replication->tx_replication->ssl.flags = host->ssl.flags;
+    host->replication->tx_replication->ssl.conn = NULL;
+    host->replication->tx_replication->ssl.flags = NETDATA_SSL_START;
 #endif
     info("%s: Initialize REP Tx state during host creation %s .", REPLICATION_MSG, host->hostname);
     print_replication_state(host->replication->tx_replication);
@@ -141,31 +141,31 @@ static int replication_sender_thread_connect_to_parent(RRDHOST *host, int defaul
     info("%s %s [send to %s]: initializing communication...", REPLICATION_MSG, host->hostname, rep_state->connected_to);
 
 #ifdef ENABLE_HTTPS
-    if( netdata_client_ctx ){
-        host->ssl.flags = NETDATA_SSL_START;
-        if (!host->ssl.conn){
-            host->ssl.conn = SSL_new(netdata_client_ctx);
-            if(!host->ssl.conn){
+    if( netdata_replication_client_ctx ){
+        rep_state->ssl.flags = NETDATA_SSL_START;
+        if (!rep_state->ssl.conn){
+            rep_state->ssl.conn = SSL_new(netdata_replication_client_ctx);
+            if(!rep_state->ssl.conn){
                 error("Failed to allocate SSL structure.");
-                host->ssl.flags = NETDATA_SSL_NO_HANDSHAKE;
+                rep_state->ssl.flags = NETDATA_SSL_NO_HANDSHAKE;
             }
         }
         else{
-            SSL_clear(host->ssl.conn);
+            SSL_clear(rep_state->ssl.conn);
         }
 
-        if (host->ssl.conn)
+        if (rep_state->ssl.conn)
         {
-            if (SSL_set_fd(host->ssl.conn, rep_state->socket) != 1) {
+            if (SSL_set_fd(rep_state->ssl.conn, rep_state->socket) != 1) {
                 error("Failed to set the socket to the SSL on socket fd %d.", rep_state->socket);
-                host->ssl.flags = NETDATA_SSL_NO_HANDSHAKE;
+                rep_state->ssl.flags = NETDATA_SSL_NO_HANDSHAKE;
             } else{
-                host->ssl.flags = NETDATA_SSL_HANDSHAKE_COMPLETE;
+                rep_state->ssl.flags = NETDATA_SSL_HANDSHAKE_COMPLETE;
             }
         }
     }
     else {
-        host->ssl.flags = NETDATA_SSL_NO_HANDSHAKE;
+        rep_state->ssl.flags = NETDATA_SSL_NO_HANDSHAKE;
     }
 #endif
 
@@ -197,24 +197,24 @@ static int replication_sender_thread_connect_to_parent(RRDHOST *host, int defaul
 
 
 #ifdef ENABLE_HTTPS
-    if (!host->ssl.flags) {
+    if (!rep_state->ssl.flags) {
         ERR_clear_error();
-        SSL_set_connect_state(host->ssl.conn);
-        int err = SSL_connect(host->ssl.conn);
+        SSL_set_connect_state(rep_state->ssl.conn);
+        int err = SSL_connect(rep_state->ssl.conn);
         if (err != 1){
-            err = SSL_get_error(host->ssl.conn, err);
-            error("SSL cannot connect with the server:  %s ",ERR_error_string((long)SSL_get_error(host->ssl.conn,err),NULL));
-            if (netdata_use_ssl_on_stream == NETDATA_SSL_FORCE) {
+            err = SSL_get_error(rep_state->ssl.conn, err);
+            error("SSL cannot connect with the server:  %s ",ERR_error_string((long)SSL_get_error(rep_state->ssl.conn,err),NULL));
+            if (netdata_use_ssl_on_replication == NETDATA_SSL_FORCE) {
                 replication_thread_close_socket(rep_state);
                 return 0;
             }else {
-                host->ssl.flags = NETDATA_SSL_NO_HANDSHAKE;
+                rep_state->ssl.flags = NETDATA_SSL_NO_HANDSHAKE;
             }
         }
         else {
-            if (netdata_use_ssl_on_stream == NETDATA_SSL_FORCE) {
+            if (netdata_use_ssl_on_replication == NETDATA_SSL_FORCE) {
                 if (netdata_validate_server == NETDATA_SSL_VALID_CERTIFICATE) {
-                    if ( security_test_certificate(host->ssl.conn)) {
+                    if ( security_test_certificate(rep_state->ssl.conn)) {
                         error("Closing the replication stream connection, because the server SSL certificate is not valid.");
                         replication_thread_close_socket(rep_state);
                         return 0;
@@ -223,7 +223,7 @@ static int replication_sender_thread_connect_to_parent(RRDHOST *host, int defaul
             }
         }
     }
-    if(send_timeout(&host->ssl, rep_state->socket, http, strlen(http), 0, timeout) == -1) {
+    if(send_timeout(&rep_state->ssl, rep_state->socket, http, strlen(http), 0, timeout) == -1) {
 #else
     if(send_timeout(rep_state->socket, http, strlen(http), 0, timeout) == -1) {
 #endif
@@ -236,7 +236,7 @@ static int replication_sender_thread_connect_to_parent(RRDHOST *host, int defaul
 
     ssize_t received;
 #ifdef ENABLE_HTTPS
-    received = recv_timeout(&host->ssl, rep_state->socket, http, HTTP_HEADER_SIZE, 0, timeout);
+    received = recv_timeout(&rep_state->ssl, rep_state->socket, http, HTTP_HEADER_SIZE, 0, timeout);
     if(received == -1) {
 #else
     received = recv_timeout(rep_state->socket, http, HTTP_HEADER_SIZE, 0, timeout);
@@ -565,8 +565,6 @@ void *replication_receiver_thread(void *ptr){
     }
     debug(D_REPLICATION,"%s: Initial REPLICATION response to [%s:%s]: %s", REPLICATION_MSG, rep_state->client_ip, rep_state->client_port, initial_response);
 #ifdef ENABLE_HTTPS
-    host->stream_ssl.conn = rep_state->ssl.conn;
-    host->stream_ssl.flags = rep_state->ssl.flags;
     if(send_timeout(&rep_state->ssl, rep_state->socket, initial_response, strlen(initial_response), 0, rep_state->timeout) != (ssize_t)strlen(initial_response)) {
 #else
     if(send_timeout(rep_state->socket, initial_response, strlen(initial_response), 0, 60) != strlen(initial_response)) {
