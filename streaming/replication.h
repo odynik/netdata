@@ -62,7 +62,7 @@ struct replication_state {
     char *key;
     FILE *fp;
 #ifdef ENABLE_HTTPS
-    struct netdata_ssl *ssl;
+    struct netdata_ssl ssl;
 #endif
     char *program_name;
     char *program_version;

@@ -24,9 +24,6 @@ static void replication_state_init(REPLICATION_STATE *state)
     state->buffer = cbuffer_new(1024, 1024*1024);
     state->build = buffer_create(1);
     state->socket = -1;
-#ifdef ENABLE_HTTPS
-    state->ssl = (struct netdata_ssl *)callocz(1, sizeof(struct netdata_ssl));
-#endif
     state->dim_past_data = (RRDDIM_PAST_DATA *)callocz(1, sizeof(RRDDIM_PAST_DATA));
     state->dim_past_data->page = (void *)callocz(RRDENG_BLOCK_SIZE, sizeof(char));
     netdata_mutex_init(&state->mutex);
@@ -39,8 +36,8 @@ void replication_state_destroy(REPLICATION_STATE **state)
     cbuffer_free(r->buffer);
     buffer_free(r->build);
 #ifdef ENABLE_HTTPS
-    if(r->ssl->conn){
-        SSL_free(r->ssl->conn);
+    if(r->ssl.conn){
+        SSL_free(r->ssl.conn);
     }
 #endif
     freez(r->dim_past_data->page);
@@ -59,7 +56,8 @@ void replication_sender_init(RRDHOST *host){
     host->replication->tx_replication->host = host;
     host->replication->tx_replication->enabled = default_rrdpush_replication_enabled;
 #ifdef ENABLE_HTTPS
-    host->replication->tx_replication->ssl = &host->stream_ssl;
+    host->replication->tx_replication->ssl.conn = host->ssl.conn;
+    host->replication->tx_replication->ssl.flags = host->ssl.flags;
 #endif
     info("%s: Initialize REP Tx state during host creation %s .", REPLICATION_MSG, host->hostname);
     print_replication_state(host->replication->tx_replication);
@@ -97,10 +95,7 @@ void replication_receiver_init(RRDHOST *image_host, struct config *stream_config
     replication_state_init(image_host->replication->rx_replication);
     info("%s: REP Rx state initialized", REPLICATION_MSG);    
     image_host->replication->rx_replication->host = image_host;
-    image_host->replication->rx_replication->enabled = rrdpush_replication_enable;
-#ifdef ENABLE_HTTPS
-    image_host->replication->rx_replication->ssl = &image_host->stream_ssl;
-#endif    
+    image_host->replication->rx_replication->enabled = rrdpush_replication_enable; 
     info("%s: Initialize Rx for host %s ", REPLICATION_MSG, image_host->hostname);
     print_replication_state(image_host->replication->rx_replication);
 }
@@ -357,15 +352,15 @@ void replication_commit(struct replication_state *replication) {
 void replication_attempt_read(struct replication_state *replication) {
 int ret;
 #ifdef ENABLE_HTTPS
-    if (replication->ssl->conn && !replication->ssl->flags) {
+    if (replication->ssl.conn && !replication->ssl.flags) {
         ERR_clear_error();
         int desired = sizeof(replication->read_buffer) - replication->read_len - 1;
-        ret = SSL_read(replication->ssl->conn, replication->read_buffer, desired);
+        ret = SSL_read(replication->ssl.conn, replication->read_buffer, desired);
         if (ret > 0 ) {
             replication->read_len += ret;
             return;
         }
-        int sslerrno = SSL_get_error(replication->ssl->conn, desired);
+        int sslerrno = SSL_get_error(replication->ssl.conn, desired);
         if (sslerrno == SSL_ERROR_WANT_READ || sslerrno == SSL_ERROR_WANT_WRITE)
             return;
         u_long err;
@@ -412,8 +407,8 @@ void replication_attempt_to_send(struct replication_state *replication) {
     int send_retry = 0;
     do {
 #ifdef ENABLE_HTTPS
-        SSL *conn = replication->ssl->conn;
-        if(conn && !replication->ssl->flags) {
+        SSL *conn = replication->ssl.conn;
+        if(conn && !replication->ssl.flags) {
             ret = SSL_write(conn, chunk, outstanding);
         } else {
             ret = send(replication->socket, chunk, outstanding, MSG_DONTWAIT);
@@ -570,9 +565,9 @@ void *replication_receiver_thread(void *ptr){
     }
     debug(D_REPLICATION,"%s: Initial REPLICATION response to [%s:%s]: %s", REPLICATION_MSG, rep_state->client_ip, rep_state->client_port, initial_response);
 #ifdef ENABLE_HTTPS
-    host->stream_ssl.conn = rep_state->ssl->conn;
-    host->stream_ssl.flags = rep_state->ssl->flags;
-    if(send_timeout(rep_state->ssl, rep_state->socket, initial_response, strlen(initial_response), 0, rep_state->timeout) != (ssize_t)strlen(initial_response)) {
+    host->stream_ssl.conn = rep_state->ssl.conn;
+    host->stream_ssl.flags = rep_state->ssl.flags;
+    if(send_timeout(&rep_state->ssl, rep_state->socket, initial_response, strlen(initial_response), 0, rep_state->timeout) != (ssize_t)strlen(initial_response)) {
 #else
     if(send_timeout(rep_state->socket, initial_response, strlen(initial_response), 0, 60) != strlen(initial_response)) {
 #endif
@@ -890,8 +885,8 @@ int replication_receiver_thread_spawn(struct web_client *w, char *url) {
     host->replication->rx_replication->stream_version = stream_version;
     host->replication->rx_replication->connected = 1;
 #ifdef ENABLE_HTTPS
-    host->replication->rx_replication->ssl->conn = w->ssl.conn;
-    host->replication->rx_replication->ssl->flags = w->ssl.flags;
+    host->replication->rx_replication->ssl.conn = w->ssl.conn;
+    host->replication->rx_replication->ssl.flags = w->ssl.flags;
     w->ssl.conn = NULL;
     w->ssl.flags = NETDATA_SSL_START;
 #endif
@@ -1093,9 +1088,14 @@ int save_gap(GAP *a_gap)
 
     if (unlikely(!db_meta) && default_rrd_memory_mode != RRD_MEMORY_MODE_DBENGINE)
         return 0;
-    if (!a_gap || (*a_gap->status == '\0'))
-        return 0;
-    
+    // TBR: debugging staff
+    info("%s: GAP to be saved...", REPLICATION_MSG);
+    print_replication_gap(a_gap);
+    if (!a_gap || !a_gap->status){
+        infoerr("%s: Empty GAP won't be saved!", REPLICATION_MSG);
+        return 0;   
+    }
+    infoerr("%s: Escaped empty gap!", REPLICATION_MSG);
     rc = sql_store_gap(
         &a_gap->gap_uuid,
         a_gap->host_mguid,
@@ -1220,10 +1220,10 @@ static char *receiver_next_line(struct replication_state *r, int *pos) {
 // The receiver socket is blocking, perform a single read into a buffer so that we can reassemble lines for parsing.
 static int receiver_read(struct replication_state *r, FILE *fp) {
 #ifdef ENABLE_HTTPS
-    if (r->ssl->conn && !r->ssl->flags) {
+    if (r->ssl.conn && !r->ssl.flags) {
         ERR_clear_error();
         int desired = sizeof(r->read_buffer) - r->read_len - 1;
-        int ret = SSL_read(r->ssl->conn, r->read_buffer + r->read_len, desired);
+        int ret = SSL_read(r->ssl.conn, r->read_buffer + r->read_len, desired);
         if (ret > 0 ) {
             r->read_len += ret;
             return 0;
