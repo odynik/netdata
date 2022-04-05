@@ -310,6 +310,10 @@ static void replication_attempt_to_connect(RRDHOST *host)
         // reset the buffer, to properly gaps and replicate commands
         replication_sender_thread_data_flush(host);
 
+        // Clear the read buffer
+        memset(rep_state->read_buffer, 0, sizeof(rep_state->read_buffer));
+        rep_state->read_len = 0;
+
         // send from the beginning
         rep_state->begin = 0;
 
@@ -1113,7 +1117,6 @@ int save_gap(GAP *a_gap)
         infoerr("%s: Empty GAP won't be saved!", REPLICATION_MSG);
         return 0;   
     }
-    infoerr("%s: Escaped empty gap!", REPLICATION_MSG);
     rc = sql_store_gap(
         &a_gap->gap_uuid,
         a_gap->host_mguid,
@@ -1244,9 +1247,10 @@ static int receiver_read(struct replication_state *r, FILE *fp) {
         int ret = SSL_read(r->ssl.conn, r->read_buffer + r->read_len, desired);
         if (ret > 0 ) {
             r->read_len += ret;
+            info("%s: RxREAD SSLread [%s]@%d", REPLICATION_MSG, r->read_buffer,r->read_len);
             return 0;
         }
-        // info("%s: RxREAD After SSLread", REPLICATION_MSG);
+        info("%s: RxREAD After SSLread", REPLICATION_MSG);
         // Don't treat SSL_ERROR_WANT_READ or SSL_ERROR_WANT_WRITE differently on blocking socket
         u_long err;
         char buf[256];
@@ -1258,6 +1262,7 @@ static int receiver_read(struct replication_state *r, FILE *fp) {
     }
 #endif
     if (!fgets(r->read_buffer, sizeof(r->read_buffer), fp)){
+        info("%s: RxREAD FGETS [%s]", REPLICATION_MSG, r->read_buffer);
         return 1;
     }
     r->read_len = strlen(r->read_buffer);
