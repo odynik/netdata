@@ -173,25 +173,37 @@ static int replication_sender_thread_connect_to_parent(RRDHOST *host, int defaul
     rrdpush_encode_variable(&se, host);
     char http[HTTP_HEADER_SIZE + 1];
     int eol = snprintfz(http, HTTP_HEADER_SIZE,
-            "%s key=%s&hostname=%s&registry_hostname=%s&machine_guid=%s&update_every=%d&timezone=%s&abbrev_timezone=%s&utc_offset=%d&hops=%d&tags=%s&ver=%u"
-                 "&NETDATA_PROTOCOL_VERSION=%s"
-                 " HTTP/1.1\r\n"
-                 "User-Agent: %s\r\n"
-                 "Accept: */*\r\n\r\n"
-                 , REPLICATE_CMD
-                 , host->rrdpush_send_api_key
-                 , host->hostname
-                 , host->registry_hostname
-                 , host->machine_guid
-                 , default_rrd_update_every
-                 , host->timezone
-                 , host->abbrev_timezone
-                 , host->utc_offset
-                 , host->system_info->hops + 1
-                 , (host->tags) ? host->tags : ""
-                 , STREAMING_PROTOCOL_CURRENT_VERSION
-                 , host->program_version
-                 , host->program_name);
+            "%s "
+            "key=%s"
+            "&hostname=%s"
+            "&registry_hostname=%s"
+            "&machine_guid=%s"
+            "&update_every=%d"
+            "&timezone=%s"
+            "&abbrev_timezone=%s"
+            "&utc_offset=%d"
+            "&hops=%d"
+            "&tags=%s"
+            "&ver=%u"
+            "&NETDATA_PROTOCOL_VERSION=%s"
+            " HTTP/1.1\r\n"
+            "User-Agent: %s/%s\r\n"
+            "Accept: */*\r\n\r\n"
+            , REPLICATE_CMD
+            , host->rrdpush_send_api_key
+            , host->hostname
+            , host->registry_hostname
+            , host->machine_guid
+            , default_rrd_update_every
+            , host->timezone
+            , host->abbrev_timezone
+            , host->utc_offset
+            , host->system_info->hops + 1
+            , (host->tags) ? host->tags : ""
+            , STREAMING_PROTOCOL_CURRENT_VERSION
+            , STREAMING_PROTOCOL_VERSION
+            , host->program_name
+            , host->program_version);
     http[eol] = 0x00;
     rrdpush_clean_encoded(&se);
 
@@ -476,9 +488,17 @@ void *replication_sender_thread(void *ptr) {
     rep_state->shutdown = 0;
     info("%s Starting REPlication Tx thread.", REPLICATION_MSG);
 
+#ifdef ENABLE_HTTPS
+    if (netdata_use_ssl_on_replication & NETDATA_SSL_FORCE ){
+        security_start_ssl(NETDATA_SSL_CONTEXT_REPLICATION);
+        security_location_for_context(netdata_replication_client_ctx, netdata_ssl_ca_file, netdata_ssl_ca_path);
+    }
+#endif
+
     // Read the config for sending in replication
     rep_state->timeout = (int)appconfig_get_number(&stream_config, CONFIG_SECTION_STREAM, "timeout seconds", 60);
-    rep_state->default_port = (int)appconfig_get_number(&stream_config, CONFIG_SECTION_STREAM, "default port", 19999);    
+    rep_state->default_port = (int)appconfig_get_number(&stream_config, CONFIG_SECTION_STREAM, "default port", 19999);
+
     netdata_thread_cleanup_push(replication_sender_thread_cleanup_callback, host);
     for(;rrdpush_replication_enabled && !netdata_exit;)
     {
