@@ -1033,7 +1033,8 @@ static RRDR *rrd2rrdr_fixedstep(
 
     if(unlikely(absolute_period_requested == 1)) {
         r->result_options |= RRDR_RESULT_OPTION_ABSOLUTE;
-        r->update_every = MAX((int)group * update_every, update_every);
+        // r->update_every = MAX((int)group * update_every, update_every);
+        r->update_every = MAX((int)((before_wanted - after_wanted)/points_wanted), 1);
     }
     else {
         r->result_options |= RRDR_RESULT_OPTION_RELATIVE;
@@ -1427,7 +1428,8 @@ static RRDR *rrd2rrdr_variablestep(
     r->result_options |= RRDR_RESULT_OPTION_VARIABLE_STEP;
     if(unlikely(absolute_period_requested == 1)){
         r->result_options |= RRDR_RESULT_OPTION_ABSOLUTE;
-        r->update_every = MAX((int)group * update_every, update_every);
+        // r->update_every = MAX((int)group * update_every, update_every);
+        r->update_every = MAX((int)((before_wanted - after_wanted)/points_wanted), 1);
     }
     else{
         r->result_options |= RRDR_RESULT_OPTION_RELATIVE;
