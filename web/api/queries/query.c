@@ -1028,19 +1028,22 @@ static RRDR *rrd2rrdr_fixedstep(
         return r;
     }
 
-    if(unlikely(absolute_period_requested == 1))
+    // -------------------------------------------------------------------------
+    // initialize RRDR
+
+    if(unlikely(absolute_period_requested == 1)) {
         r->result_options |= RRDR_RESULT_OPTION_ABSOLUTE;
-    else
+        r->update_every = MAX((int)group * update_every, update_every);
+    }
+    else {
         r->result_options |= RRDR_RESULT_OPTION_RELATIVE;
+        r->update_every = (int)group * update_every;
+    }
 
     // find how many dimensions we have
     long dimensions_count = r->d;
 
-    // -------------------------------------------------------------------------
-    // initialize RRDR
-
     r->group = group;
-    r->update_every = (int)group * update_every;
     r->before = before_wanted;
     r->after = after_wanted;
     r->internal.points_wanted = points_wanted;
@@ -1418,20 +1421,23 @@ static RRDR *rrd2rrdr_variablestep(
         return r;
     }
 
+    // -------------------------------------------------------------------------
+    // initialize RRDR    
+
     r->result_options |= RRDR_RESULT_OPTION_VARIABLE_STEP;
-    if(unlikely(absolute_period_requested == 1))
+    if(unlikely(absolute_period_requested == 1)){
         r->result_options |= RRDR_RESULT_OPTION_ABSOLUTE;
-    else
+        r->update_every = MAX((int)group * update_every, update_every);
+    }
+    else{
         r->result_options |= RRDR_RESULT_OPTION_RELATIVE;
+        r->update_every = (int)group * update_every;
+    }
 
     // find how many dimensions we have
     long dimensions_count = r->d;
 
-    // -------------------------------------------------------------------------
-    // initialize RRDR
-
     r->group = group;
-    r->update_every = (int)group * update_every;
     r->before = before_wanted;
     r->after = after_wanted;
     r->internal.points_wanted = points_wanted;
