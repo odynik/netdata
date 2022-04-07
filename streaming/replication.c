@@ -1110,13 +1110,9 @@ int save_gap(GAP *a_gap)
 
     if (unlikely(!db_meta) && default_rrd_memory_mode != RRD_MEMORY_MODE_DBENGINE)
         return 0;
-    // TBR: debugging staff
-    info("%s: GAP to be saved...", REPLICATION_MSG);
-    print_replication_gap(a_gap);
-    if (!a_gap || !a_gap->status){
-        infoerr("%s: Empty GAP won't be saved!", REPLICATION_MSG);
-        return 0;   
-    }
+    if (!a_gap || !a_gap->status)
+        return 0;
+
     rc = sql_store_gap(
         &a_gap->gap_uuid,
         a_gap->host_mguid,
@@ -1247,22 +1243,22 @@ static int receiver_read(struct replication_state *r, FILE *fp) {
         int ret = SSL_read(r->ssl.conn, r->read_buffer + r->read_len, desired);
         if (ret > 0 ) {
             r->read_len += ret;
-            info("%s: RxREAD SSLread [%s]@%d", REPLICATION_MSG, r->read_buffer,r->read_len);
+            // debug(D_REPLICATION, "%s: RxREAD SSLread [%s]@%d\n", REPLICATION_MSG, r->read_buffer,r->read_len);
             return 0;
         }
-        info("%s: RxREAD After SSLread", REPLICATION_MSG);
+
         // Don't treat SSL_ERROR_WANT_READ or SSL_ERROR_WANT_WRITE differently on blocking socket
         u_long err;
         char buf[256];
         while ((err = ERR_get_error()) != 0) {
             ERR_error_string_n(err, buf, sizeof(buf));
-            error("%s: STREAM %s [receive from %s] ssl error: %s", REPLICATION_MSG, r->host->hostname, r->client_ip, buf);
+            error("%s: %s [receive from %s] ssl error: %s", REPLICATION_MSG, r->host->hostname, r->client_ip, buf);
         }
         return 1;
     }
 #endif
     if (!fgets(r->read_buffer, sizeof(r->read_buffer), fp)){
-        info("%s: RxREAD FGETS [%s]", REPLICATION_MSG, r->read_buffer);
+        // debug(D_REPLICATION, "%s: RxREAD FGETS [%s]\n", REPLICATION_MSG, r->read_buffer);
         return 1;
     }
     r->read_len = strlen(r->read_buffer);
