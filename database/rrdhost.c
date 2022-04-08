@@ -431,14 +431,14 @@ RRDHOST *rrdhost_create(const char *hostname,
          , host->health_default_exec
          , host->health_default_recipient
     );
-    
+
 #ifdef  ENABLE_REPLICATION
     // ------------------------------------------------------------------------
     //GAPs struct initialization only for child hosts
     if(strcmp(host->machine_guid, localhost->machine_guid))
         gaps_init(&host);
     host->replication = (REPLICATION *)callocz(1, sizeof(REPLICATION));
-    replication_sender_init(host, rrdpush_api_key);
+    replication_sender_init(host, &stream_config, rrdpush_api_key);
 #endif  //ENABLE_REPLICATION
 
     rrd_hosts_available++;

@@ -47,31 +47,31 @@ void replication_state_destroy(REPLICATION_STATE **state)
 }
 
 // For receiver is_tx = 0, for sender is_tx = 1
-static unsigned int replication_rd_config(RRDHOST *host, char *key, int is_tx)
+static unsigned int replication_rd_config(RRDHOST *host, struct config *stream_config, char *key, int is_tx)
 {
-    REPLICATION_STATE *rep_state = host->replication->rx_replication;
-    info("%s: Reading config Rx for host %s ", REPLICATION_MSG, host->hostname);
 
-    rep_state->timeout = (int)config_get_number(CONFIG_SECTION_STREAM, "timeout seconds", 60);
-    rep_state->default_port = (int)config_get_number(CONFIG_SECTION_STREAM, "default port", 19999);
     unsigned int is_replication_enabled = default_rrdpush_replication_enabled;
     unsigned int is_rrdpush_enabled = default_rrdpush_enabled;
     if(is_tx){
-        is_rrdpush_enabled = config_get_boolean(CONFIG_SECTION_STREAM, "enabled", is_rrdpush_enabled);
+        is_rrdpush_enabled = appconfig_get_boolean(stream_config, CONFIG_SECTION_STREAM, "enabled", is_rrdpush_enabled);
         if (is_rrdpush_enabled)
         {
-            is_rrdpush_enabled = config_get_boolean(CONFIG_SECTION_STREAM, "enable replication", is_rrdpush_enabled);
+            is_rrdpush_enabled = appconfig_get_boolean(stream_config, CONFIG_SECTION_STREAM, "enable replication", is_rrdpush_enabled);
         }
         return is_rrdpush_enabled;
     } else {
+        REPLICATION_STATE *rep_state = host->replication->rx_replication;
+        info("%s: Reading config Rx for host %s ", REPLICATION_MSG, host->hostname);
+        rep_state->timeout = (int)appconfig_get_number(stream_config, CONFIG_SECTION_STREAM, "timeout seconds", 60);
+        rep_state->default_port = (int)appconfig_get_number(stream_config, CONFIG_SECTION_STREAM, "default port", 19999);
         //guid has more priority and owerwrites api key
-        is_replication_enabled = config_get_boolean(key, "enable replication", is_replication_enabled);
-        is_replication_enabled = config_get_boolean(host->machine_guid, "enable replication", is_replication_enabled);
+        is_replication_enabled = appconfig_get_boolean(stream_config, key, "enable replication", is_replication_enabled);
+        is_replication_enabled = appconfig_get_boolean(stream_config, host->machine_guid, "enable replication", is_replication_enabled);
         return is_replication_enabled;
     }
 }
 
-void replication_sender_init(RRDHOST *host, char *key){
+void replication_sender_init(RRDHOST *host, struct config *stream_config, char *key){
     if(!host || !host->replication){
         error("%s: Host or host's replication state is not initialized! - Tx thread Initialization failed!", REPLICATION_MSG);
         return;
@@ -79,7 +79,7 @@ void replication_sender_init(RRDHOST *host, char *key){
     host->replication->tx_replication = (REPLICATION_STATE *)callocz(1, sizeof(REPLICATION_STATE));
     replication_state_init(host->replication->tx_replication);
     host->replication->tx_replication->host = host;
-    host->replication->tx_replication->enabled = replication_rd_config(host, key, 1);
+    host->replication->tx_replication->enabled = replication_rd_config(host, stream_config, key, 1);
 #ifdef ENABLE_HTTPS
     host->replication->tx_replication->ssl.conn = NULL;
     host->replication->tx_replication->ssl.flags = NETDATA_SSL_START;
@@ -88,10 +88,10 @@ void replication_sender_init(RRDHOST *host, char *key){
     print_replication_state(host->replication->tx_replication);
 }
 
-void replication_receiver_init(RRDHOST *image_host, char *key)
+void replication_receiver_init(RRDHOST *image_host, struct config *stream_config, char *key)
 {
     image_host->replication->rx_replication = (REPLICATION_STATE *)callocz(1, sizeof(REPLICATION_STATE));
-    unsigned int rrdpush_replication_enable = replication_rd_config(image_host, key, 0);
+    unsigned int rrdpush_replication_enable = replication_rd_config(image_host, stream_config, key, 0);
     if(!rrdpush_replication_enable)
     {
         infoerr("%s: Could not initialize Rx replication thread. Replication is disabled or not supported!", REPLICATION_MSG);
@@ -904,7 +904,7 @@ int replication_receiver_thread_spawn(struct web_client *w, char *url) {
 
     // Host exists and replication is not active
     // Initialize replication receiver structure.
-    replication_receiver_init(host, key);
+    replication_receiver_init(host, &stream_config, key);
     host->replication->rx_replication->last_msg_t = now_realtime_sec();
     host->replication->rx_replication->socket = w->ifd;
     host->replication->rx_replication->client_ip = strdupz(w->client_ip);

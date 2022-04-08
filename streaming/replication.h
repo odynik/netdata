@@ -135,8 +135,8 @@ void send_gap_for_replication(RRDHOST *host, REPLICATION_STATE *rep_state);
 int finish_gap_replication(RRDHOST *host, REPLICATION_STATE *rep_state);
 void cleanup_after_gap_replication(GAPS *gaps_timeline);
 
-void replication_sender_init(RRDHOST *host, char *key);
-void replication_receiver_init(RRDHOST *host, char *key);
+void replication_sender_init(RRDHOST *host, struct config *stream_config, char *key);
+void replication_receiver_init(RRDHOST *host, struct config *stream_config, char *key);
 int replication_receiver_thread_spawn(struct web_client *w, char *url);
 void replication_sender_thread_spawn(RRDHOST *host);
 void replication_sender_thread_stop(RRDHOST *host);
