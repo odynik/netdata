@@ -1,0 +1,29 @@
+```
+sequenceDiagram
+    participant Parent as Netdata Parent
+    participant Child as Netdata Child
+    Child->>+Parent: REPLICATE
+    Parent->>-Child: REP ACK
+    Child->>+Parent: REP ON(2)
+    Parent->>+Child: GAP gap_id t_start t_first t_end
+    loop Past data REPlication
+    Note right of Parent: Send past data per dimension for all charts <br> in the requested GAP time interval.
+    Child-)Parent: RDATA gap_id chart_id_1 dim_id_1 t_start t_end block_id
+    Child-->>Parent: FILL chart_id_1 dim_id_1 timestamp1 value1
+    Child-->>Parent: FILL chart_id_1 dim_id_1 timestamp2 value2
+    Child-)Parent: FILLEND num_samples block_id
+    Child-)Parent: RDATA gap_id chart_id_1 dim_id_2 t_start t_end block_id
+    Child-->>Parent: FILL chart_id1 dim_id_2 timestamp1 value1
+    Child-->>Parent: FILL chart_id1 dim_id_2 timestamp2 value2
+    Child-)Parent: FILLEND num_samples block_id
+    Child-->>Parent: ...
+    Child-)Parent: RDATA gap_id chart_id_n dim_id_m t_start t_end block_id
+    Child-->>Parent: FILL chart_id_n dim_id_m timestamp1 value1
+    Child-->>Parent: FILL chart_id_n dim_id_m timestamp2 value2
+    Child-)Parent: FILLEND num_samples block_id    
+    end
+    Child->>-Parent: REP ACK(4)
+    Parent->>-Child: REP OFF(1)
+```
+
+[![](https://mermaid.ink/img/pako:eNqtVF1rGzEQ_CuLnmwSG2z6dATD4Y8SahyT5PHAyKc9W1QnXaW9Qgj579n7So70WlqnepHQzoxmhLTPInUKRSQC_ijRprjS8uRlnljgUUhPOtWFtAR76ZEnGWCHpCTJdudX5PKsjeoD640GVy8ni8VVQ47gfr3f3i7jx3VTb7YZMKmRdR3i5bffs-FuN5qPP7CvWvbXeA8nWRy0AjoEYpM8Z9qHakbbmjLOFczlzdouixqdStLONvWdIwSvT2cCl0F39gPzOXfHKtCD0jnawDzInAdpDKRnPjPAzdEvQFugMwtVNx0IVe2OmMIVQv9Tmmk_5vgt5Cp-jLsYtSAvDrPqtGbxHq2ydDQu_c6FvhZfSae2ud1uh1XYCevkxQzYSomziwXmjcB8ME1FX-9WYMv8EBhsMAxa_tv480_E74tckn6I_1_C9w6cTv_lVdjOUf6ZV9FXuehVDAlcfDEVvCG9_diuEUz6jYDbxOjL-A995G6zGc0YIK5Fjj6XWnHje64IieCfmWMiIl4qzGRpKBGJfWFoWfD_xrXS5LyIMmkCXgtZknt4sqmIyJfYgdrm2aJeXgGxzcZ2)](https://mermaid.live/edit#pako:eNqtVF1rGzEQ_CuLnmwSG2z6dATD4Y8SahyT5PHAyKc9W1QnXaW9Qgj579n7So70WlqnepHQzoxmhLTPInUKRSQC_ijRprjS8uRlnljgUUhPOtWFtAR76ZEnGWCHpCTJdudX5PKsjeoD640GVy8ni8VVQ47gfr3f3i7jx3VTb7YZMKmRdR3i5bffs-FuN5qPP7CvWvbXeA8nWRy0AjoEYpM8Z9qHakbbmjLOFczlzdouixqdStLONvWdIwSvT2cCl0F39gPzOXfHKtCD0jnawDzInAdpDKRnPjPAzdEvQFugMwtVNx0IVe2OmMIVQv9Tmmk_5vgt5Cp-jLsYtSAvDrPqtGbxHq2ydDQu_c6FvhZfSae2ud1uh1XYCevkxQzYSomziwXmjcB8ME1FX-9WYMv8EBhsMAxa_tv480_E74tckn6I_1_C9w6cTv_lVdjOUf6ZV9FXuehVDAlcfDEVvCG9_diuEUz6jYDbxOjL-A995G6zGc0YIK5Fjj6XWnHje64IieCfmWMiIl4qzGRpKBGJfWFoWfD_xrXS5LyIMmkCXgtZknt4sqmIyJfYgdrm2aJeXgGxzcZ2)
