@@ -16,7 +16,7 @@ GAP* add_gap_data(GAPS *host_queue, GAP *gap);
 
 /********************************
 * Thread Initialization functions
-*********************************/ 
+*********************************/
 static void replication_state_init(REPLICATION_STATE *state)
 {
     info("%s: REPlication State Initialization", REPLICATION_MSG);
@@ -46,7 +46,32 @@ void replication_state_destroy(REPLICATION_STATE **state)
     info("%s: Replication state destroyed.", REPLICATION_MSG);
 }
 
-void replication_sender_init(RRDHOST *host){
+// For receiver is_tx = 0, for sender is_tx = 1
+static unsigned int replication_rd_config(RRDHOST *host, char *key, int is_tx)
+{
+    REPLICATION_STATE *rep_state = host->replication->rx_replication;
+    info("%s: Reading config Rx for host %s ", REPLICATION_MSG, host->hostname);
+
+    rep_state->timeout = (int)config_get_number(CONFIG_SECTION_STREAM, "timeout seconds", 60);
+    rep_state->default_port = (int)config_get_number(CONFIG_SECTION_STREAM, "default port", 19999);
+    unsigned int is_replication_enabled = default_rrdpush_replication_enabled;
+    unsigned int is_rrdpush_enabled = default_rrdpush_enabled;
+    if(is_tx){
+        is_rrdpush_enabled = config_get_boolean(CONFIG_SECTION_STREAM, "enabled", is_rrdpush_enabled);
+        if (is_rrdpush_enabled)
+        {
+            is_rrdpush_enabled = config_get_boolean(CONFIG_SECTION_STREAM, "enable replication", is_rrdpush_enabled);
+        }
+        return is_rrdpush_enabled;
+    } else {
+        //guid has more priority and owerwrites api key
+        is_replication_enabled = config_get_boolean(key, "enable replication", is_replication_enabled);
+        is_replication_enabled = config_get_boolean(host->machine_guid, "enable replication", is_replication_enabled);
+        return is_replication_enabled;
+    }
+}
+
+void replication_sender_init(RRDHOST *host, char *key){
     if(!host || !host->replication){
         error("%s: Host or host's replication state is not initialized! - Tx thread Initialization failed!", REPLICATION_MSG);
         return;
@@ -54,7 +79,7 @@ void replication_sender_init(RRDHOST *host){
     host->replication->tx_replication = (REPLICATION_STATE *)callocz(1, sizeof(REPLICATION_STATE));
     replication_state_init(host->replication->tx_replication);
     host->replication->tx_replication->host = host;
-    host->replication->tx_replication->enabled = default_rrdpush_replication_enabled;
+    host->replication->tx_replication->enabled = replication_rd_config(host, key, 1);
 #ifdef ENABLE_HTTPS
     host->replication->tx_replication->ssl.conn = NULL;
     host->replication->tx_replication->ssl.flags = NETDATA_SSL_START;
@@ -63,46 +88,26 @@ void replication_sender_init(RRDHOST *host){
     print_replication_state(host->replication->tx_replication);
 }
 
-static unsigned int replication_rd_config(RRDHOST *host, struct config *stream_config, char *key)
-{
-    UNUSED(key);
-    REPLICATION_STATE *rep_state = host->replication->rx_replication;
-    info("%s: Reading config Rx for host %s ", REPLICATION_MSG, host->hostname);
-    unsigned int rrdpush_replication_enable = default_rrdpush_replication_enabled;
-//TODO: Read configuration - https
-// #ifdef ENABLE_HTTPS
-//     //Manage also the SSL configuration and other configuration here
-//     rrdpush_replication_enable = appconfig_get_boolean(stream_config, key, "enable replication", rrdpush_replication_enable);
-//     rrdpush_replication_enable = appconfig_get_boolean(stream_config, host->machine_guid, "enable replication", rrdpush_replication_enable);    
-// #endif
-    rep_state->timeout = (int)appconfig_get_number(stream_config, CONFIG_SECTION_STREAM, "timeout seconds", 60);
-    rep_state->default_port = (int)appconfig_get_number(stream_config, CONFIG_SECTION_STREAM, "default port", 19999);    
-    rrdpush_replication_enable = appconfig_get_boolean(stream_config, CONFIG_SECTION_STREAM, "enable replication", rrdpush_replication_enable);
-    
-    info("%s: Configuration applied %u ", REPLICATION_MSG, rrdpush_replication_enable);
-    return rrdpush_replication_enable;
-}
-
-void replication_receiver_init(RRDHOST *image_host, struct config *stream_config, char *key)
+void replication_receiver_init(RRDHOST *image_host, char *key)
 {
     image_host->replication->rx_replication = (REPLICATION_STATE *)callocz(1, sizeof(REPLICATION_STATE));
-    unsigned int rrdpush_replication_enable = replication_rd_config(image_host, stream_config, key);
+    unsigned int rrdpush_replication_enable = replication_rd_config(image_host, key, 0);
     if(!rrdpush_replication_enable)
     {
         infoerr("%s: Could not initialize Rx replication thread. Replication is disabled or not supported!", REPLICATION_MSG);
         return;
     }
     replication_state_init(image_host->replication->rx_replication);
-    info("%s: REP Rx state initialized", REPLICATION_MSG);    
+    info("%s: REP Rx state initialized", REPLICATION_MSG);
     image_host->replication->rx_replication->host = image_host;
-    image_host->replication->rx_replication->enabled = rrdpush_replication_enable; 
+    image_host->replication->rx_replication->enabled = rrdpush_replication_enable;
     info("%s: Initialize Rx for host %s ", REPLICATION_MSG, image_host->hostname);
     print_replication_state(image_host->replication->rx_replication);
 }
 
 /**************************************************
 * Connection management & socket handling functions
-***************************************************/ 
+***************************************************/
 static void replication_thread_close_socket(REPLICATION_STATE *rep_state) {
     rep_state->connected = 0;
 
@@ -336,7 +341,7 @@ static void replication_attempt_to_connect(RRDHOST *host)
             log_replication_connection(rep_state->client_ip, rep_state->client_port, host->rrdpush_send_api_key, host->machine_guid, host->hostname, "SOCKET CONVERSION TO FD FAILED - SOCKET ERROR");
             error("%s %s [receive from [%s]:%s]: failed to get a FILE for FD %d.", REPLICATION_MSG, host->hostname, rep_state->client_ip, rep_state->client_port, rep_state->socket);
             close(rep_state->socket);
-        } 
+        }
     }
     else {
         // increase the failed connections counter
@@ -392,13 +397,13 @@ int ret;
 #endif
     ret = recv(replication->socket, replication->read_buffer + replication->read_len, sizeof(replication->read_buffer) - replication->read_len - 1,
                MSG_DONTWAIT);
-    
+
     if (ret>0) {
         replication->read_len += ret;
         return;
     }
     debug(D_REPLICATION, "%s: Socket was POLLIN, but req %zu bytes gave %d", REPLICATION_MSG, sizeof(replication->read_buffer) - replication->read_len - 1, ret);
-    
+
     if (ret<0 && (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR))
         return;
     if (ret==0)
@@ -459,7 +464,7 @@ void replication_attempt_to_send(struct replication_state *replication) {
                     "%s: Host %s [send to %s]: unavailable after polling POLLOUT (retry #%d)",
                     REPLICATION_MSG,
                     replication->host->hostname,
-                    replication->connected_to, send_retry);                
+                    replication->connected_to, send_retry);
                 continue;
         } else if (ret == -1) {
             debug(D_REPLICATION, "%s: Send failed - closing socket...", REPLICATION_MSG);
@@ -486,6 +491,7 @@ void replication_attempt_to_send(struct replication_state *replication) {
 * Thread management functions
 ***************************************************/
 void *replication_sender_thread(void *ptr) {
+    sleep(REPLICATION_SENDER_LATENCY);
     RRDHOST *host = (RRDHOST *)ptr;
     REPLICATION_STATE *rep_state = host->replication->tx_replication;
     unsigned int rrdpush_replication_enabled = rep_state->enabled;
@@ -531,7 +537,7 @@ void replication_sender_thread_spawn(RRDHOST *host) {
 
     //TBR - Fro debugging
     // print_replication_state(host->replication->tx_replication);
-    
+
     if(!host->replication->tx_replication->spawned) {
         char tag[NETDATA_THREAD_TAG_MAX + 1];
         snprintfz(tag, NETDATA_THREAD_TAG_MAX, "REPLICATION_SENDER[%s]", host->hostname);
@@ -569,20 +575,20 @@ void *replication_receiver_thread(void *ptr){
             .next = NULL,
             .version = 0,
     };
-    
+
     netdata_thread_cleanup_push(replication_receiver_thread_cleanup_callback, host);
 
     snprintfz(cd.id,           CONFIG_MAX_NAME,  "%s:%s", rep_state->client_ip, rep_state->client_port);
     snprintfz(cd.filename,     FILENAME_MAX,     "%s:%s", rep_state->client_ip, rep_state->client_port);
     snprintfz(cd.fullfilename, FILENAME_MAX,     "%s:%s", rep_state->client_ip, rep_state->client_port);
-    snprintfz(cd.cmd,          PLUGINSD_CMD_MAX, "%s:%s", rep_state->client_ip, rep_state->client_port);    
+    snprintfz(cd.cmd,          PLUGINSD_CMD_MAX, "%s:%s", rep_state->client_ip, rep_state->client_port);
     // Respond with the REP ack text command
     info("%s %s [receive from [%s]:%s]: initializing replication communication...", REPLICATION_MSG, host->hostname, rep_state->client_ip, rep_state->client_port);
     char initial_response[HTTP_HEADER_SIZE];
     if (rep_state->stream_version >= STREAM_VERSION_GAP_FILLING) {
         info("%s %s [receive from [%s]:%s]: Netdata acknowledged replication over stream version %u.", REPLICATION_MSG, host->hostname, rep_state->client_ip, rep_state->client_port, rep_state->stream_version);
         sprintf(initial_response, "%s", REP_ACK_CMD);
-    } 
+    }
     else {
         info("%s [receive from [%s]:%s]: Netdata stream protocol does not support replication.", host->hostname, rep_state->client_ip, rep_state->client_port);
         sprintf(initial_response, "%s", "REP OFF");
@@ -613,7 +619,7 @@ void *replication_receiver_thread(void *ptr){
         close(rep_state->socket);
         return 0;
     }
-    
+
     // call the plugins.d processor to receive the metrics
     info("%s %s [receive from [%s]:%s]: filling replication gaps...", REPLICATION_MSG, host->hostname, rep_state->client_ip, rep_state->client_port);
     log_replication_connection(rep_state->client_ip, rep_state->client_port, rep_state->key, host->machine_guid, host->hostname, "CONNECTED");
@@ -627,7 +633,7 @@ void *replication_receiver_thread(void *ptr){
 
     // Repliction completed or exitted
     replication_thread_close_socket(rep_state);
-    
+
     log_replication_connection(rep_state->client_ip, rep_state->client_port, rep_state->key, host->machine_guid, host->hostname, "DISCONNECTED");
     debug(D_REPLICATION, "%s: %s [receive from [%s]:%s]: disconnected (completed %zu updates).", REPLICATION_MSG, host->hostname, rep_state->client_ip, rep_state->client_port, count);
 
@@ -638,7 +644,7 @@ void *replication_receiver_thread(void *ptr){
     //     rrd_rdlock();
     //     rrdhost_wrlock(rpt->host);
     //     netdata_mutex_lock(&rpt->host->receiver_lock);
-    //     if (rpt->host->receiver == rpt) {            
+    //     if (rpt->host->receiver == rpt) {
     //         rpt->host->senders_disconnected_time = now_realtime_sec();
     //         rrdhost_flag_set(rpt->host, RRDHOST_FLAG_ORPHAN);
     //         if(health_enabled == CONFIG_BOOLEAN_AUTO)
@@ -656,7 +662,7 @@ void *replication_receiver_thread(void *ptr){
     info("%s: Cleaning up the replication Rx thread - Replication Parser Finished (completed %zu updates)!", REPLICATION_MSG, count);
     fclose(fp);
     netdata_thread_cleanup_pop(1);
-    return NULL;   
+    return NULL;
 }
 
 int finish_gap_replication(RRDHOST *host, REPLICATION_STATE *rep_state){
@@ -832,9 +838,9 @@ int replication_receiver_thread_spawn(struct web_client *w, char *url) {
     UNUSED(abbrev_timezone);
     UNUSED(tags);
     UNUSED(timezone);
-    UNUSED(os);                
+    UNUSED(os);
     UNUSED(utc_offset);
-    UNUSED(registry_hostname);                 
+    UNUSED(registry_hostname);
 
     // Replication request rate limit control
     if(unlikely(web_client_replication_rate_t > 0)) {
@@ -865,7 +871,7 @@ int replication_receiver_thread_spawn(struct web_client *w, char *url) {
     // At this point, streaming should have already call the receiver thread to create the host.
     // So if the host exists we continue with the call to the replication rx thread.
     // If the host doesn't exist and host->receiver is NULL means that there was a problem
-    // with host creation during streaming or the REPLICATE command arrived earlier than the 
+    // with host creation during streaming or the REPLICATE command arrived earlier than the
     // respective STREAM command. So do not start the Rx replication thread.
     // The replication Tx thread in child should try to reconnect.
 
@@ -898,7 +904,7 @@ int replication_receiver_thread_spawn(struct web_client *w, char *url) {
 
     // Host exists and replication is not active
     // Initialize replication receiver structure.
-    replication_receiver_init(host, &stream_config, key);
+    replication_receiver_init(host, key);
     host->replication->rx_replication->last_msg_t = now_realtime_sec();
     host->replication->rx_replication->socket = w->ifd;
     host->replication->rx_replication->client_ip = strdupz(w->client_ip);
@@ -1044,7 +1050,7 @@ void replication_collect_past_metric_init(REPLICATION_STATE *rep_state, char *rr
     if(unlikely(!dim_past_data->rd)) {
         error("Cannot find dimension with id '%s' in chart '%s' on host '%s'.", dim_past_data->rrddim_id, dim_past_data->rrdset_id, rep_state->host->hostname);
         return;
-    }    
+    }
 
     debug(D_REPLICATION, "%s: Initializaton for collecting past data of dimension \"%s\".\"%s\"\n", REPLICATION_MSG, rrdset_id, rrddim_id);
 }
@@ -1086,7 +1092,7 @@ void replication_collect_past_metric_done(REPLICATION_STATE *rep_state) {
     if(!rep_state->dim_past_data->rd){
         infoerr("%s: Collect past metric: Dimension not found in the host", REPLICATION_MSG);
         return;
-    }    
+    }
     // netdata_mutex_lock(&rep_state->mutex);
     flush_collected_metric_past_data(dim_past_data, rep_state);
     // netdata_mutex_unlock(&rep_state->mutex);
@@ -1097,7 +1103,7 @@ void flush_collected_metric_past_data(RRDDIM_PAST_DATA *dim_past_data, REPLICATI
         return;
     rrdeng_store_past_metrics_page(dim_past_data, rep_state);
     rrdeng_flush_past_metrics_page(dim_past_data, rep_state);
-    rrdeng_store_past_metrics_page_finalize(dim_past_data, rep_state);    
+    rrdeng_store_past_metrics_page_finalize(dim_past_data, rep_state);
     // print_collected_metric_past_data(dim_past_data, rep_state);
 };
 
@@ -1136,7 +1142,7 @@ void copy_gap(GAP *dst, GAP *src) {
     dst->t_window.t_start = src->t_window.t_start;
     dst->t_window.t_first = src->t_window.t_first;
     dst->t_window.t_end = src->t_window.t_end;
-    dst->status = strdupz(src->status);    
+    dst->status = strdupz(src->status);
 }
 
 void reset_gap(GAP *a_gap) {
@@ -1168,7 +1174,7 @@ int save_all_gaps(GAPS *gap_timeline){
 
 int load_gap(RRDHOST *host)
 {
-    int rc;   
+    int rc;
     if (unlikely(!db_meta) && default_rrd_memory_mode != RRD_MEMORY_MODE_DBENGINE)
         return SQLITE_ERROR;
     rc = sql_load_host_gap(host);
@@ -1199,7 +1205,7 @@ int remove_all_gaps(void)
 int remove_gap(GAP *a_gap)
 {
     int rc;
-    
+
     // TBR
     // print_replication_gap(a_gap);
     if (unlikely(!db_meta) && default_rrd_memory_mode != RRD_MEMORY_MODE_DBENGINE)
@@ -1289,7 +1295,7 @@ size_t replication_parser(REPLICATION_STATE *rpt, struct plugind *cd, FILE *fp) 
         freez(user);
         return 0;
     }
-    
+
     parser->plugins_action->begin_action     = &pluginsd_begin_action;
     parser->plugins_action->flush_action     = &pluginsd_flush_action;
     parser->plugins_action->end_action       = &pluginsd_end_action;
@@ -1459,7 +1465,7 @@ void evaluate_gap_ondisconnection(struct receiver_state *stream_recv) {
 
 /*************************************************
 * FSM functionalities for replication protocol
-**************************************************/ 
+**************************************************/
 // chart labels for REP
 void replication_send_clabels(REPLICATION_STATE *rep_state, RRDSET *st) {
     RRDHOST *host = st->rrdhost;
@@ -1579,7 +1585,7 @@ void sender_fill_gap_nolock(REPLICATION_STATE *rep_state, RRDSET *st, GAP a_gap)
     time_t window_start, window_end;
     time_t newest_connection = st->rrdhost->sender->t_newest_connection;
     UNUSED(t_delta_first);
-   
+
     // Chop the GAP time interval to fit a RRDENG_BLOCK_SIZE(4096)
     // window_end is more important than window start
     window_end = MAX((t_delta_end + (t_delta_end % update_every)), newest_connection);
@@ -1589,7 +1595,7 @@ void sender_fill_gap_nolock(REPLICATION_STATE *rep_state, RRDSET *st, GAP a_gap)
         replication_points = default_replication_gap_block_size;
         window_start = window_end - replication_points * update_every;
     }
-    
+
     // debug(D_REPLICATION
     //     "%s: REP GAP timestamps request from MEMORY\nt_d_start: %ld, t_d_end:  %ld \nw_start:  %ld w_end:  %ld \nreplication points: %lu\nupdate_every: %d",
     //     REPLICATION_MSG,
@@ -1609,7 +1615,7 @@ void sender_fill_gap_nolock(REPLICATION_STATE *rep_state, RRDSET *st, GAP a_gap)
     size_t num_points = 0;
     rrddim_foreach_read(rd, st) {
         if (!rd->exposed)
-            continue;        
+            continue;
 
         // Send the intersection of this dimension and the time-window on the chart
         time_t rd_start = rrddim_first_entry_t(rd);
@@ -1622,9 +1628,9 @@ void sender_fill_gap_nolock(REPLICATION_STATE *rep_state, RRDSET *st, GAP a_gap)
             rd->state->query_ops.init(rd, &handle, rd_oldest, rd_end);
             debug(D_REPLICATION, "Fill replication with %s.%s window=%ld-%ld data=%ld-%ld query=%ld-%ld",
                   st->id, rd->id, window_start, window_end, rd_oldest, rd_end, handle.start_time, handle.end_time);
-            
+
             buffer_sprintf(rep_state->build, "RDATA %s \"%s\" \"%s\" %ld %ld %u\n", gap_uuid_str, st->id, rd->id, window_start, window_end, block_id);
-            
+
             num_points = 0;
             for (time_t metric_t = rd_oldest; metric_t <= rd_end; ) {
 
@@ -1640,7 +1646,7 @@ void sender_fill_gap_nolock(REPLICATION_STATE *rep_state, RRDSET *st, GAP a_gap)
                 buffer_sprintf(rep_state->build, "FILL \"%s\" \"%s\" %ld " STORAGE_NUMBER_FORMAT "\n", st->id, rd->id, metric_t, n);
                 debug(D_REPLICATION, "%s.%s FILL %ld " STORAGE_NUMBER_FORMAT "\n", st->id, rd->id, metric_t, n);
                     num_points++;
-                    
+
                 }
             }
             buffer_sprintf(rep_state->build, "FILLEND %zu %u\n", num_points, block_id);
@@ -1675,9 +1681,9 @@ void sender_gap_filling(REPLICATION_STATE *rep_state, GAP a_gap)
 // For each chart send the dimension past data in RDATA format
 void sender_chart_gap_filling(RRDSET *st, GAP a_gap) {
     REPLICATION_STATE *rep_state = st->rrdhost->replication->tx_replication;
-    rrdset_rdlock(st);    
+    rrdset_rdlock(st);
     if(unlikely(!should_send_chart_matching(st))){
-        rrdset_unlock(st);    
+        rrdset_unlock(st);
         return;
     }
 
@@ -1692,7 +1698,7 @@ void sender_chart_gap_filling(RRDSET *st, GAP a_gap) {
 
 /***************************
 * Helper and Debug functions
-****************************/ 
+****************************/
 static void print_replication_state(REPLICATION_STATE *state)
 {
     info(
@@ -1828,7 +1834,7 @@ void print_collected_metric_past_data(RRDDIM_PAST_DATA *past_data, REPLICATION_S
     time_t te = past_data->end_time  / USEC_PER_SEC;
     storage_number *page = (storage_number *)past_data->page;
     uint32_t len = past_data->page_length / sizeof(storage_number);
-    
+
     info("%s: Past Samples(%u) [%ld, %ld] for dimension %s\n", REPLICATION_MSG, len, ts, te, rd->id);
     time_t t = ts;
     for(uint32_t i=0; i < len ; i++){

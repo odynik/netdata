@@ -120,6 +120,7 @@ int rrdpush_init() {
     netdata_ssl_ca_file = appconfig_get(&stream_config, CONFIG_SECTION_STREAM, "CAfile", "/etc/ssl/certs/certs.pem");
 #endif
 
+/*
 #ifdef ENABLE_REPLICATION
     default_rrdpush_replication_enabled = (unsigned int)appconfig_get_boolean(&stream_config, CONFIG_SECTION_STREAM, "enable replication", default_rrdpush_replication_enabled);
     
@@ -128,7 +129,7 @@ int rrdpush_init() {
         default_rrdpush_replication_enabled = 0;
     }
 #endif  //ENABLE_REPLICATION
-
+*/
     return default_rrdpush_enabled;
 }
 
