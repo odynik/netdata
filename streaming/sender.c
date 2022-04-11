@@ -225,19 +225,36 @@ static void enable_supported_stream_features(struct sender_state *s) {
         case STREAM_VERSION_COMPRESSION:
             default_compression_enabled = 1;
             default_rrdpush_sender_replication_enabled = 0;
+        //     default_compression_enabled = s->rrdpush_compression;
+        //     default_rrdpush_replication_enabled = s->host->replication->tx_replication->enabled;
+        //     break;
+        // case STREAM_VERSION_GAP_FILLING:
+        //     default_compression_enabled = 0;
+        //     s->rrdpush_compression = 0;
+        //     default_rrdpush_replication_enabled = s->host->replication->tx_replication->enabled;
+        //     break;
+        // case STREAM_VERSION_COMPRESSION:
+        //     default_compression_enabled = s->rrdpush_compression;
+        //     default_rrdpush_replication_enabled = 0;
+        //     s->host->replication->tx_replication->enabled = 0;
             break;
         case STREAM_VERSION_CLABELS:
         case STREAM_VERSION_CLAIM:
         default:
             default_compression_enabled = 0;
             default_rrdpush_sender_replication_enabled = 0;
+            // default_rrdpush_replication_enabled = 0;
             break;
     }
-#else
     if (s->version > STREAM_VERSION_COMPRESSION)
         default_rrdpush_sender_replication_enabled = 1;
     else
         default_rrdpush_sender_replication_enabled = 0;
+    //     default_rrdpush_replication_enabled = s->host->replication->tx_replication->enabled;
+    // else {
+    //     default_rrdpush_replication_enabled = 0;
+    //     s->host->replication->tx_replication->enabled = 0;
+    // }
 #endif
 
 #ifdef ENABLE_COMPRESSION

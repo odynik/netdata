@@ -56,6 +56,13 @@ void replication_sender_init(RRDHOST *host){
     replication_state_init(host->replication->tx_replication);
     host->replication->tx_replication->host = host;
     host->replication->tx_replication->enabled = default_rrdpush_sender_replication_enabled;
+    // Read REPlication Tx configuration
+    // default_rrdpush_replication_enabled = (unsigned int)appconfig_get_boolean(&stream_config, CONFIG_SECTION_STREAM, "enable replication", default_rrdpush_replication_enabled);
+    // if (!default_rrdpush_replication_enabled || !default_rrdpush_enabled) {
+    //     error("%s [send]: Stream Replication Tx thread is disabled. Check replication and streaming settings in stream.conf.", REPLICATION_MSG);
+    //     default_rrdpush_replication_enabled = 0;
+    // }
+    // host->replication->tx_replication->enabled = default_rrdpush_replication_enabled;
 #ifdef ENABLE_HTTPS
     host->replication->tx_replication->ssl.conn = NULL;
     host->replication->tx_replication->ssl.flags = NETDATA_SSL_START;
@@ -66,15 +73,12 @@ void replication_sender_init(RRDHOST *host){
 
 static unsigned int replication_rd_config(RRDHOST *host, struct config *stream_config, char *key)
 {
-    UNUSED(key);
     REPLICATION_STATE *rep_state = host->replication->rx_replication;
     info("%s: Reading config Rx for host %s ", REPLICATION_MSG, host->hostname);
     
 //TODO: Read configuration - https
 // #ifdef ENABLE_HTTPS
 //     //Manage also the SSL configuration and other configuration here
-//     rrdpush_replication_enable = appconfig_get_boolean(stream_config, key, "enable replication", rrdpush_replication_enable);
-//     rrdpush_replication_enable = appconfig_get_boolean(stream_config, host->machine_guid, "enable replication", rrdpush_replication_enable);    
 // #endif
     rep_state->timeout = (int)appconfig_get_number(stream_config, CONFIG_SECTION_STREAM, "timeout seconds", 60);
     rep_state->default_port = (int)appconfig_get_number(stream_config, CONFIG_SECTION_STREAM, "default port", 19999);    
@@ -690,6 +694,7 @@ void send_gap_for_replication(RRDHOST *host, REPLICATION_STATE *rep_state)
     char *rep_msg_cmd;
     size_t len;
     replication_gap_to_str(the_gap, &rep_msg_cmd, &len);
+    sleep(3);
     send_message(rep_state, rep_msg_cmd);
 }
 
