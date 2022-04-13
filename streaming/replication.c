@@ -1212,6 +1212,22 @@ int remove_all_gaps(void)
     return rc;
 }
 
+int remove_all_host_gaps(RRDHOST* host)
+{
+    int rc;
+
+    // TBR
+    info("%s: REMOVE in SQLITE all GAPs for host %s: ", REPLICATION_MSG, host->hostname);
+
+    if (unlikely(!db_meta) && default_rrd_memory_mode != RRD_MEMORY_MODE_DBENGINE)
+        return 0;
+    rc = sql_delete_all_host_gaps(host);
+    if(!rc)
+        info("%s: All GAPs from host %s deleted from metadata DB", REPLICATION_MSG, host->hostname);
+
+    return rc;
+}
+
 int remove_gap(GAP *a_gap)
 {
     int rc;
@@ -1385,7 +1401,7 @@ void gaps_init(RRDHOST **a_host)
 
 void gaps_destroy(RRDHOST **a_host) {
     RRDHOST *host = *a_host;
-    if(remove_all_gaps())
+    if(remove_all_host_gaps(host))
         error("%s: Cannot delete all GAPs in metadata DB.", REPLICATION_MSG);
     if(save_all_gaps(host->gaps_timeline))
         error("%s: Cannot save Queue GAP struct in metadata DB.", REPLICATION_MSG);

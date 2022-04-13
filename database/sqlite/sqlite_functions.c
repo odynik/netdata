@@ -2329,6 +2329,43 @@ int sql_delete_all_gaps(void)
 }
 
 /*
+ * Delete all the gaps of a host from the metadata DB.
+ */
+int sql_delete_all_host_gaps(RRDHOST *host)
+{
+    sqlite3_stmt *res = NULL;
+    int rc;
+
+#ifdef NETDATA_INTERNAL_CHECKS
+    debug(D_METADATALOG,"Deleting all gaps from host %s", host->hostname);
+#endif
+
+    if (unlikely(!res)) {
+        rc = prepare_statement(db_meta, DELETE_ALL_HOST_GAPS, &res);
+        if (rc != SQLITE_OK) {
+            error_report("Failed to prepare statement to delete all gaps for host %s", host->hostname);
+            return rc;
+        }
+    }
+
+    rc = sqlite3_bind_text(res, 1, host->machine_guid, -1, SQLITE_STATIC);
+    if (unlikely(rc != SQLITE_OK)) {
+        error_report("Failed to bind MGUID[%s] parameter to delete all gaps for host %s.", host->machine_guid, host->hostname);
+        goto bind_fail;
+    }     
+
+    rc = sqlite3_step(res);
+    if (unlikely(rc != SQLITE_DONE))
+        error_report("Failed to delete all gaps for host %s, rc = %d", host->hostname, rc);
+
+bind_fail:
+    rc = sqlite3_reset(res);
+    if (unlikely(rc != SQLITE_OK))
+        error_report("Failed to reset statement when deleting all gaps for host %s, rc = %d", host->hostname, rc);
+    return rc;
+}
+
+/*
  * Delete a gap from the database
  */
 int sql_delete_gap(uuid_t *gap_uuid)
@@ -2361,7 +2398,7 @@ int sql_delete_gap(uuid_t *gap_uuid)
 bind_fail:
     rc = sqlite3_reset(res);
     if (unlikely(rc != SQLITE_OK))
-        error_report("Failed to reset statement when deleting dimension UUID, rc = %d", rc);
+        error_report("Failed to reset statement when deleting gap UUID, rc = %d", rc);
     return rc;
 }
 

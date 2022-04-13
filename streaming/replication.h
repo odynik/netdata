@@ -117,6 +117,7 @@ int save_gap(GAP *a_gap);
 int save_all_gaps(GAPS *gap_timeline);
 int remove_gap(GAP *a_gap);
 int remove_all_gaps(void);
+int remove_all_host_gaps(RRDHOST* host);
 int load_gap(RRDHOST *host);
 
 void replication_state_destroy(REPLICATION_STATE **state);
