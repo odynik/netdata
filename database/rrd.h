@@ -847,10 +847,9 @@ struct rrdhost {
 
     struct receiver_state *receiver;
     netdata_mutex_t receiver_lock;
-#ifdef  ENABLE_REPLICATION
+
     GAPS *gaps_timeline;                       // disconnection gaps of a host
     REPLICATION *replication;                  // replication struct of a host
-#endif  //ENABLE_REPLICATION    
 
     GAPS *gaps_timeline;                       // disconnection gaps of a host
     REPLICATION *replication;                  // replication struct of a host
