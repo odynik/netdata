@@ -25,5 +25,18 @@ sequenceDiagram
     Child->>-Parent: REP ACK(4)
     Parent->>-Child: REP OFF(1)
 ```
-
+### View
 [![](https://mermaid.ink/img/pako:eNqtVF1rGzEQ_CuLnmwSG2z6dATD4Y8SahyT5PHAyKc9W1QnXaW9Qgj579n7So70WlqnepHQzoxmhLTPInUKRSQC_ijRprjS8uRlnljgUUhPOtWFtAR76ZEnGWCHpCTJdudX5PKsjeoD640GVy8ni8VVQ47gfr3f3i7jx3VTb7YZMKmRdR3i5bffs-FuN5qPP7CvWvbXeA8nWRy0AjoEYpM8Z9qHakbbmjLOFczlzdouixqdStLONvWdIwSvT2cCl0F39gPzOXfHKtCD0jnawDzInAdpDKRnPjPAzdEvQFugMwtVNx0IVe2OmMIVQv9Tmmk_5vgt5Cp-jLsYtSAvDrPqtGbxHq2ydDQu_c6FvhZfSae2ud1uh1XYCevkxQzYSomziwXmjcB8ME1FX-9WYMv8EBhsMAxa_tv480_E74tckn6I_1_C9w6cTv_lVdjOUf6ZV9FXuehVDAlcfDEVvCG9_diuEUz6jYDbxOjL-A995G6zGc0YIK5Fjj6XWnHje64IieCfmWMiIl4qzGRpKBGJfWFoWfD_xrXS5LyIMmkCXgtZknt4sqmIyJfYgdrm2aJeXgGxzcZ2)](https://mermaid.live/edit#pako:eNqtVF1rGzEQ_CuLnmwSG2z6dATD4Y8SahyT5PHAyKc9W1QnXaW9Qgj579n7So70WlqnepHQzoxmhLTPInUKRSQC_ijRprjS8uRlnljgUUhPOtWFtAR76ZEnGWCHpCTJdudX5PKsjeoD640GVy8ni8VVQ47gfr3f3i7jx3VTb7YZMKmRdR3i5bffs-FuN5qPP7CvWvbXeA8nWRy0AjoEYpM8Z9qHakbbmjLOFczlzdouixqdStLONvWdIwSvT2cCl0F39gPzOXfHKtCD0jnawDzInAdpDKRnPjPAzdEvQFugMwtVNx0IVe2OmMIVQv9Tmmk_5vgt5Cp-jLsYtSAvDrPqtGbxHq2ydDQu_c6FvhZfSae2ud1uh1XYCevkxQzYSomziwXmjcB8ME1FX-9WYMv8EBhsMAxa_tv480_E74tckn6I_1_C9w6cTv_lVdjOUf6ZV9FXuehVDAlcfDEVvCG9_diuEUz6jYDbxOjL-A995G6zGc0YIK5Fjj6XWnHje64IieCfmWMiIl4qzGRpKBGJfWFoWfD_xrXS5LyIMmkCXgtZknt4sqmIyJfYgdrm2aJeXgGxzcZ2)
+
+```
+stateDiagram-v2
+    state has_gaps <<choice>>
+    [*] --> REP_ON
+    REP_ON --> has_gaps: queued gaps
+    has_gaps --> REP_OFF: no
+    has_gaps --> Tx_GAPS : yes
+    Tx_GAPS --> REP_ACK
+    REP_ACK --> has_gaps
+```      
+### View:
+[![](https://mermaid.ink/img/pako:eNptUM0KwjAMfpWQo7iLxzIG4t9BUFFvVkZYoxu4dW6tKOK7W-2qCOaUfD_5SO6YacUosDVkeFzQsaEyugxkBa7eIOTUpkeqW4jjLNdFxkni6V1vD1GUwHqySpcLj_n-DQefgLNlywpeg1d9Vn7s06mASv9ht9d0NlxtQMCNO3eAgnk4mn_D3fCT7plQ2MeSm5IK5W6-vziJJueSJQrXKj6QPRmJsno4qa2Ve8BEFUY3KA50armPZI3e3KoMhWksB1H3uk71eAJLC2n9)](https://mermaid.live/edit#pako:eNptUM0KwjAMfpWQo7iLxzIG4t9BUFFvVkZYoxu4dW6tKOK7W-2qCOaUfD_5SO6YacUosDVkeFzQsaEyugxkBa7eIOTUpkeqW4jjLNdFxkni6V1vD1GUwHqySpcLj_n-DQefgLNlywpeg1d9Vn7s06mASv9ht9d0NlxtQMCNO3eAgnk4mn_D3fCT7plQ2MeSm5IK5W6-vziJJueSJQrXKj6QPRmJsno4qa2Ve8BEFUY3KA50armPZI3e3KoMhWksB1H3uk71eAJLC2n9)
