@@ -2412,9 +2412,10 @@ void set_host_gap(RRDHOST *host, sqlite3_stmt *res) {
     {
         if(count > 0) {
             debug(D_REPLICATION, ":%s: Exiting loading... with count(%d) \ng_b: %p, \ng_rear: %p, \ng_count: %p", REPLICATION_MSG, count, host->gaps_timeline->gap_buffer, host->gaps_timeline->gaps->front->item, &host->gaps_timeline->gap_data[count]);
+            // This is the top GAP that should have and oncreate status. It will go at the end of the q.
             copy_gap(host->gaps_timeline->gap_buffer, host->gaps_timeline->gaps->front->item);
-            reset_gap(host->gaps_timeline->gaps->front->item);
-            queue_pop(host->gaps_timeline->gaps);
+            GAP *the_gap = (GAP *)queue_pop(host->gaps_timeline->gaps);
+            reset_gap(the_gap);
             return;
         }
         debug(D_REPLICATION, "%s: The GAPs table in the metdata DB seems to be empty for the host %s.", REPLICATION_MSG, host->hostname);

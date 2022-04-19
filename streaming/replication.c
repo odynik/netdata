@@ -1173,8 +1173,8 @@ GAP* add_gap_data(GAPS *host_queue, GAP *gap) {
     int q_count = host_queue->gaps->count;
     int q_max = host_queue->gaps->max;
     // This wrapping index functionality needs more attention
-    // unsigned int index = (q_count + 1) % q_max;
-    unsigned int index = q_count % q_max;
+    unsigned int index = (q_count ? (q_count + 1) : q_count) % q_max;
+    // unsigned int index = q_count % q_max;
     GAP *gap_in_mem = &host_queue->gap_data[index];
     copy_gap(gap_in_mem, gap);
     debug(D_REPLICATION, "%s: Add GAP data at index %u: \n", REPLICATION_MSG, index);
@@ -1187,7 +1187,8 @@ int save_all_gaps(GAPS *gap_timeline){
     int rc = 0;
     for(int i = 0; i < count; i++)
     {
-        rc += save_gap(&gap_timeline->gap_data[i]);
+        if(!strcmp(gap_timeline->gap_data[i].status, "oncompletion"))
+            rc += save_gap(&gap_timeline->gap_data[i]);
     }
     return rc;
 }
@@ -1473,6 +1474,10 @@ void evaluate_gap_onconnection(struct receiver_state *stream_recv)
         infoerr("%s: GAP Awareness mechanism is not ready - Continue...", REPLICATION_MSG);
         return;
     }
+    // if (!stream_recv->host->replication->rx_replication->enabled) {
+    //     infoerr("%s: GAP Awareness mechanism is disabled - Enabled the gap filling in stream.conf...", REPLICATION_MSG);
+    //     return;
+    // }    
     GAP *seed_gap = (GAP *)stream_recv->host->gaps_timeline->gap_buffer;
     // Re-connection
     if (complete_new_gap(seed_gap)) {
@@ -1492,7 +1497,7 @@ void evaluate_gap_onconnection(struct receiver_state *stream_recv)
     info("%s: New GAP added in the queue.", REPLICATION_MSG);
     // Expect that at the end of the queue
     print_replication_queue_gap(stream_recv->host->gaps_timeline);
-    print_replication_gap((GAP *)stream_recv->host->gaps_timeline->gaps->rear->item);
+    // print_replication_gap((GAP *)stream_recv->host->gaps_timeline->gaps->rear->item);
 }
 
 // GAP generation at disconnection
@@ -1505,6 +1510,10 @@ void evaluate_gap_ondisconnection(struct receiver_state *stream_recv) {
         print_replication_queue_gap(stream_recv->host->gaps_timeline);
         return;
     }
+    // if (!stream_recv->host->replication->rx_replication->enabled) {
+    //     infoerr("%s: GAP Awareness mechanism is disabled - Enabled the gap filling in stream.conf...", REPLICATION_MSG);
+    //     return;
+    // }    
     generate_new_gap(stream_recv);
     info("%s: New GAP seed was collected in the GAPs buffer!", REPLICATION_MSG);
     // GAPS *the_gaps = stream_recv->host->gaps_timeline;
