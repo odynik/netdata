@@ -5,7 +5,7 @@
 #define REPLICATE_CMD "REPLICATE"
 #define REP_ACK_CMD "REP ACK"
 #define REPLICATION_RX_CMD_Q_MAX_SIZE (64)
-#define REPLICATION_GAP_TIME_MARGIN 3
+#define REPLICATION_GAP_TIME_MARGIN 0
 
 typedef struct gap GAP;
 typedef struct time_window TIME_WINDOW;
@@ -148,4 +148,3 @@ extern void rrdeng_flush_past_metrics_page(RRDDIM_PAST_DATA *dim_past_data, REPL
 extern void rrdeng_store_past_metrics_page_finalize(RRDDIM_PAST_DATA *dim_past_data, REPLICATION_STATE *rep_state);
 
 #endif
-
