@@ -1087,7 +1087,7 @@ void replication_collect_past_metric(REPLICATION_STATE *rep_state, time_t timest
             time_t current_end_time = rep_state->dim_past_data->end_time / USEC_PER_SEC;
             time_t t_sample_diff  = (timestamp -  current_end_time);
             if(t_sample_diff > update_every){
-                error("%s: Hard gap was detected. Need to fill it with zeros", REPLICATION_MSG);
+                error("%s: Hard gap [%ld, %ld] was detected. Need to fill it with zeros", REPLICATION_MSG, current_end_time, timestamp);
                 page_length += ((t_sample_diff - update_every)*sizeof(number));
                 if(page_length > RRDENG_BLOCK_SIZE){
                     infoerr("%s: Page size is not enough to fill the hard gap.", REPLICATION_MSG);
@@ -1183,7 +1183,7 @@ GAP* add_gap_data(GAPS *host_queue, GAP *gap) {
 }
 
 int save_all_host_gaps(GAPS *gap_timeline){
-    int count = gap_timeline->gaps->count;
+    // int count = gap_timeline->gaps->count;
     int rc = 0;
     
     // Traverse over the linked-list of the GAPs in the queue
@@ -1366,7 +1366,7 @@ size_t replication_parser(REPLICATION_STATE *rpt, struct plugind *cd, FILE *fp) 
         char *line;
         while ((line = receiver_next_line(rpt, &pos))) {
             debug(D_REPLICATION, "%s: Rx REP Parser received: %s \n", REPLICATION_MSG, line);
-            if (unlikely(netdata_exit || rpt->shutdown || parser_action(parser,  line)))
+            if (unlikely(netdata_exit /*|| rpt->shutdown*/ || parser_action(parser,  line)))
                 goto done;
         }
         rpt->last_msg_t = now_realtime_sec();
