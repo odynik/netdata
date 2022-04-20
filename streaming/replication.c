@@ -1182,14 +1182,19 @@ GAP* add_gap_data(GAPS *host_queue, GAP *gap) {
     return gap_in_mem;
 }
 
-int save_all_gaps(GAPS *gap_timeline){
+int save_all_host_gaps(GAPS *gap_timeline){
     int count = gap_timeline->gaps->count;
     int rc = 0;
-    for(int i = 0; i < count; i++)
-    {
-        if(!strcmp(gap_timeline->gap_data[i].status, "oncompletion"))
-            rc += save_gap(&gap_timeline->gap_data[i]);
-    }
+    
+    // Traverse over the linked-list of the GAPs in the queue
+    GAP *q_gap;
+    node elem = gap_timeline->gaps->front; // start
+    for(; ((elem != NULL) && (elem->item != NULL)) ; elem = elem->next) {
+        q_gap = (GAP *)elem->item;
+        if(!strcmp(q_gap->status, "oncompletion"))
+            rc += save_gap(q_gap);
+    };
+
     return rc;
 }
 
@@ -1422,7 +1427,7 @@ void gaps_destroy(RRDHOST **a_host) {
 
     if(remove_all_host_gaps(host))
         error("%s: Cannot delete all GAPs in metadata DB.", REPLICATION_MSG);
-    if(save_all_gaps(host->gaps_timeline))
+    if(save_all_host_gaps(host->gaps_timeline))
         error("%s: Cannot save Queue GAP struct in metadata DB.", REPLICATION_MSG);
     if(save_gap(host->gaps_timeline->gap_buffer))
         error("%s: Cannot save GAP BUFFER struct in metadata DB.", REPLICATION_MSG);
@@ -1822,9 +1827,12 @@ static void print_replication_queue_gap(GAPS *gaps_timeline)
 {
     int count = gaps_timeline->gaps->count;
     info("%s: GAPS in the queue (%d)", REPLICATION_MSG, count);
-    for (int i = 0; i < count; i++) {
-        print_replication_gap(&gaps_timeline->gap_data[i]);
-    }
+    
+    // Traverse over the linked-list of the GAPs in the queue
+    node elem = gaps_timeline->gaps->front; // start
+    for(; ((elem != NULL) && (elem->item != NULL)) ; elem = elem->next) {
+        print_replication_gap((GAP *)elem->item);
+    };
 
     info("%s: GAP in Buffer: \n", REPLICATION_MSG);
     print_replication_gap(gaps_timeline->gap_buffer);
