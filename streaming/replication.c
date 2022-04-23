@@ -439,7 +439,7 @@ void replication_attempt_to_send(struct replication_state *replication) {
     debug(D_REPLICATION, "%s: Sending data. Buffer r=%zu w=%zu s=%zu, next chunk=%zu", REPLICATION_MSG, cb->read, cb->write, cb->size, outstanding);
     ssize_t ret;
     int send_retry = 0;
-    do {
+    // do {
 #ifdef ENABLE_HTTPS
         SSL *conn = replication->ssl.conn;
         if(conn && !replication->ssl.flags) {
@@ -456,14 +456,15 @@ void replication_attempt_to_send(struct replication_state *replication) {
             replication->sent_bytes += ret;
             debug(
                 D_REPLICATION,
-                "%s: Host %s [send to %s]: Sent %zd bytes",
+                "%s: Host %s [send to %s:%d]: Sent %zd bytes",
                 REPLICATION_MSG,
                 replication->host->hostname,
                 replication->connected_to,
+                replication->socket,
                 ret);
-            replication->last_sent_t = now_monotonic_sec();
+            replication->last_sent_t = now_realtime_sec();
             send_retry = 0;
-            break;
+            // break;
         } else if (ret == -1 && (errno == EAGAIN || errno == EINTR || errno == EWOULDBLOCK)) {
             debug(
                 D_REPLICATION,
@@ -471,14 +472,14 @@ void replication_attempt_to_send(struct replication_state *replication) {
                 REPLICATION_MSG,
                 replication->host->hostname,
                 replication->connected_to);
-                sleep(1);
+                // sleep(1);
                 send_retry++;
                 error(
                     "%s: Host %s [send to %s]: unavailable after polling POLLOUT (retry #%d)",
                     REPLICATION_MSG,
                     replication->host->hostname,
                     replication->connected_to, send_retry);                
-                continue;
+                // continue;
         } else if (ret == -1) {
             debug(D_REPLICATION, "%s: Send failed - closing socket...", REPLICATION_MSG);
             error(
@@ -489,13 +490,13 @@ void replication_attempt_to_send(struct replication_state *replication) {
                 replication->sent_bytes_on_this_connection);
             replication_thread_close_socket(replication);
             send_retry = 0;
-            break;
+            // break;
         } else {
             debug(D_REPLICATION, "%s: send() returned 0 -> no error but no transmission", REPLICATION_MSG);
             send_retry = 0;
-            break;
+            // break;
         }
-    } while (send_retry);
+    // } while (send_retry);
     netdata_mutex_unlock(&replication->mutex);
     netdata_thread_enable_cancelability();
 }
@@ -1087,8 +1088,8 @@ void replication_collect_past_metric(REPLICATION_STATE *rep_state, time_t timest
             time_t current_end_time = rep_state->dim_past_data->end_time / USEC_PER_SEC;
             time_t t_sample_diff  = (timestamp -  current_end_time);
             if(t_sample_diff > update_every){
-                error("%s: Hard gap [%ld, %ld] was detected. Need to fill it with zeros", REPLICATION_MSG, current_end_time, timestamp);
                 page_length += ((t_sample_diff - update_every)*sizeof(number));
+                error("%s: Hard gap [%ld, %ld] = %ld was detected. Need to fill it with zeros up to page index %u", REPLICATION_MSG, current_end_time, timestamp, t_sample_diff, page_length);
                 if(page_length > RRDENG_BLOCK_SIZE){
                     infoerr("%s: Page size is not enough to fill the hard gap.", REPLICATION_MSG);
                     return;
@@ -1116,11 +1117,18 @@ void replication_collect_past_metric_done(REPLICATION_STATE *rep_state) {
 }
 
 void flush_collected_metric_past_data(RRDDIM_PAST_DATA *dim_past_data, REPLICATION_STATE *rep_state){
-    if(rrdeng_store_past_metrics_page_init(dim_past_data, rep_state))
+    info("%s: FLUSH COLLECTED PAST METRIC %s.%s", REPLICATION_MSG, dim_past_data->rd->rrdset->id, dim_past_data->rd->id);
+    if(rrdeng_store_past_metrics_page_init(dim_past_data, rep_state)){
+        infoerr("%s: Cannot initialize db engine page: Flushing collected past data skipped!", REPLICATION_MSG);
         return;
+    }
+    info("%s: FLUSH COLLECTED PAST METRIC 1", REPLICATION_MSG);
     rrdeng_store_past_metrics_page(dim_past_data, rep_state);
+    info("%s: FLUSH COLLECTED PAST METRIC 2", REPLICATION_MSG);
     rrdeng_flush_past_metrics_page(dim_past_data, rep_state);
-    rrdeng_store_past_metrics_page_finalize(dim_past_data, rep_state);    
+    info("%s: FLUSH COLLECTED PAST METRIC 3", REPLICATION_MSG);
+    rrdeng_store_past_metrics_page_finalize(dim_past_data, rep_state);
+    info("%s: FLUSH COLLECTED PAST METRIC 4", REPLICATION_MSG);
     // print_collected_metric_past_data(dim_past_data, rep_state);
 };
 
@@ -1359,7 +1367,7 @@ size_t replication_parser(REPLICATION_STATE *rpt, struct plugind *cd, FILE *fp) 
     user->parser = parser;
     do {
         if (receiver_read(rpt, fp)) {
-            sleep(1);
+            infoerr("%s: Nothing to read in the parser. Deadlocked?", REPLICATION_MSG);
             continue;
         }
         int pos = 0;
