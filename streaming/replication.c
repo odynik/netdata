@@ -436,10 +436,13 @@ void replication_attempt_to_send(struct replication_state *replication) {
     netdata_mutex_lock(&replication->mutex);
     char *chunk;
     size_t outstanding = cbuffer_next_unsafe(replication->buffer, &chunk);
-    debug(D_REPLICATION, "%s: Sending data. Buffer r=%zu w=%zu s=%zu, next chunk=%zu", REPLICATION_MSG, cb->read, cb->write, cb->size, outstanding);
+    debug(D_REPLICATION, "%s: Sending data. Buffer r=%zu w=%zu s=%zu/max=%zu, next chunk=%zu", REPLICATION_MSG, cb->read, cb->write, cb->size, cb->max_size, outstanding);
     ssize_t ret;
     int send_retry = 0;
-    // do {
+    ssize_t sent_bytes_from_this_chunk = 0;
+    ssize_t leftover_bytes_from_this_chunk = outstanding;
+    int finish_chunk_transmission = 1;
+    do {
 #ifdef ENABLE_HTTPS
         SSL *conn = replication->ssl.conn;
         if(conn && !replication->ssl.flags) {
@@ -454,6 +457,8 @@ void replication_attempt_to_send(struct replication_state *replication) {
             cbuffer_remove_unsafe(replication->buffer, ret);
             replication->sent_bytes_on_this_connection += ret;
             replication->sent_bytes += ret;
+            leftover_bytes_from_this_chunk -= ret;
+            sent_bytes_from_this_chunk += ret;
             debug(
                 D_REPLICATION,
                 "%s: Host %s [send to %s:%d]: Sent %zd bytes",
@@ -462,9 +467,26 @@ void replication_attempt_to_send(struct replication_state *replication) {
                 replication->connected_to,
                 replication->socket,
                 ret);
+
+            debug(
+                D_REPLICATION,
+                "%s: Host %s [send to %s:%d](retries: %d): Chunk details, Sent %zd bytes, chunk_size: %lu, leftover: %zd, Sent: %zd\n",
+                REPLICATION_MSG,
+                replication->host->hostname,
+                replication->connected_to,
+                replication->socket,
+                send_retry,
+                ret,
+                outstanding,
+                leftover_bytes_from_this_chunk,
+                sent_bytes_from_this_chunk);
             replication->last_sent_t = now_realtime_sec();
             send_retry = 0;
-            // break;
+            if(leftover_bytes_from_this_chunk <= 0){
+                finish_chunk_transmission = 0;
+                break;
+            }
+            continue;
         } else if (ret == -1 && (errno == EAGAIN || errno == EINTR || errno == EWOULDBLOCK)) {
             debug(
                 D_REPLICATION,
@@ -472,14 +494,14 @@ void replication_attempt_to_send(struct replication_state *replication) {
                 REPLICATION_MSG,
                 replication->host->hostname,
                 replication->connected_to);
-                // sleep(1);
+                sleep(1);
                 send_retry++;
                 error(
                     "%s: Host %s [send to %s]: unavailable after polling POLLOUT (retry #%d)",
                     REPLICATION_MSG,
                     replication->host->hostname,
                     replication->connected_to, send_retry);                
-                // continue;
+                continue;
         } else if (ret == -1) {
             debug(D_REPLICATION, "%s: Send failed - closing socket...", REPLICATION_MSG);
             error(
@@ -488,15 +510,19 @@ void replication_attempt_to_send(struct replication_state *replication) {
                 replication->host->hostname,
                 replication->connected_to,
                 replication->sent_bytes_on_this_connection);
-            replication_thread_close_socket(replication);
-            send_retry = 0;
+            // replication_thread_close_socket(replication);
+            // send_retry = 0;
             // break;
+            sleep(1);
+            send_retry++;
+            continue;
         } else {
             debug(D_REPLICATION, "%s: send() returned 0 -> no error but no transmission", REPLICATION_MSG);
-            send_retry = 0;
-            // break;
+            sleep(1);
+            send_retry++;
+            continue;
         }
-    // } while (send_retry);
+    } while (finish_chunk_transmission);
     netdata_mutex_unlock(&replication->mutex);
     netdata_thread_enable_cancelability();
 }
@@ -1299,7 +1325,7 @@ static int receiver_read(struct replication_state *r, FILE *fp) {
         int ret = SSL_read(r->ssl.conn, r->read_buffer + r->read_len, desired);
         if (ret > 0 ) {
             r->read_len += ret;
-            debug(D_REPLICATION, "%s: RxREAD SSLread [%s]@%d\n", REPLICATION_MSG, r->read_buffer,r->read_len);
+            debug(D_REPLICATION, "%s: RxREAD SSLread %d bytes. Buffer[%s]@%d\n", REPLICATION_MSG, ret, r->read_buffer, r->read_len);
             return 0;
         }
 
@@ -1314,7 +1340,7 @@ static int receiver_read(struct replication_state *r, FILE *fp) {
     }
 #endif
     if (!fgets(r->read_buffer, sizeof(r->read_buffer), fp)){
-        debug(D_REPLICATION, "%s: RxREAD FGETS [%s]\n", REPLICATION_MSG, r->read_buffer);
+        debug(D_REPLICATION, "%s: RxREAD FGETS Buffer[%s]\n", REPLICATION_MSG, r->read_buffer);
         return 1;
     }
     r->read_len = strlen(r->read_buffer);
