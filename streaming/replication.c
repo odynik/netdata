@@ -442,7 +442,7 @@ void replication_attempt_to_send(struct replication_state *replication) {
     ssize_t sent_bytes_from_this_chunk = 0;
     ssize_t leftover_bytes_from_this_chunk = outstanding;
     int finish_chunk_transmission = 1;
-    do {
+    // do {
 #ifdef ENABLE_HTTPS
         SSL *conn = replication->ssl.conn;
         if(conn && !replication->ssl.flags) {
@@ -484,9 +484,9 @@ void replication_attempt_to_send(struct replication_state *replication) {
             send_retry = 0;
             if(leftover_bytes_from_this_chunk <= 0){
                 finish_chunk_transmission = 0;
-                break;
+                // break;
             }
-            continue;
+            // continue;
         } else if (ret == -1 && (errno == EAGAIN || errno == EINTR || errno == EWOULDBLOCK)) {
             debug(
                 D_REPLICATION,
@@ -501,7 +501,7 @@ void replication_attempt_to_send(struct replication_state *replication) {
                     REPLICATION_MSG,
                     replication->host->hostname,
                     replication->connected_to, send_retry);                
-                continue;
+                // continue;
         } else if (ret == -1) {
             debug(D_REPLICATION, "%s: Send failed - closing socket...", REPLICATION_MSG);
             error(
@@ -513,16 +513,16 @@ void replication_attempt_to_send(struct replication_state *replication) {
             // replication_thread_close_socket(replication);
             // send_retry = 0;
             // break;
-            sleep(1);
-            send_retry++;
-            continue;
+            // sleep(1);
+            // send_retry++;
+            // continue;
         } else {
             debug(D_REPLICATION, "%s: send() returned 0 -> no error but no transmission", REPLICATION_MSG);
-            sleep(1);
-            send_retry++;
-            continue;
+            // sleep(1);
+            // send_retry++;
+            // continue;
         }
-    } while (finish_chunk_transmission);
+    // } while (finish_chunk_transmission);
     netdata_mutex_unlock(&replication->mutex);
     netdata_thread_enable_cancelability();
 }
