@@ -66,6 +66,8 @@ struct replication_state {
     char *program_version;
     unsigned int shutdown;    // Set it to 1 command the thread to exit
     unsigned int exited;      // Indicates that the thread has exited
+    unsigned int resume;      // Rising edge from pause 0 -> 1 (1). 1 -> 0 (0)
+    unsigned int pause;       // 0 means paused, 1 means running
     RRDDIM_PAST_DATA *dim_past_data;
 };
 

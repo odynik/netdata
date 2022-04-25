@@ -545,10 +545,14 @@ static void attempt_to_connect(struct sender_state *state)
 
         // let the data collection threads know we are ready
         state->host->rrdpush_sender_connected = 1;
-        
+
         // Start replication sender thread (Tx).
-        if(state->host->replication->tx_replication->enabled && !state->host->replication->tx_replication->spawned)
+        if (state->host->replication->tx_replication->enabled && !state->host->replication->tx_replication->spawned) {
+            info("%s: Switch ON the Tx REPlication thread for host %s.",
+                REPLICATION_MSG,
+                state->host->hostname);
             replication_sender_thread_spawn(state->host);
+        }
 
     }
     else {

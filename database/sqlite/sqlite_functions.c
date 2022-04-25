@@ -2283,15 +2283,15 @@ int sql_load_host_gap(RRDHOST *host)
             case SQLITE_ROW:
                 if (likely(sqlite3_column_bytes(res, 0) == sizeof(uuid_t))) {
                     set_host_gap(host, res);
-                    debug(D_REPLICATION, "%s: Setting host latest gap completed!", REPLICATION_MSG);
+                    debug(D_REPLICATION, "%s: Setting %s host latest gap completed!", REPLICATION_MSG, host->hostname);
                 }
                 break;
             case SQLITE_DONE:
                 set_host_gap(host, NULL);
-                debug(D_REPLICATION, "%s: SQLite completed with NO ROWs!", REPLICATION_MSG);
+                debug(D_REPLICATION, "%s: Setting %s host gaps from SQLite completed with NO ROWs!", REPLICATION_MSG, host->hostname);
                 break;
             default:
-                debug(D_REPLICATION, "%s: SQLite returned unexpected error code!", REPLICATION_MSG);
+                debug(D_REPLICATION, "%s: Setting %s host gaps from SQLite returned unexpected error code!", REPLICATION_MSG, host->hostname);
                 break;
         }
     } while (rc == SQLITE_ROW);
@@ -2411,7 +2411,7 @@ void set_host_gap(RRDHOST *host, sqlite3_stmt *res) {
     if(!res)
     {
         if(count > 0) {
-            debug(D_REPLICATION, ":%s: Exiting loading... with count(%d) \ng_b: %p, \ng_rear: %p, \ng_count: %p", REPLICATION_MSG, count, host->gaps_timeline->gap_buffer, host->gaps_timeline->gaps->front->item, &host->gaps_timeline->gap_data[count]);
+            debug(D_REPLICATION, ":%s: Exiting loading... with count(%d) \n", REPLICATION_MSG, count);
             // This is the top GAP that should have and oncreate status. It will go at the end of the q.
             copy_gap(host->gaps_timeline->gap_buffer, host->gaps_timeline->gaps->front->item);
             GAP *the_gap = (GAP *)queue_pop(host->gaps_timeline->gaps);
