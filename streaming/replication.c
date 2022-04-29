@@ -1511,7 +1511,7 @@ void evaluate_gap_onconnection(struct receiver_state *stream_recv)
     // if (!stream_recv->host->replication->rx_replication->enabled) {
     //     infoerr("%s: GAP Awareness mechanism is disabled - Enabled the gap filling in stream.conf...", REPLICATION_MSG);
     //     return;
-    // }    
+    // }
     GAP *seed_gap = (GAP *)stream_recv->host->gaps_timeline->gap_buffer;
     // Re-connection
     if (complete_new_gap(seed_gap)) {
@@ -1528,6 +1528,8 @@ void evaluate_gap_onconnection(struct receiver_state *stream_recv)
         print_replication_queue_gap(stream_recv->host->gaps_timeline);
         return;
     }
+    // Clean the gap buffer
+    reset_gap(seed_gap);
     info("%s: New GAP added in the queue.", REPLICATION_MSG);
     // Expect that at the end of the queue
     print_replication_queue_gap(stream_recv->host->gaps_timeline);
