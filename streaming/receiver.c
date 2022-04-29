@@ -360,9 +360,6 @@ size_t streaming_parser(struct receiver_state *rpt, struct plugind *cd, FILE *fp
     parser_add_keyword(parser, "TIMESTAMP", streaming_timestamp);
     parser_add_keyword(parser, "CLAIMED_ID", streaming_claimed_id);
 
-    parser_add_keyword(parser, "TIMESTAMP", streaming_timestamp);
-    parser_add_keyword(parser, "CLAIMED_ID", streaming_claimed_id);
-
     parser->plugins_action->begin_action     = &pluginsd_begin_action;
     parser->plugins_action->flush_action     = &pluginsd_flush_action;
     parser->plugins_action->end_action       = &pluginsd_end_action;
@@ -619,7 +616,7 @@ static int rrdpush_receive(struct receiver_state *rpt)
         close(rpt->fd);
         return 0;
     }
-    
+
     rrdhost_wrlock(rpt->host);
     rpt->host->labels.labels_flag = (rpt->stream_version > 0)?LABEL_FLAG_UPDATE_STREAM:LABEL_FLAG_STOP_STREAM;
 

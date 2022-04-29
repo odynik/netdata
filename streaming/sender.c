@@ -243,7 +243,6 @@ static void enable_supported_stream_features(struct sender_state *s) {
         default:
             default_compression_enabled = 0;
             default_rrdpush_sender_replication_enabled = 0;
-            // default_rrdpush_replication_enabled = 0;
             break;
     }
     if (s->version > STREAM_VERSION_COMPRESSION)

@@ -1026,6 +1026,7 @@ void replication_receiver_thread_cleanup_callback(void *ptr)
         executed = 1;
         RRDHOST *host = (RRDHOST *)ptr;
         REPLICATION_STATE *rep_state = host->replication->rx_replication;
+
         if (netdata_exit && rep_state) {
             info("%s: REP Rx thread cleanup: Shutdown sequence has started...", REPLICATION_MSG);
             rep_state->exited = 1;
@@ -1177,6 +1178,7 @@ int save_gap(GAP *a_gap)
 
     return rc;
 }
+
 void copy_gap(GAP *dst, GAP *src) {
     if(!dst || !src) {
         error("%s: No copy - Args contain NULL pointers: dst*: %p src*: %p", REPLICATION_MSG, dst, src);

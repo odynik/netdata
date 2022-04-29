@@ -1022,8 +1022,6 @@ void rrdeng_prepare_exit(struct rrdengine_instance *ctx)
 
 int rrdeng_store_past_metrics_page_init(RRDDIM_PAST_DATA *dim_past_data, REPLICATION_STATE *rep_state){
 
-int rrdeng_store_past_metrics_page_init(RRDDIM_PAST_DATA *dim_past_data, REPLICATION_STATE *rep_state){
-
     RRDSET *st = rrdset_find_byname(rep_state->host, dim_past_data->rrdset_id);
     if(unlikely(!st)) {
         error("%s: Abort Replication - Cannot find chart with name_id '%s' on host '%s'.", REPLICATION_MSG, dim_past_data->rrdset_id, rep_state->host->hostname);

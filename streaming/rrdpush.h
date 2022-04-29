@@ -145,7 +145,6 @@ struct receiver_state {
 extern unsigned int default_rrdpush_enabled;
 extern unsigned int default_rrdpush_sender_replication_enabled;
 extern unsigned int default_rrdpush_receiver_replication_enabled;
-// extern unsigned int default_rrdpush_replication_enabled;
 #ifdef ENABLE_COMPRESSION
 extern unsigned int default_compression_enabled;
 #endif
@@ -190,6 +189,5 @@ void log_replication_connection(const char *client_ip, const char *client_port, 
 extern void evaluate_gap_onconnection(struct receiver_state *stream_recv);
 extern void evaluate_gap_ondisconnection(struct receiver_state *stream_recv);
 extern unsigned int is_localhost(RRDHOST* host);
-
 
 #endif //NETDATA_RRDPUSH_H

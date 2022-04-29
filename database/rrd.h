@@ -851,9 +851,6 @@ struct rrdhost {
     GAPS *gaps_timeline;                       // disconnection gaps of a host
     REPLICATION *replication;                  // replication struct of a host
 
-    GAPS *gaps_timeline;                       // disconnection gaps of a host
-    REPLICATION *replication;                  // replication struct of a host
-
     // ------------------------------------------------------------------------
     // health monitoring options
 
