@@ -568,6 +568,14 @@ static void attempt_to_connect(struct sender_state *state)
     }
 }
 
+static inline void replication_trigger(struct sender_state *s){
+    if(s->last_sent_t > s->t_newest_connection){
+        size_t trigger_replication = s->expose_chart_definitions/(size_t)(s->last_sent_t - s->t_newest_connection);
+        debug(D_REPLICATION, "STREAM %s [send to %s]: REP trigger value %lu", s->host->hostname, s->connected_to, trigger_replication);
+    }
+    debug(D_REPLICATION, "STREAM %s [send to %s]: Sent Charts: %lu (%u) | Dim: %lu (%u) defintions [conn start]@%ld [now]@%ld", s->host->hostname, s->connected_to, s->expose_chart_definitions, s->host->created_charts_count, s->expose_dim_definitions, s->host->created_dims_count, s->t_newest_connection, s->last_sent_t);
+}
+
 // TCP window is open and we have data to transmit.
 void attempt_to_send(struct sender_state *s) {
 
@@ -601,11 +609,7 @@ void attempt_to_send(struct sender_state *s) {
         s->last_sent_t = now_realtime_sec();
         if(!s->t_newest_connection)
             s->t_newest_connection = now_realtime_sec();
-        if(s->last_sent_t > s->t_newest_connection){
-            size_t trigger_replication = s->expose_chart_definitions/(size_t)(s->last_sent_t - s->t_newest_connection);
-            debug(D_REPLICATION, "STREAM %s [send to %s]: REP trigger value %lu", s->host->hostname, s->connected_to, trigger_replication);
-        }
-        debug(D_REPLICATION, "STREAM %s [send to %s]: Sent Charts: %lu | Dim: %lu defintions [conn start]@%ld [now]@%ld", s->host->hostname, s->connected_to, s->expose_chart_definitions, s->expose_dim_definitions, s->t_newest_connection, s->last_sent_t);            
+        replication_trigger(s);
     }
     else if (ret == -1 && (errno == EAGAIN || errno == EINTR || errno == EWOULDBLOCK))
         debug(D_STREAM, "STREAM %s [send to %s]: unavailable after polling POLLOUT", s->host->hostname,

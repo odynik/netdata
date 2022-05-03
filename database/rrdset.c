@@ -387,6 +387,7 @@ void rrdset_free(RRDSET *st) {
     }
 
     rrdset_unlock(st);
+    host->created_charts_count--;
 
     // ------------------------------------------------------------------------
     // free it
@@ -567,6 +568,7 @@ RRDSET *rrdset_create_custom(
     RRDSET *st = rrdset_find_on_create(host, fullid);
     if (st) {
         int mark_rebuild = 0;
+        host->created_charts_count++;
         rrdset_flag_set(st, RRDSET_FLAG_SYNC_CLOCK);
         rrdset_flag_clear(st, RRDSET_FLAG_UPSTREAM_EXPOSED);
         if (rrdset_flag_check(st, RRDSET_FLAG_ARCHIVED)) {

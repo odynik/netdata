@@ -890,7 +890,9 @@ struct rrdhost {
 
     RRDSET *rrdset_root;                            // the host charts
 
-    unsigned int obsolete_charts_count;
+    unsigned int obsolete_charts_count; //the number of obsolete charts
+    unsigned int created_charts_count;  //the number of charts that was created
+    unsigned int created_dims_count;    //the number of charts that was created
 
 
     // ------------------------------------------------------------------------

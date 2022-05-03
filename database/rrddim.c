@@ -426,6 +426,7 @@ RRDDIM *rrddim_add_custom(RRDSET *st, const char *id, const char *name, collecte
         rrddimvar_create(rd, RRDVAR_TYPE_COLLECTED, NULL, "_raw", &rd->last_collected_value, RRDVAR_OPTION_DEFAULT);
         rrddimvar_create(rd, RRDVAR_TYPE_TIME_T, NULL, "_last_collected_t", &rd->last_collected_time.tv_sec, RRDVAR_OPTION_DEFAULT);
     }
+    host->created_dims_count++;
 
     if(unlikely(rrddim_index_add(st, rd) != rd))
         error("RRDDIM: INTERNAL ERROR: attempt to index duplicate dimension '%s' on chart '%s'", rd->id, st->id);
@@ -475,6 +476,7 @@ void rrddim_free_custom(RRDSET *st, RRDDIM *rd, int db_rotated)
             error("Request to free dimension '%s.%s' but it is not linked.", st->id, rd->name);
     }
     rd->next = NULL;
+    st->rrdhost->created_dims_count--;
 
     while(rd->variables)
         rrddimvar_free(rd->variables);

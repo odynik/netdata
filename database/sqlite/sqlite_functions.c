@@ -2403,7 +2403,51 @@ bind_fail:
 }
 
 /*
- * Set the host GAP struct from the metdata database
+ * Count the number of the active charts in an agent SQLite
+ *
+ */
+int count_host_chart_active(RRDHOST *host)
+{
+    sqlite3_stmt *res = NULL;
+    unsigned int count = 0;
+    int rc;
+
+    if (unlikely(!db_meta) && default_rrd_memory_mode != RRD_MEMORY_MODE_DBENGINE)
+        return -1;
+
+    if (unlikely(!res)) {
+        rc = prepare_statement(db_meta, COUNT_HOST_CHART_ACTIVE, &res);
+        if (rc != SQLITE_OK) {
+            error_report("Failed to prepare statement to lookup count of chart_active of the host %s in metadata DB", host->hostname);
+            return -1;
+        }
+    }
+
+    rc = sqlite3_bind_blob(res, 1, &host->host_uuid, sizeof(host->host_uuid), SQLITE_STATIC);
+    if (unlikely(rc != SQLITE_OK))
+            goto bind_fail;
+
+    rc = sqlite3_step(res);
+    if (likely(rc == SQLITE_ROW)) {
+        count = sqlite3_column_int(res,0);
+    }
+
+    rc = sqlite3_reset(res);
+    if (unlikely(rc != SQLITE_OK))
+        error_report("Failed to reset statement when searching the count of the active charts of the host %s, rc = %d", host->hostname, rc);
+
+    return count;
+
+bind_fail:
+    error_report("Failed to bind input parameter to perform active chart count for host %s , rc = %d", host->hostname, rc);
+    rc = sqlite3_reset(res);
+    if (unlikely(rc != SQLITE_OK))
+        error_report("Failed to reset statement when searching for a active chart for host %s, rc = %d", host->hostname, rc);
+    return -1;
+}
+
+/*
+ * Set the host GAP struct from the metadata database
  */
 void set_host_gap(RRDHOST *host, sqlite3_stmt *res) {
     int count = host->gaps_timeline->gaps->count;
