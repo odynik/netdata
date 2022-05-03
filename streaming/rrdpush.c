@@ -266,6 +266,7 @@ static inline void rrdpush_send_chart_definition_nolock(RRDSET *st) {
             , (st->plugin_name)?st->plugin_name:""
             , (st->module_name)?st->module_name:""
     );
+    host->sender->expose_chart_definitions++;
 
     // send the chart labels
     if (host->sender->version >= STREAM_VERSION_CLABELS)
@@ -287,6 +288,7 @@ static inline void rrdpush_send_chart_definition_nolock(RRDSET *st) {
                 , rrddim_flag_check(rd, RRDDIM_FLAG_DONT_DETECT_RESETS_OR_OVERFLOWS)?"noreset":""
         );
         rd->exposed = 1;
+        host->sender->expose_dim_definitions++;
     }
 
     // send the chart local custom variables
