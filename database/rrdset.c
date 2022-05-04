@@ -568,7 +568,6 @@ RRDSET *rrdset_create_custom(
     RRDSET *st = rrdset_find_on_create(host, fullid);
     if (st) {
         int mark_rebuild = 0;
-        host->created_charts_count++;
         rrdset_flag_set(st, RRDSET_FLAG_SYNC_CLOCK);
         rrdset_flag_clear(st, RRDSET_FLAG_UPSTREAM_EXPOSED);
         if (rrdset_flag_check(st, RRDSET_FLAG_ARCHIVED)) {
@@ -687,6 +686,7 @@ RRDSET *rrdset_create_custom(
             if (unlikely(rc))
                 error_report("Failed to update chart metadata in the database");
         }
+
         /* Fall-through during switch from archived to active so that the host lock is taken and health is linked */
         if (!changed_from_archived_to_active)
             return st;
@@ -918,6 +918,7 @@ RRDSET *rrdset_create_custom(
 
     st->next = host->rrdset_root;
     host->rrdset_root = st;
+    host->created_charts_count++;
 
     if(host->health_enabled) {
         rrdsetvar_create(st, "last_collected_t",    RRDVAR_TYPE_TIME_T,     &st->last_collected_time.tv_sec, RRDVAR_OPTION_DEFAULT);

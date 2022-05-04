@@ -568,12 +568,29 @@ static void attempt_to_connect(struct sender_state *state)
     }
 }
 
-static inline void replication_trigger(struct sender_state *s){
-    if(s->last_sent_t > s->t_newest_connection){
-        size_t trigger_replication = s->expose_chart_definitions/(size_t)(s->last_sent_t - s->t_newest_connection);
-        debug(D_REPLICATION, "STREAM %s [send to %s]: REP trigger value %lu", s->host->hostname, s->connected_to, trigger_replication);
+// Trigger replication based on streaming progress
+static inline void replication_trigger(struct sender_state *s)
+{
+    if (s->last_sent_t > s->t_newest_connection) {
+        size_t trigger_replication = s->expose_chart_definitions / (size_t)(s->last_sent_t - s->t_newest_connection);
+        debug(
+            D_REPLICATION,
+            "STREAM %s [send to %s]: REP trigger value %lu",
+            s->host->hostname,
+            s->connected_to,
+            trigger_replication);
     }
-    debug(D_REPLICATION, "STREAM %s [send to %s]: Sent Charts: %lu (%u) | Dim: %lu (%u) defintions [conn start]@%ld [now]@%ld", s->host->hostname, s->connected_to, s->expose_chart_definitions, s->host->created_charts_count, s->expose_dim_definitions, s->host->created_dims_count, s->t_newest_connection, s->last_sent_t);
+    debug(
+        D_REPLICATION,
+        "STREAM %s [send to %s]: Sent Charts: %lu (%u) | Dim: %lu (%u) defintions [conn start]@%ld [now]@%ld",
+        s->host->hostname,
+        s->connected_to,
+        s->expose_chart_definitions,
+        s->host->created_charts_count,
+        s->expose_dim_definitions,
+        s->host->created_dims_count,
+        s->t_newest_connection,
+        s->last_sent_t);
 }
 
 // TCP window is open and we have data to transmit.
