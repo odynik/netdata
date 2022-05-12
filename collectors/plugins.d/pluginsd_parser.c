@@ -806,8 +806,12 @@ PARSER_RC pluginsd_fill_action(void *user, time_t timestamp, storage_number valu
     if(!user || !((PARSER_USER_OBJECT *)user)->opaque) {
         infoerr("%s: Parser user object was not set properly - user, or opaque is NULL - Exiting Parser!", REPLICATION_MSG);
         return PARSER_RC_ERROR;
-    }    
+    }
     REPLICATION_STATE *rep_state = ((PARSER_USER_OBJECT *)user)->opaque;
+
+    if(rep_state->host->receiver->first_msg_t <= timestamp) {
+        return PARSER_RC_OK;
+    }   
     replication_collect_past_metric(rep_state, timestamp, value);
 
     return PARSER_RC_OK;

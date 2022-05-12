@@ -40,6 +40,7 @@ extern void rrdeng_metric_init(RRDDIM *rd);
 extern void rrdeng_store_metric_init(RRDDIM *rd);
 extern void rrdeng_store_metric_flush_current_page(RRDDIM *rd);
 extern void rrdeng_store_metric_next(RRDDIM *rd, usec_t point_in_time, storage_number number);
+extern void rrdeng_store_metric_random(RRDDIM *rd, RRDDIM_PAST_DATA *dim_past_data);
 extern int rrdeng_store_metric_finalize(RRDDIM *rd);
 extern unsigned
     rrdeng_variable_step_boundaries(RRDSET *st, time_t start_time, time_t end_time,

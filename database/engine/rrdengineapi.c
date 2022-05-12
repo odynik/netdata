@@ -290,6 +290,33 @@ void rrdeng_store_metric_next(RRDDIM *rd, usec_t point_in_time, storage_number n
     }
 }
 
+void rrdeng_store_metric_random(RRDDIM *rd, RRDDIM_PAST_DATA *dim_past_data)
+{
+    struct rrdeng_collect_handle *handle = (struct rrdeng_collect_handle *)rd->state->handle;
+    struct rrdeng_page_descr *descr;
+    storage_number *page, *page_gap;
+
+    descr = handle->descr;
+    page = (storage_number *)descr->pg_cache_descr->page;
+    page_gap = (storage_number *)dim_past_data->page;
+
+    uint32_t start, end, page_start;
+    start = dim_past_data->start_time / USEC_PER_SEC;
+    end = dim_past_data->end_time / USEC_PER_SEC;
+    page_start = descr->start_time / USEC_PER_SEC;
+
+    if(start > end || start < page_start)
+        return;
+
+    page += start - page_start;
+    for(uint32_t i = start; i <= end; i++){
+        *page = *page_gap;
+        page ++;
+        page_gap ++;
+    }
+    pg_cache_add_new_metric_time(rd->state->page_index, descr);
+}
+
 /*
  * Releases the database reference from the handle for storing metrics.
  * Returns 1 if it's safe to delete the dimension.
@@ -1083,18 +1110,21 @@ void rrdeng_store_past_metrics_page(RRDDIM_PAST_DATA *dim_past_data, REPLICATION
 
     // copy the dim past dataq in this page
     rrdeng_page_descr_mutex_lock(ctx, descr);
+
     memcpy(descr->pg_cache_descr->page, dim_past_data->page, (size_t)dim_past_data->page_length);
     descr->page_length  = dim_past_data->page_length;
     descr->end_time = dim_past_data->end_time;
     descr->start_time = dim_past_data->start_time;
+
+    rrdeng_store_metric_random(rd, dim_past_data);
     // Page alignment can be handled with zero values.
     // Every new past data page can reach the aligment with zeros if the values are not enough.
-    // for (page_length - rd->rrdset->rrddim_page_alignment) fill with zeros OR 
+    // for (page_length - rd->rrdset->rrddim_page_alignment) fill with zeros OR
     // simply increase the length since zeros are already there
     // print_page_cache_descr(descr);
     rrdeng_page_descr_mutex_unlock(ctx, descr);
-    // print_page_descr(descr);    
-   
+    // print_page_descr(descr);
+
     debug(D_REPLICATION, "%s REP: Page correlation ID and page info updates....", REPLICATION_MSG);
     // prepare the pg descr to insert and commit the dbengine page
     dim_past_data->page_correlation_id = rrd_atomic_fetch_add(&pg_cache->committed_page_index.latest_corr_id, 1);
@@ -1102,7 +1132,7 @@ void rrdeng_store_past_metrics_page(RRDDIM_PAST_DATA *dim_past_data, REPLICATION
     debug(D_REPLICATION, "%s: Past \"%s\".\"%s\" metrics page is ready for commit in memory.", REPLICATION_MSG, rd->rrdset->id, rd->id);
 }
 
-void rrdeng_flush_past_metrics_page(RRDDIM_PAST_DATA *dim_past_data, REPLICATION_STATE *rep_state){    
+void rrdeng_flush_past_metrics_page(RRDDIM_PAST_DATA *dim_past_data, REPLICATION_STATE *rep_state){
     struct rrdengine_instance *ctx;
     struct rrdeng_page_descr *descr;
     struct pg_cache_page_index *page_index;
@@ -1163,6 +1193,6 @@ void rrdeng_store_past_metrics_page_finalize(RRDDIM_PAST_DATA *dim_past_data, RE
 
     uv_rwlock_wrlock(&page_index->lock);
     --page_index->writers;
-    uv_rwlock_wrunlock(&page_index->lock);    
+    uv_rwlock_wrunlock(&page_index->lock);
     debug(D_REPLICATION, "%s Finalize operation -  Dimension \"%s\".\"%s\" metrics page completed.", REPLICATION_MSG, rd->rrdset->id, rd->id);
 }
