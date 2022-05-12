@@ -300,21 +300,58 @@ void rrdeng_store_metric_random(RRDDIM *rd, RRDDIM_PAST_DATA *dim_past_data)
     page = (storage_number *)descr->pg_cache_descr->page;
     page_gap = (storage_number *)dim_past_data->page;
 
-    uint32_t start, end, page_start;
-    start = dim_past_data->start_time / USEC_PER_SEC;
-    end = dim_past_data->end_time / USEC_PER_SEC;
-    page_start = descr->start_time / USEC_PER_SEC;
+    time_t start, end, page_start, page_end;
+    start = dim_past_data->start_time / USEC_PER_SEC; //gap time start
+    end = dim_past_data->end_time / USEC_PER_SEC;     //gap time end
+    page_start = descr->start_time / USEC_PER_SEC;    //active page time start
+    page_end = descr->end_time / USEC_PER_SEC;        //active page time start
 
-    if(start > end || start < page_start)
+    if (!page || !page_gap || start > end || start < page_start || page_end < end) {
+        info(
+            "%s: Active page %p - [%ld, %ld] and GAP page %p - [%ld, %ld] problems",
+            REPLICATION_MSG,
+            page,
+            page_start,
+            page_end,
+            page_gap,
+            start,
+            end);
         return;
-
-    page += start - page_start;
-    for(uint32_t i = start; i <= end; i++){
-        *page = *page_gap;
-        page ++;
-        page_gap ++;
     }
-    pg_cache_add_new_metric_time(rd->state->page_index, descr);
+
+    // size of the data in bytes
+    unsigned int entries_gap = (dim_past_data->page_length / sizeof(storage_number)); // num of samples
+    unsigned int entries_page = (descr->page_length / sizeof(storage_number));    // num of samples
+    unsigned int ue_page = (page_end - page_start) / (entries_page - 1);
+    uint64_t gap_start_offset = 0;
+    uint64_t page_start_offset = 0;
+
+    if (!ue_page) {
+        info(
+            "%s: Active page %p - [%ld, %ld] has no samples for %s.%s",
+            REPLICATION_MSG,
+            page,
+            page_start,
+            page_end,
+            rd->rrdset->id,
+            rd->id);
+        return;
+    }
+
+    if (page_start > start) {
+        gap_start_offset = (uint64_t)(page_start - start) / ue_page;
+        //TODO: creating a page and fill it with the reset of the GAP
+    }
+    if (page_start <= start) {
+        page_start_offset = (uint64_t)(start - page_start) / ue_page;
+    }
+    info("%s: Just before memcpy", REPLICATION_MSG);
+    void *dest = (void *)(page + page_start_offset);
+    void *src = (void *)(page + gap_start_offset);
+    size_t size = ((entries_gap - gap_start_offset) * sizeof(storage_number));
+    info("page[%lu]=%p, page_gap[%lu]=%p, size: %lu", page_start_offset, dest, gap_start_offset, src, size);
+    memcpy(dest, src, size);
+    info("%s: Successfully updated the active page for %s.%s", REPLICATION_MSG, rd->rrdset->id, rd->id);
 }
 
 /*
