@@ -527,7 +527,8 @@ s->rrdpush_compression = (default_compression_enabled && (s->version == STREAM_V
         error("STREAM %s [send to %s]: server is not replying properly (is it a netdata?).", host->hostname, s->connected_to);
         rrdpush_sender_thread_close_socket(host);
         //catch other reject reasons and force to check other destinations
-        host->destination->disabled_no_proper_reply = 1;
+        if (host->destination->next)
+            host->destination->disabled_no_proper_reply = 1;
         return 0;
     }
     else if(version == -2) {
