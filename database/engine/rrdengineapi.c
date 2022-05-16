@@ -1215,7 +1215,7 @@ int rrdeng_store_past_metrics_realtime(RRDDIM *rd, RRDDIM_PAST_DATA *dim_past_da
     page_start = descr->start_time / USEC_PER_SEC;    //active page time start
     page_end = descr->end_time / USEC_PER_SEC;        //active page time start
 
-    if (!page || !page_gap || start > end) {
+    if (!page || !page_gap || start > end ) {
         info(
             "%s: Active page %p - [%lu, %lu] and GAP page %p - [%lu, %lu] problems",
             REPLICATION_MSG,
