@@ -1079,6 +1079,9 @@ void rrdeng_store_past_metrics_page(RRDDIM_PAST_DATA *dim_past_data, REPLICATION
     struct rrdeng_page_descr *descr;
     RRDDIM *rd = dim_past_data->rd;
     UNUSED(rep_state);
+#ifndef NETDATA_INTERNAL_CHECKS
+    UNUSED(rd);
+#endif
 
     descr = dim_past_data->descr;
     ctx = dim_past_data->ctx;
@@ -1109,6 +1112,9 @@ void rrdeng_flush_past_metrics_page(RRDDIM_PAST_DATA *dim_past_data, REPLICATION
     struct pg_cache_page_index *page_index;
     UNUSED(rep_state);
     RRDDIM *rd;
+#ifndef NETDATA_INTERNAL_CHECKS
+    UNUSED(rd);
+#endif
 
     descr = dim_past_data->descr;
     ctx = dim_past_data->ctx;
@@ -1160,6 +1166,9 @@ void rrdeng_store_past_metrics_page_finalize(RRDDIM_PAST_DATA *dim_past_data, RE
     struct pg_cache_page_index* page_index;
     RRDDIM *rd = dim_past_data->rd;
     page_index = dim_past_data->rd->state->page_index;
+#ifndef NETDATA_INTERNAL_CHECKS
+    UNUSED(rd);
+#endif
 
     uv_rwlock_wrlock(&page_index->lock);
     --page_index->writers;
@@ -1176,10 +1185,15 @@ void modify_dim_past_data(RRDDIM_PAST_DATA *dim_past_data, usec_t start_time, us
     new_start = start_time / USEC_PER_SEC;
     new_end = end_time / USEC_PER_SEC;
     new_entries = (uint64_t)(new_end - new_start) / dim_past_data->rd->update_every + 1;
+#ifndef NETDATA_INTERNAL_CHECKS
+    UNUSED(end);
+#endif
 
     dim_past_data->page_length = new_entries * sizeof(storage_number);
-    if(new_start != start)
-        dim_past_data->page = &dim_past_data->page[((new_start - start) / dim_past_data->rd->update_every) * sizeof(storage_number)];
+    if(new_start != start) {
+        storage_number *sn = dim_past_data->page;
+        dim_past_data->page = &sn[((new_start - start) / dim_past_data->rd->update_every) * sizeof(storage_number)];
+    }
     dim_past_data->start_time = new_start * USEC_PER_SEC;
     dim_past_data->end_time = new_end * USEC_PER_SEC;
 
@@ -1282,32 +1296,4 @@ int rrdeng_store_past_metrics_realtime(RRDDIM *rd, RRDDIM_PAST_DATA *dim_past_da
         modify_dim_past_data(dim_past_data, start * USEC_PER_SEC, (page_start - 1) * USEC_PER_SEC);
 
     return return_value;
-}
-
-// Helper functions to be removed
-void print_collected_metric_active_data(RRDDIM_PAST_DATA *past_data, REPLICATION_STATE *rep_state){
-
-    RRDSET *st = rrdset_find_byname(rep_state->host, past_data->rrdset_id);
-    if(unlikely(!st)) {
-        error("Cannot find chart with name_id '%s' on host '%s'.", past_data->rrdset_id, rep_state->host->hostname);
-        return;
-    }
-    past_data->rd = rrddim_find(st, past_data->rrddim_id);
-    if(unlikely(!past_data->rd)) {
-        error("Cannot find dimension with id '%s' in chart '%s' on host '%s'.", past_data->rrddim_id, past_data->rrdset_id, rep_state->host->hostname);
-        return;
-    }
-
-    RRDDIM *rd = past_data->rd;
-    time_t ts = past_data->start_time  / USEC_PER_SEC;
-    time_t te = past_data->end_time  / USEC_PER_SEC;
-    storage_number *page = (storage_number *)past_data->page;
-    uint32_t len = past_data->page_length / sizeof(storage_number);
-
-    info("%s: Past Samples(%u) [%ld, %ld] for dimension %s\n", REPLICATION_MSG, len, ts, te, rd->id);
-    time_t t = ts;
-    for(uint32_t i=0; i < len ; i++){
-        info("T: %ld, V: "STORAGE_NUMBER_FORMAT" \n", t, page[i]);
-        t += rd->update_every;
-    }
 }
