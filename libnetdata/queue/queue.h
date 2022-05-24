@@ -5,6 +5,7 @@
 
 #include "stdlib.h"
 #include "pthread.h"
+#include "../libnetdata.h"
 
 typedef struct node_s *node;
 typedef struct queue_s *queue_t;

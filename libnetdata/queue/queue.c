@@ -12,7 +12,7 @@
 int queue_push(queue_t q, void* i)	
 {		
 	node temp;
-	temp = (node) malloc(sizeof(struct node_s));
+	temp = (node) mallocz(sizeof(struct node_s));
 	if (temp == NULL){
 		return 0;
 	}
@@ -84,7 +84,7 @@ void* queue_pop(queue_t q)
  */
 queue_t queue_new(int max, int blocked){
 	queue_t q = NULL;
-	q = (queue_t) malloc(sizeof(struct queue_s));	
+	q = (queue_t) mallocz(sizeof(struct queue_s));	
 	q->front = NULL;			
 	q->rear = NULL;
 	q->max = max;
