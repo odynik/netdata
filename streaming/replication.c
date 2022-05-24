@@ -126,19 +126,14 @@ static int replication_sender_thread_connect_to_parent(RRDHOST *host, int defaul
     debug(D_REPLICATION, "%s: Attempting to connect...", REPLICATION_MSG);
     info("%s %s [send to %s]: connecting...", REPLICATION_MSG, host->hostname, host->rrdpush_send_destination);
 
-    rep_state->socket = connect_to_one_of(
-            host->rrdpush_send_destination
-            , default_port
-            , &tv
-            , &rep_state->reconnects_counter
-            , rep_state->connected_to
-            , sizeof(rep_state->connected_to)-1
-    );
+    rep_state->socket = connect_to_this(host->destination->destination, default_port, &tv); // the IP connection of streaming.
 
     if(unlikely(rep_state->socket == -1)) {
         error("%s %s [send to %s]: failed to connect", REPLICATION_MSG, host->hostname, host->rrdpush_send_destination);
         return 0;
     }
+    strcpy(rep_state->connected_to, host->destination->destination);
+    rep_state->reconnects_counter = 0;
 
     info("%s %s [send to %s]: initializing communication...", REPLICATION_MSG, host->hostname, rep_state->connected_to);
 
